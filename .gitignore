@@ -1,0 +1,22 @@
+# Dependencies and build outputs
+node_modules/
+lib/
+
+# Godot import cache
+.godot/
+
+# Local development assets: probe projects, raw recordings, plans, facts,
+# agent memory. Kept out of the public repository; the packaged test fixtures
+# (tool-godot-debug/tests/fixtures, lsp-godot/tests/fixtures) hold everything
+# tests replay.
+.context/
+
+# Probe runtime artifacts (APPDATA redirects for the user:// crash workaround,
+# logs, pid files).
+**/appdata/
+*.log
+editor.pid
+
+# Editors / OS
+.vscode/
+.DS_Store

@@ -1,0 +1,117 @@
+{
+  "note": "Recorded from a real Godot 4.7 headless editor (T0 probe, .context/t0/facts.md). ",
+  "initializeCapabilities": {
+    "codeActionProvider": false,
+    "colorProvider": false,
+    "completionProvider": {
+      "resolveProvider": true,
+      "triggerCharacters": [
+        ".",
+        "$",
+        "'",
+        "\""
+      ]
+    },
+    "declarationProvider": true,
+    "definitionProvider": true,
+    "documentFormattingProvider": false,
+    "documentHighlightProvider": true,
+    "documentLinkProvider": {
+      "resolveProvider": false
+    },
+    "documentOnTypeFormattingProvider": {
+      "firstTriggerCharacter": "",
+      "moreTriggerCharacter": []
+    },
+    "documentRangeFormattingProvider": false,
+    "documentSymbolProvider": true,
+    "executeCommandProvider": {
+      "commands": []
+    },
+    "foldingRangeProvider": false,
+    "hoverProvider": true,
+    "implementationProvider": false,
+    "referencesProvider": true,
+    "renameProvider": {
+      "prepareProvider": true
+    },
+    "signatureHelpProvider": {
+      "triggerCharacters": [
+        ",",
+        "("
+      ]
+    },
+    "textDocumentSync": {
+      "change": 1,
+      "openClose": true,
+      "save": {
+        "includeText": true
+      },
+      "willSave": false,
+      "willSaveWaitUntil": true
+    },
+    "typeDefinitionProvider": false,
+    "workspace": {},
+    "workspaceSymbolProvider": false
+  },
+  "hoverRaw": {
+    "vector2Right": {
+      "contents": {
+        "kind": "markdown",
+        "value": "\t<Native> class Vector2\n\n使用浮点数坐标的 2D 向量。\n包含两个元素的结构体，可用于代表 2D 坐标或任何数值的二元组。\n使用浮点数坐标。默认情况下，这些浮点值为 32 位精度，与始终为 64 位的 `float` 并不相同。如果需要双精度，请在编译引擎时使用 `precision=double` 选项。\n对应的整数版本见 `Vector2i`。\n**注意：**在布尔语境中，如果 Vector2 等于 `Vector2(0, 0)` 则求值结果为 `false`。否则 Vector2 的求值结果始终为 `true`。\n\n"
+      },
+      "range": {
+        "end": {
+          "character": 18,
+          "line": 6
+        },
+        "start": {
+          "character": 18,
+          "line": 6
+        }
+      }
+    },
+    "refCounted": {
+      "contents": {
+        "kind": "markdown",
+        "value": "\t<Native> class RefCounted extends Object\n\n引用计数对象的基类。\n所有进行引用计数的对象的基类。`Resource` 和许多其他辅助对象都继承自这个类。\n与其他 `Object` 类型不同，`RefCounted` 内部存在引用计数器，当且仅当自身不再处于使用状态时就会自动释放。因此 `RefCounted` 不需要使用 `Object.free` 手动释放。\n陷入循环引用的 `RefCounted` 实例**不会**自动释放。例如某节点持有对实例 `A` 的引用，而该实例直接或间接持有对 `A` 的引用，则 `A` 的引用计数为 2。该节点销毁后 `A` 悬空，引用计数为 1，造成内存泄漏。为了防止这种情况，可以使用 `@GlobalScope.weakref` 将循环中的某一处引用设置为弱引用。\n在绝大多数用例中，只需实例化和使用 `RefCounted` 派生类型即可。该类中提供的方法仅适用于高级用户，如果使用不当可能会导致问题。\n**注意：**在 C# 中，引用计数的对象在不再使用后不会立即释放。相反，垃圾收集将定期运行，并释放不再使用的引用计数对象。这意味着未使用的引用计数对象会在被移除之前在内存中保留一段时间。\n\n"
+      },
+      "range": {
+        "end": {
+          "character": 17,
+          "line": 1
+        },
+        "start": {
+          "character": 17,
+          "line": 1
+        }
+      }
+    },
+    "playerClass": {
+      "contents": {
+        "kind": "markdown",
+        "value": "\tclass Player\n\nDefined in [res://player.gd](file:///D%3A/project/player.gd)"
+      },
+      "range": {
+        "end": {
+          "character": 16,
+          "line": 0
+        },
+        "start": {
+          "character": 16,
+          "line": 0
+        }
+      }
+    },
+    "emptyContents": {
+      "contents": []
+    }
+  },
+  "definitionUri": "file:///D%3A/project/player.gd",
+  "changeWorkspaceOnMismatch": {
+    "method": "gdscript_client/changeWorkspace",
+    "params": {
+      "path": "D:/project"
+    }
+  }
+}

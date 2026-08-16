@@ -1,0 +1,49 @@
+{
+  "source": "t3/norun",
+  "frameCount": 6,
+  "totalBytes": 1236,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "window:title",
+      "trigger": "connect",
+      "offset": 464,
+      "len": 80
+    },
+    {
+      "seq": 4,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 544,
+      "len": 152
+    },
+    {
+      "seq": 5,
+      "cmd": "performance:profile_frame",
+      "trigger": "connect",
+      "offset": 696,
+      "len": 540
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`REAL composition: tool → subprocess seam → controller → fake game > round-trips a full debug run to model-visible output 1`] = `
+"2 stops (max 10)
+#0 res://player.gd:10 @ run [Breakpoint]
+  members:
+    self = Object<27262977501>
+    counter = 1
+    name_tag = StringName'hero'
+    target = Vector2(10, 20)
+#1 res://player.gd:10 @ run [Breakpoint]
+output (6 lines):
+  Godot Engine v4.7.stable.mono.official.5b4e0cb0f - https://godotengine.org
+  helper done: helper text [1, 2, 3] { "k": "v" }
+  main: done
+  main: starting
+  counter=3
+  main: starting
+errors (1):
+  platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
+`;

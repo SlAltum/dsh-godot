@@ -1,0 +1,130 @@
+# @deepseek-ai/dsh-tool-godot-debug
+
+[English](README.md) | 中文
+
+**`godot_debug` 工具**对 Godot 项目执行一次有界、脚本化的调试运行：模型设置断点（`res://` 路径或绝对文件路径 + 行号），工具以 `--remote-debug` headless 启动项目，在每次停顿时快照堆栈与 locals/members/globals，自动继续至 `maxStops`，最后返回结构化报告（含游戏输出与错误）——无需给被测代码加 print 即可探查运行时状态。
+
+与 tool-godot 工具族一致，该工具是 **spawn-backed 一次性调用**：`godot_debug` 从不暴露后台任务；调用只在运行结束、被协作式超时终止、被中止或失败后返回。包注入 `tools`、`systemPrompt` 与 `subprocess`——刻意不注入 `fs`；仅项目根校验与断点路径转换触碰文件系统（plain `node:fs`）。
+
+```ts
+import { Context } from '@deepseek-ai/cordis'
+import { LocalSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-local'
+import * as ToolGodotDebug from '@deepseek-ai/dsh-tool-godot-debug'
+
+// A deployment points at its godot install; the default resolves `godot` on PATH.
+export async function mount(ctx: Context): Promise<void> {
+  await ctx.plugin(LocalSubprocessRuntime)
+  await ctx.plugin(ToolGodotDebug, { executable: 'C:\\Godot\\godot.exe' })
+}
+```
+
+## 工作原理
+
+Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定预选空闲端口，spawn `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`，游戏进程作为 TCP 客户端连入。每帧为 `[u32 LE 长度][variant 编码数组]`，数组为 `[command, threadId, params]`（Godot 4.2+）。每次停顿工具请求堆栈转储与帧变量、快照（有界深度）并继续。协议事实已 pin 在 `.context/t3/facts.md`（Godot 4.7 实测）。
+
+## Settings
+
+本包**不注册** settings 命名空间（`godot` 命名空间归 tool-godot 所有）；可执行文件与上限均为 composition 级配置。
+
+## Config
+
+每个键都有默认值；部署只需覆盖环境需要的部分。
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `executable` | `godot` | godot 可执行文件路径或 PATH 命令名。 |
+| `executableArgs` | `[]` | 可执行文件后插入的固定 argv（部署包装器）。 |
+| `debugPort` | `0` | 游戏连入的 remote-debug 端口；`0` = 自动预选空闲端口（默认）。固定端口适合需要放行入站规则的部署。 |
+| `maxMessageBytes` | `16777216` | 接受的最大单条协议帧消息。 |
+| `maxOutputBytes` | `1048576` | 单次运行保留的游戏 `output`/`error` 内容字节上限；超出后结果标记 `outputTruncated`。 |
+| `maxStderrBytes` | `1048576` | 自起游戏保留的 stderr 尾部上限（用于诊断）。 |
+| `idleTimeoutMs` | `10000` | 半帧/响应停滞预算，超时断开连接；不能超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md)。 |
+| `connectWaitMs` | `20000` | spawn 后游戏连入的预算（冷启动 + 首次 import）。 |
+| `graceMs` | `5000` | 中止运行前的终止升级宽限；不能超过 `MAX_TIMER_DELAY_MS`。 |
+| `timeoutMs` | `60000` | 协作式工具调用预算，经 `exec.signal` 由工具调用超时策略强制执行。大项目首次 import 可能需要更大预算。 |
+
+## 工具
+
+| 工具 | 参数 | 行为 |
+|---|---|---|
+| `godot_debug` | `path?`、`scene?`、`breakpoints?`（`[{file, line}]`）、`maxStops?`（默认 10，上限 50）、`args?`、`timeoutMs?` | 一次有界调试运行：校验项目（断点在项目根外 → `GODOT_PARSE_ERROR`）、校验 `--version` ≥ 4.2、预选空闲端口、headless 启动游戏、等待 `set_pid`（threadId 就绪），然后循环：等待停顿（断点命中或脚本错误）、快照堆栈+变量、继续——直到 `maxStops`、游戏退出或预算耗尽。返回 `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`。 |
+
+## 错误
+
+失败携带包属 `GodotError`（`HarnessError` 子类），在 `isError` 结果上以 `{ name, code }` 呈现：`GODOT_UNAVAILABLE`（可执行文件/版本/启动/连接失败，附版本或 stderr 尾部）、`GODOT_PARSE_ERROR`（项目不可读、断点在项目外、协议帧畸形或超长）、`GODOT_ABORTED`（协作式超时或调用方取消）。无任何停顿即完成的运行是成功的部分结果（`stops: []` + 输出与错误），不是错误。
+
+## 模型体验
+
+### System prompt
+
+#### 模型所见
+
+本插件注册范围内的每个请求都包含独立注册的 godot-debug 引导文案。Agent 级工具限制可以隐藏 schema，但不会移除提示段。
+
+##### Godot debug 引导（tool:godot-debug）
+
+```markdown
+Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors.
+```
+
+#### Token 影响
+
+工具注册期间每次请求的固定引导成本。
+
+#### KV Cache 影响
+
+插件作用域与引导文本不变时前缀稳定。激活、销毁或编辑文本可能使本提示段的复用失效。
+
+### 工具 schema
+
+#### 模型所见
+
+生成的 `godot_debug` schema 见[工具目录](../../../docs/tool-catalog.md#deepseek-aidsh-tool-godot-debug)；工具无条件注册，因此宿主缺少可执行文件不会改变 schema。
+
+#### Token 影响
+
+工具可见时每次请求的固定 schema 成本。
+
+#### KV Cache 影响
+
+工具可见性与定义不变时前缀稳定。
+
+### 结果
+
+#### 模型所见
+
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、首个停顿的完整 locals/members/globals、输出/错误摘要与截断标记。
+
+#### Token 影响
+
+由 `maxStops` × 每停顿渲染上限（深度 3、每作用域 200 变量）与 `maxOutputBytes` 约束。
+
+#### KV Cache 影响
+
+追加式；新可见内容跟随可复用请求前缀。
+
+### 工具错误
+
+#### 模型所见
+
+失败规范化为 `Error: <message>`，附结构化 `GODOT_UNAVAILABLE`、`GODOT_PARSE_ERROR` 或 `GODOT_ABORTED` 元数据。
+
+#### Token 影响
+
+仅失败调用增加保留 token。
+
+#### KV Cache 影响
+
+追加式。
+
+## 已知限制与延后工作
+
+- **godot 是宿主安装**——包内不随附二进制；缺少可执行文件在调用时失败（`GODOT_UNAVAILABLE`），绝不在加载时。
+- **headless 调试要求项目至少 import 过一次**——游戏模式不自动 import，缺少 `.godot` 全局类缓存会触发 Parser Error 停顿而非正常运行；先执行 `godot --headless --editor --path <root> --import --quit`，或接受首次运行报告该问题。
+- **断点需要可调试构建**——导出的 release 构建可能不产生停顿；标准构建可以。
+- **`--breakpoints` 值无法转义逗号**——Godot 按 `,` 分割参数，含逗号的文件名无法经 CLI 断点定位（可用 `godot_debug` 的 `args` 传入并依赖动态停顿，或重命名文件）。
+- **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
+- **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
+- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）；对象展开（`scene:inspect_object`）与变量编辑延后。
+- **attach 模式、动态断点、场景树快照与多线程停顿均延后**——v1 只是 launch 型脚本化运行；原始协议事实（`.context/t3/facts.md`）为这些路径保留依据。
+- **harness 崩溃可能遗留孤儿 godot 进程**——工具在 teardown 时终止进程树；harness 骤然死亡仍可能遗留自起游戏进程。

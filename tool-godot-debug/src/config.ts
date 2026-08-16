@@ -1,0 +1,92 @@
+/**
+ * Plugin configuration for the `godot_debug` tool: the godot executable, the
+ * protocol byte/timer caps, and the cooperative tool-call budget. Defaults
+ * mirror tool-godot where the same concept exists; validation runs at load so
+ * misconfiguration fails loud (DSH convention). The schema input is fully
+ * optional; consumers use {@link ResolvedGodotDebugConfig}.
+ * @module @deepseek-ai/dsh-tool-godot-debug/config
+ */
+
+import z from '@deepseek-ai/schemastery'
+import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+
+/** Plugin configuration as a deployment provides it (every key optional). */
+export interface GodotDebugConfig {
+  /** Godot executable path or PATH-resolved command name (default `godot`). */
+  executable?: string
+  /** Fixed argv elements inserted after the godot executable (deployment wrappers). */
+  executableArgs?: string[]
+  /** Remote-debug port the game connects to; 0 (default) = auto-pick a free port. */
+  debugPort?: number
+  /** Largest single framed protocol message accepted from the game. */
+  maxMessageBytes?: number
+  /** Max bytes of game `output`/`error` content retained in one run. */
+  maxOutputBytes?: number
+  /** Largest spawned-game stderr tail retained for diagnostics. */
+  maxStderrBytes?: number
+  /** Partial-frame / response-stall budget before the connection is dropped. */
+  idleTimeoutMs?: number
+  /** Budget for the game to connect after spawn (cold start + first import). */
+  connectWaitMs?: number
+  /** Terminate-escalation grace for the spawned game, bounded by `MAX_TIMER_DELAY_MS`. */
+  graceMs?: number
+  /** Cooperative tool-call budget on `godot_debug`, enforced through `exec.signal`. */
+  timeoutMs?: number
+}
+
+/** The resolved configuration after schemastery fills every default. */
+export type ResolvedGodotDebugConfig = Required<GodotDebugConfig>
+
+export const Config: z<GodotDebugConfig> = z.object({
+  executable: z.string().default('godot'),
+  executableArgs: z.array(z.string()).default([]),
+  debugPort: z.number().default(0),
+  maxMessageBytes: z.number().default(16_000_000),
+  maxOutputBytes: z.number().default(1_000_000),
+  maxStderrBytes: z.number().default(1_000_000),
+  idleTimeoutMs: z.number().default(10_000),
+  connectWaitMs: z.number().default(20_000),
+  graceMs: z.number().default(5_000),
+  timeoutMs: z.number().default(60_000),
+})
+
+/**
+ * Load-time validation of a resolved config; throws with a field-named message
+ * on the first violation so misconfiguration fails at load, never mid-run.
+ * @param config - the schemastery-resolved config (defaults already filled).
+ * @throws Error naming the offending field.
+ */
+export function validateConfig(config: GodotDebugConfig): void {
+  // The schema fills every default; the caller's typed input stays optional.
+  const resolved = config as ResolvedGodotDebugConfig
+  assertPort('debugPort', resolved.debugPort, true)
+  assertPositiveInteger('maxMessageBytes', resolved.maxMessageBytes)
+  assertPositiveInteger('maxOutputBytes', resolved.maxOutputBytes)
+  assertPositiveInteger('maxStderrBytes', resolved.maxStderrBytes)
+  assertTimer('idleTimeoutMs', resolved.idleTimeoutMs)
+  assertTimer('connectWaitMs', resolved.connectWaitMs)
+  assertTimer('graceMs', resolved.graceMs)
+  assertPositiveInteger('timeoutMs', resolved.timeoutMs)
+}
+
+/** Reject a value outside the TCP port range; `allowZero` permits the auto-pick sentinel. */
+function assertPort(name: string, value: number, allowZero = false): void {
+  const min = allowZero ? 0 : 1
+  if (!Number.isInteger(value) || value < min || value > 65535) {
+    throw new Error(`tool-godot-debug: ${name} must be an integer between ${min} and 65535`)
+  }
+}
+
+/** Reject a timer Node would clamp instead of scheduling as configured. */
+function assertTimer(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > MAX_TIMER_DELAY_MS) {
+    throw new Error(`tool-godot-debug: ${name} must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`)
+  }
+}
+
+/** Reject a nonpositive or non-integer cap. */
+function assertPositiveInteger(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`tool-godot-debug: ${name} must be a positive integer`)
+  }
+}
