@@ -27,6 +27,12 @@ const bin = readFileSync(join(here, 'fixtures', 't3-breakpoints.bin'))
 const manifest = JSON.parse(readFileSync(join(here, 'fixtures', 't3-breakpoints.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 4 attach recording: break-triggered stop, then a dynamic
+// breakpoint stop at main.gd:11 @ _process.
+const attachBin = readFileSync(join(here, 'fixtures', 't4-attach.bin'))
+const attachManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't4-attach.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -188,5 +194,50 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       agent: { session: { header: { cwd: ws } } } as never,
     })
     expect(result.isError).toBe(true)
+  }, 30_000)
+
+  it('attaches to a running game: dynamic breakpoint stop, detached report', async () => {
+    const game = new FakeGame(attachBin, attachManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        mode: 'attach',
+        port,
+        breakpoints: [{ file: 'res://main.gd', line: 11 }],
+        pauseOnAttach: true,
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as {
+        stops: { reason: string; snapshot: { frames: { file: string; line: number; func: string }[] } }[]
+        detached: boolean
+        exit: unknown
+      }
+      expect(value.stops).toHaveLength(2)
+      expect(value.stops[0]!.reason).toBe('')
+      expect(value.stops[1]!.reason).toBe('Breakpoint')
+      expect(value.stops[1]!.snapshot.frames[0]).toEqual({ file: 'res://main.gd', line: 11, func: '_process' })
+      expect(value.detached).toBe(true)
+      expect('exit' in value).toBe(false) // attach has no owned process exit facts
+
+      // Model-visible render: the break stop labels [break], the tail states
+      // the game keeps running.
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('2 stops (max 10)')
+      expect(text).toContain('<no frame> [break]')
+      expect(text).toContain('res://main.gd:11 @ _process [Breakpoint]')
+      expect(text).toContain('ticks = 20')
+      expect(text).toContain('attached; game left running (not owned by the tool)')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { detached: boolean; stopCount: number }
+      expect(meta.detached).toBe(true)
+      expect(meta.stopCount).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
   }, 30_000)
 })

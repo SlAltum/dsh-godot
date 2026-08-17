@@ -1,10 +1,17 @@
 /**
- * The `godot_debug` run pipeline: one bounded scripted debug run. Validates
- * the project and breakpoints, gates the godot version (4.2+), pre-picks a
- * port (lsp-godot's `pickFreePort`), spawns the headless game with
- * `--remote-debug`, waits for `set_pid`, then loops stop → snapshot →
- * continue up to `maxStops`, and terminates the process tree. Protocol and
- * process facts are pinned in `.context/t3/facts.md`.
+ * The `godot_debug` run pipeline: one bounded scripted debug run, in two
+ * modes. `launch` (the v1 path) validates the project and breakpoints, gates
+ * the godot version (4.2+), pre-picks a port (lsp-godot's `pickFreePort`),
+ * spawns the headless game with `--remote-debug`, waits for `set_pid`, then
+ * loops stop → snapshot → continue up to `maxStops`, and terminates the
+ * process tree. `attach` (Phase 4) connects to a game the CALLER started with
+ * `--remote-debug tcp://127.0.0.1:<port>`: dynamic `breakpoint` commands
+ * replace the CLI form (the only breakpoint source attach has), optional
+ * `pauseOnAttach` sends `break` for an immediate probe stop, and teardown is
+ * best-effort breakpoint removal + continue + disconnect — the game keeps
+ * running (never killed, `exit: null`, `detached: true`). Protocol and
+ * process facts are pinned in `.context/t3/facts.md` and
+ * `.context/t4/facts.md`.
  * @module @deepseek-ai/dsh-tool-godot-debug/tool
  */
 
@@ -22,6 +29,10 @@ export interface DebugBreakpoint {
   file: string
   line: number
 }
+
+/** How the run connects to the game: launch spawns it, attach joins a
+ *  caller-started game that connects INTO the bound port. */
+export type DebugRunMode = 'launch' | 'attach'
 
 /** The bounds applied while rendering every stop snapshot. */
 const RENDER_OPTIONS: RenderOptions = {
@@ -44,6 +55,9 @@ export interface DebugRunResult {
   errors: GodotRuntimeError[]
   /** The spawned game's exit facts after the run ended (terminated or natural). */
   exit: SubprocessOutcome | null
+  /** True when the game was not owned by the tool and keeps running after
+   *  detach (attach mode); launch mode is always `false`. */
+  detached: boolean
   outputTruncated: boolean
   /** Any stop whose variable snapshot was incomplete (protocol stall/disconnect). */
   varsTruncated: boolean
@@ -51,23 +65,26 @@ export interface DebugRunResult {
 
 /** One run's parameters, assembled by the tool layer from config and arguments. */
 export interface DebugRunOptions {
-  /** Godot executable path or PATH command name (resolved by the seam). */
+  /** Godot executable path or PATH command name (resolved by the seam; attach never resolves it). */
   executable: string
   /** Fixed argv elements inserted after the executable. */
   executableArgs: string[]
   /** The project root (must contain project.godot). */
   projectRoot: string
-  /** Scene to run; omitted = the project's main scene. */
+  /** Scene to run; omitted = the project's main scene. launch only. */
   scene?: string
-  /** Breakpoints to set via `--breakpoints` (CLI form, single-colon `res://f:l`). */
+  /** Breakpoints: launch = `--breakpoints` CLI form (single-colon `res://f:l`);
+   *  attach = dynamic `breakpoint` commands sent after `set_pid`. */
   breakpoints: DebugBreakpoint[]
   /** Max stops before the run is collected (default 10). */
   maxStops: number
   /** Cooperative budget for the whole run, enforced through the signal. */
   timeoutMs: number
-  /** Remote-debug port; 0 or omitted = auto-pick a free port (lsp-godot's `pickFreePort`). */
+  /** Remote-debug port; launch: 0 or omitted = auto-pick a free port
+   *  (lsp-godot's `pickFreePort`); attach: REQUIRED (must equal the port the
+   *  caller starts the game with). */
   port?: number
-  /** Budget for the game to connect after spawn. */
+  /** Budget for the game to connect. */
   connectWaitMs: number
   /** Budget for one protocol wait (stop / snapshot). */
   idleTimeoutMs: number
@@ -80,8 +97,13 @@ export interface DebugRunOptions {
   signal: AbortSignal
   /** The subprocess seam (or a test double). */
   subprocess: SubprocessLike
-  /** Extra argv passed to the game after `--`. */
+  /** Extra argv passed to the game after `--`. launch only. */
   args?: string[]
+  /** How the run connects; `'launch'` when omitted. */
+  mode?: DebugRunMode
+  /** attach only: pause the game immediately once connected (`break`), for a
+   *  "what is the game doing right now" probe stop. */
+  pauseOnAttach?: boolean
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -100,29 +122,42 @@ function stderrTail(handle: SubprocessHandle): string {
   return handle.collected.stderr?.readFrom(0).text ?? ''
 }
 
-/** Convert a breakpoint file to the `res://` form the protocol expects. */
+/** Convert a breakpoint file to the `res://` form the protocol expects.
+ *  Guards: `res://` escapes (`/../` in either slash direction) and — for
+ *  absolute input on Windows — cross-drive paths, where `path.relative`
+ *  returns an absolute path instead of a `..`-prefixed one and would
+ *  silently produce a breakpoint that never matches. */
 function toResPath(file: string, projectRoot: string): string {
   if (file.startsWith('res://')) {
-    if (file.includes('/../')) throw new GodotError(`godot_debug: breakpoint ${file} escapes the project`, 'GODOT_PARSE_ERROR')
+    if (file.replace(/\\/g, '/').includes('/../')) {
+      throw new GodotError(`godot_debug: breakpoint ${file} escapes the project`, 'GODOT_PARSE_ERROR')
+    }
     return file
   }
   const abs = isAbsolute(file) ? file : `${process.cwd()}${sep}${file}`
   const rel = relative(projectRoot, abs)
-  if (rel.startsWith('..')) throw new GodotError(`godot_debug: breakpoint ${file} is outside the project`, 'GODOT_PARSE_ERROR')
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new GodotError(`godot_debug: breakpoint ${file} is outside the project`, 'GODOT_PARSE_ERROR')
+  }
   return `res://${rel.replace(/\\/g, '/')}`
 }
 
 /**
  * Run one bounded debug session. The call settles only after the run ends,
- * the budget elapses, or the caller cancels; the game process is terminated
- * on every path.
+ * the budget elapses, or the caller cancels. Launch mode terminates the game
+ * process on every path; attach mode detaches (best-effort breakpoint removal
+ * + continue) and leaves the caller's game running.
  * @param options - the run parameters.
  * @returns the structured run report.
  */
 export async function runDebug(options: DebugRunOptions): Promise<DebugRunResult> {
   throwIfAborted(options.signal)
 
-  // Project validation.
+  if (options.pauseOnAttach === true && options.mode !== 'attach') {
+    throw new GodotError('godot_debug: pauseOnAttach is only valid in attach mode', 'GODOT_PARSE_ERROR')
+  }
+
+  // Project validation (shared by both modes; breakpoints convert against it).
   let projectRoot: string
   try {
     projectRoot = options.projectRoot
@@ -130,6 +165,19 @@ export async function runDebug(options: DebugRunOptions): Promise<DebugRunResult
   } catch {
     throw new GodotError(`godot_debug: project root ${options.projectRoot} is not a readable directory`, 'GODOT_PARSE_ERROR')
   }
+
+  // The fork point sits BEFORE any executable resolution: attach never spawns
+  // or probes the godot binary (the game is already running; the version gate
+  // does not apply — the threadId protocol field needs 4.2+, documented).
+  if (options.mode === 'attach') {
+    return attachRun(options, projectRoot)
+  }
+  return launchRun(options, projectRoot)
+}
+
+/** The v1 launch path: version gate → spawn headless game → stop loop →
+ *  settle exit → terminate. Behavior is unchanged by Phase 4. */
+async function launchRun(options: DebugRunOptions, projectRoot: string): Promise<DebugRunResult> {
   const breakpointArg = options.breakpoints
     .map(bp => `${toResPath(bp.file, projectRoot)}:${bp.line}`)
     .join(',')
@@ -184,6 +232,7 @@ export async function runDebug(options: DebugRunOptions): Promise<DebugRunResult
       output: [...controller.output],
       errors: [...controller.errors],
       exit,
+      detached: false,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -194,6 +243,110 @@ export async function runDebug(options: DebugRunOptions): Promise<DebugRunResult
     throw error
   } finally {
     handle?.terminate()
+    await controller.dispose()
+  }
+}
+
+/**
+ * The Phase 4 attach path: join a caller-started game. No spawn, no version
+ * gate, no kill. Dynamic `breakpoint` commands are the only breakpoint source
+ * (T4.0 facts: they work headless; `break` pauses immediately with
+ * `isUserBreakpoint=true, reason=''`; a game already paused when it connects
+ * re-sends `debug_enter`; detach never leaves the game paused and leftover
+ * breakpoints are ignored without a debugger — teardown is defensive).
+ * @param options - the run parameters (mode='attach').
+ * @param projectRoot - the validated project root.
+ * @returns the structured run report with `detached: true` and `exit: null`.
+ */
+async function attachRun(options: DebugRunOptions, projectRoot: string): Promise<DebugRunResult> {
+  // The caller must know the port to start the game with; a silently
+  // auto-picked port is useless inside an atomic tool call.
+  const port = options.port ?? 0
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new GodotError(
+      'godot_debug: attach requires an explicit port 1-65535 (start the game with --remote-debug tcp://127.0.0.1:<port> AFTER this call; Godot does not retry a failed connection)',
+      'GODOT_PARSE_ERROR',
+    )
+  }
+  if (options.scene !== undefined) {
+    throw new GodotError('godot_debug: scene is not supported in attach mode (the game is already running)', 'GODOT_PARSE_ERROR')
+  }
+  if (options.args !== undefined) {
+    throw new GodotError('godot_debug: args are not supported in attach mode (the game is already running)', 'GODOT_PARSE_ERROR')
+  }
+
+  const controller = new DebugController({
+    maxMessageBytes: options.maxMessageBytes,
+    maxOutputBytes: options.maxOutputBytes,
+  })
+
+  try {
+    try {
+      await controller.listen(port)
+    } catch (error) {
+      // attach-specific mapping: bind failures (EADDRINUSE etc.) surface as
+      // GODOT_UNAVAILABLE with the stage; launch's error surface is unchanged.
+      throw new GodotError(
+        `godot_debug: could not bind port ${port}: ${error instanceof Error ? error.message : String(error)}`,
+        'GODOT_UNAVAILABLE',
+      )
+    }
+    if (options.onPort !== undefined) await options.onPort(controller.port)
+
+    try {
+      await controller.waitForSetPid(options.connectWaitMs, options.signal)
+    } catch (error) {
+      if (error instanceof WaitTimeoutError) {
+        throw new GodotError(
+          `godot_debug: game did not connect to tcp://127.0.0.1:${port} within ${options.connectWaitMs}ms. `
+          + `Start the game with --remote-debug tcp://127.0.0.1:${port} AFTER this call — Godot does not retry a failed connection (pinned, T4.0).`,
+          'GODOT_UNAVAILABLE',
+        )
+      }
+      throw error
+    }
+
+    // Dynamic breakpoints: the only attach source (no CLI --breakpoints).
+    for (const bp of options.breakpoints) {
+      controller.send('breakpoint', [toResPath(bp.file, projectRoot), bp.line, true])
+    }
+    if (options.pauseOnAttach === true) controller.send('break')
+
+    const { stops, varsTruncated } = await collectStops(controller, options)
+
+    return {
+      stops,
+      output: [...controller.output],
+      errors: [...controller.errors],
+      exit: null,
+      detached: true,
+      outputTruncated: controller.outputTruncated,
+      varsTruncated,
+    }
+  } catch (error) {
+    if (controller.protocolFailure !== undefined && !(error instanceof GodotError)) {
+      throw new GodotError(`godot_debug: protocol failure: ${controller.protocolFailure.message}`, 'GODOT_PARSE_ERROR')
+    }
+    throw error
+  } finally {
+    // Detach, on every path (success, error, cancellation): best-effort
+    // breakpoint removal, best-effort continue, then dispose. Defensive —
+    // T4.0 pinned that detaching never leaves the game paused and leftover
+    // breakpoints are ignored without a debugger, but removal + continue are
+    // cheap insurance against engine-version differences. Never kill: the
+    // game is not owned by this tool.
+    for (const bp of options.breakpoints) {
+      try {
+        controller.send('breakpoint', [toResPath(bp.file, projectRoot), bp.line, false])
+      } catch {
+        // best-effort
+      }
+    }
+    try {
+      controller.send('continue')
+    } catch {
+      // best-effort
+    }
     await controller.dispose()
   }
 }

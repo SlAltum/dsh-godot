@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The **`godot_debug` tool** runs one bounded, scripted debug session against a Godot project: the model sets breakpoints (`res://` path or absolute file path + line), the tool launches the project headless with `--remote-debug`, snapshots the stack and locals/members/globals at each stop, auto-continues up to `maxStops`, then returns a structured report with the game's output and errors — no print-statements needed to probe runtime state.
+The **`godot_debug` tool** runs one bounded, scripted debug session against a Godot project: the model sets breakpoints (`res://` path or absolute file path + line), the tool launches the project headless with `--remote-debug`, snapshots the stack and locals/members/globals at each stop, auto-continues up to `maxStops`, then returns a structured report with the game's output and errors — no print-statements needed to probe runtime state. A second mode, `mode: "attach"`, joins a game the user already started with `--remote-debug tcp://127.0.0.1:<port>`: breakpoints are sent dynamically after connect, and the game keeps running after detach.
 
 Like the tool-godot suite, the tool is **spawn-backed and one-shot**: `godot_debug` never exposes a background job; the call returns only after the run exits, is terminated by the cooperative timeout, is aborted, or fails. The package injects `tools`, `systemPrompt`, and `subprocess` — deliberately not `fs`; only project-root validation and breakpoint-path conversion touch the filesystem, through plain `node:fs`.
 
@@ -21,6 +21,8 @@ export async function mount(ctx: Context): Promise<void> {
 ## How it works
 
 The Godot 4 debugger protocol is a **custom binary protocol** (not DAP): this side binds a pre-picked free port, spawns `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`, and the game connects in as the TCP client. Each frame is a `[u32 LE length][variant-encoded array]` where the array is `[command, threadId, params]` (Godot 4.2+). On every stop the tool requests the stack dump and frame variables, snapshots them (bounded depth), and continues. Protocol facts are pinned in `.context/t3/facts.md` (real-Godot 4.7 measurements).
+
+In **attach mode** the tool only binds the port and waits: the user starts the game themselves (`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`), the tool sends the breakpoints dynamically after `set_pid` (the only attach source — CLI `--breakpoints` is launch-only), optionally pauses once with `break` (`pauseOnAttach`), runs the same stop loop, then detaches: best-effort breakpoint removal + continue + disconnect. The game is never killed and keeps running; the report carries `detached: true` and no `exit` facts. Pinned attach facts (`.context/t4/facts.md`): a game already paused when it connects re-sends `debug_enter`; a `break` pause reports an empty reason with `isUserBreakpoint=true` and an empty engine stack; detaching never leaves the game paused (it resumes) and leftover breakpoints are ignored without a debugger; **Godot does not retry a failed connection** — the game must start AFTER the tool call (or the port must already be listening).
 
 ## Settings
 
@@ -47,7 +49,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 
 | Tool | Arguments | Behavior |
 |---|---|---|
-| `godot_debug` | `path?`, `scene?`, `breakpoints?` (`[{file, line}]`), `maxStops?` (default 10, cap 50), `args?`, `timeoutMs?` | One bounded debug run: validate project (a breakpoint file outside the project root is `GODOT_PARSE_ERROR`), verify `--version` ≥ 4.2, pick a free port, spawn the game headless, wait for `set_pid` (threadId readiness), then loop: wait for a stop (breakpoint hit or script error), snapshot stack + vars, continue — until `maxStops`, the game exits, or the budget ends. Returns `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`. |
+| `godot_debug` | `path?`, `mode?` (`launch` \| `attach`), `port?`, `scene?`, `breakpoints?` (`[{file, line}]`), `pauseOnAttach?`, `maxStops?` (default 10, cap 50), `args?`, `timeoutMs?` | One bounded debug run. `launch` (default): validate project (a breakpoint file outside the project root is `GODOT_PARSE_ERROR`), verify `--version` ≥ 4.2, pick a free port, spawn the game headless, wait for `set_pid` (threadId readiness), then loop: wait for a stop (breakpoint hit or script error), snapshot stack + vars, continue — until `maxStops`, the game exits, or the budget ends. Returns `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`. `attach`: explicit `port` required (0/omitted is `GODOT_PARSE_ERROR` with startup guidance; `scene`/`args` are rejected), no version gate, no spawn — sends the breakpoints dynamically, then the same stop loop; detaches with best-effort breakpoint removal + continue and returns `{ stops, output, errors, detached: true }` (no `exit`). |
 
 ## Errors
 
@@ -93,7 +95,7 @@ Prefix-stable while tool visibility and definitions are unchanged.
 
 #### What the model sees
 
-`godot_debug` returns a generic card: a `N stops at <file>:<line> (maxStops)` head, one `#i <file>:<line> @ <function> [reason]` line per stop, the first stop's full locals/members/globals, and the output/error summary with truncation notes.
+`godot_debug` returns a generic card: a `N stops at <file>:<line> (maxStops)` head, one `#i <file>:<line> @ <function> [reason]` line per stop, the first stop **that has a frame**'s full locals/members/globals (a `break` pause reports an empty engine stack and renders as `[break]`), and the output/error summary with truncation notes; attach results append `attached; game left running (not owned by the tool)`.
 
 #### Token effect
 
@@ -126,5 +128,8 @@ Append-only.
 - **The game user-data dir must be writable** — Godot's game mode crashes (signal 11) when `user://` creation fails (e.g. sandboxed/container deployments); point the environment's `APPDATA` (Windows) at a writable dir or document the deployment requirement.
 - **First-run import latency** — the first headless run imports assets; the default 60 s budget may need raising via `timeoutMs` for large projects.
 - **Variable rendering follows the source plugin's display precision** — math types render via `stringify_value` with `toFixed(1)` rounding (`0.123456` → `0.1`); object expansion (`scene:inspect_object`) and variable editing are deferred.
-- **attach mode, dynamic breakpoints, scene-tree snapshots, and multi-thread stops are deferred** — v1 is a launch-only scripted run; the raw protocol facts (`.context/t3/facts.md`) keep those paths open.
-- **A crashed harness may leave an orphaned godot process** — the tool terminates the process tree on teardown; an abrupt harness death can still orphan the spawned game.
+- **attach requires an explicit port and the right start order** — the port must be known to the caller, and the game must start AFTER the tool call: Godot does not retry a failed debugger connection (pinned, `.context/t4/facts.md`). A `pauseOnAttach` stop gives a "what is the game doing right now" probe.
+- **attach hits depend on the game re-reaching the line** — dynamic breakpoints do not rewind executed code; combine them with `pauseOnAttach` or target code that runs again.
+- **attach assumes the project matches the running game** — the debug protocol has no workspace handshake; a wrong `path` yields breakpoints that never match (the run reports `stops: []`).
+- **scene-tree snapshots and multi-thread stops are deferred** — launch/attach cover the scripted per-stop snapshot; the raw protocol facts (`.context/t3/facts.md`) keep those paths open.
+- **A crashed harness may leave an orphaned godot process** — the tool terminates the process tree on teardown; an abrupt harness death can still orphan the spawned game. In attach mode an abrupt death just detaches: the game resumes automatically (a disconnect never leaves it paused, pinned).

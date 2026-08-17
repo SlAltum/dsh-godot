@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-**`godot_debug` 工具**对 Godot 项目执行一次有界、脚本化的调试运行：模型设置断点（`res://` 路径或绝对文件路径 + 行号），工具以 `--remote-debug` headless 启动项目，在每次停顿时快照堆栈与 locals/members/globals，自动继续至 `maxStops`，最后返回结构化报告（含游戏输出与错误）——无需给被测代码加 print 即可探查运行时状态。
+**`godot_debug` 工具**对 Godot 项目执行一次有界、脚本化的调试运行：模型设置断点（`res://` 路径或绝对文件路径 + 行号），工具以 `--remote-debug` headless 启动项目，在每次停顿时快照堆栈与 locals/members/globals，自动继续至 `maxStops`，最后返回结构化报告（含游戏输出与错误）——无需给被测代码加 print 即可探查运行时状态。第二种模式 `mode: "attach"` 连接用户已用 `--remote-debug tcp://127.0.0.1:<port>` 启动的游戏：断点改为连接后动态发送，detach 后游戏继续运行。
 
 与 tool-godot 工具族一致，该工具是 **spawn-backed 一次性调用**：`godot_debug` 从不暴露后台任务；调用只在运行结束、被协作式超时终止、被中止或失败后返回。包注入 `tools`、`systemPrompt` 与 `subprocess`——刻意不注入 `fs`；仅项目根校验与断点路径转换触碰文件系统（plain `node:fs`）。
 
@@ -21,6 +21,8 @@ export async function mount(ctx: Context): Promise<void> {
 ## 工作原理
 
 Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定预选空闲端口，spawn `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`，游戏进程作为 TCP 客户端连入。每帧为 `[u32 LE 长度][variant 编码数组]`，数组为 `[command, threadId, params]`（Godot 4.2+）。每次停顿工具请求堆栈转储与帧变量、快照（有界深度）并继续。协议事实已 pin 在 `.context/t3/facts.md`（Godot 4.7 实测）。
+
+**attach 模式**下工具只绑定端口并等待：用户自行启动游戏（`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`），工具在 `set_pid` 后动态发送断点（attach 的唯一断点来源——CLI `--breakpoints` 仅 launch 可用），可选 `pauseOnAttach` 发 `break` 立即暂停一次，执行同样的停顿循环，然后 detach：best-effort 断点移除 + continue + 断开。游戏绝不被杀死并继续运行；报告携带 `detached: true`，无 `exit` 事实。已 pin 的 attach 事实（`.context/t4/facts.md`）：连接时已暂停的游戏会补发 `debug_enter`；`break` 暂停的 reason 为空字符串、`isUserBreakpoint=true`、引擎栈为空；detach 从不把游戏留在暂停态（自动恢复），无调试器时残留断点被忽略；**Godot 不重试失败的连接**——游戏必须在工具调用之后启动（或端口已先处于监听状态）。
 
 ## Settings
 
@@ -47,7 +49,7 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
-| `godot_debug` | `path?`、`scene?`、`breakpoints?`（`[{file, line}]`）、`maxStops?`（默认 10，上限 50）、`args?`、`timeoutMs?` | 一次有界调试运行：校验项目（断点在项目根外 → `GODOT_PARSE_ERROR`）、校验 `--version` ≥ 4.2、预选空闲端口、headless 启动游戏、等待 `set_pid`（threadId 就绪），然后循环：等待停顿（断点命中或脚本错误）、快照堆栈+变量、继续——直到 `maxStops`、游戏退出或预算耗尽。返回 `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`。 |
+| `godot_debug` | `path?`、`mode?`（`launch` \| `attach`）、`port?`、`scene?`、`breakpoints?`（`[{file, line}]`）、`pauseOnAttach?`、`maxStops?`（默认 10，上限 50）、`args?`、`timeoutMs?` | 一次有界调试运行。`launch`（默认）：校验项目（断点在项目根外 → `GODOT_PARSE_ERROR`）、校验 `--version` ≥ 4.2、预选空闲端口、headless 启动游戏、等待 `set_pid`（threadId 就绪），然后循环：等待停顿（断点命中或脚本错误）、快照堆栈+变量、继续——直到 `maxStops`、游戏退出或预算耗尽。返回 `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`。`attach`：显式 `port` 必填（0/缺省 → `GODOT_PARSE_ERROR` 附启动指引；`scene`/`args` 被拒绝）、无版本门槛、不 spawn——动态发送断点后执行同样的停顿循环；detach 时 best-effort 断点移除 + continue，返回 `{ stops, output, errors, detached: true }`（无 `exit`）。 |
 
 ## 错误
 
@@ -93,7 +95,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、首个停顿的完整 locals/members/globals、输出/错误摘要与截断标记。
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
 #### Token 影响
 
@@ -126,5 +128,8 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
 - **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）；对象展开（`scene:inspect_object`）与变量编辑延后。
-- **attach 模式、动态断点、场景树快照与多线程停顿均延后**——v1 只是 launch 型脚本化运行；原始协议事实（`.context/t3/facts.md`）为这些路径保留依据。
-- **harness 崩溃可能遗留孤儿 godot 进程**——工具在 teardown 时终止进程树；harness 骤然死亡仍可能遗留自起游戏进程。
+- **attach 需要显式端口与正确的启动顺序**——调用方必须预知端口，且游戏必须在工具调用之后启动：Godot 不重试失败的调试器连接（已 pin，`.context/t4/facts.md`）。`pauseOnAttach` 停顿提供「游戏此刻在做什么」探测。
+- **attach 命中依赖游戏再次执行到目标行**——动态断点不回退已执行代码；可配合 `pauseOnAttach` 或瞄准会再次运行的代码。
+- **attach 假设项目与运行中的游戏一致**——调试协议没有工作区握手；`path` 错误会产生永不命中的断点（运行报告 `stops: []`）。
+- **场景树快照与多线程停顿延后**——launch/attach 覆盖脚本化逐停顿快照；原始协议事实（`.context/t3/facts.md`）为这些路径保留依据。
+- **harness 崩溃可能遗留孤儿 godot 进程**——工具在 teardown 时终止进程树；harness 骤然死亡仍可能遗留自起游戏进程。attach 模式下骤然死亡只是 detach：游戏自动恢复运行（断开从不使其保持暂停，已 pin）。

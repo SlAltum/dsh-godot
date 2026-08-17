@@ -20,6 +20,12 @@ const bin = readFileSync(join(here, 'fixtures', 't3-breakpoints.bin'))
 const manifest = JSON.parse(readFileSync(join(here, 'fixtures', 't3-breakpoints.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 4 attach recording: break-triggered stop (empty stack) then a
+// dynamic-breakpoint stop at main.gd:11 @ _process with 4 vars.
+const attachBin = readFileSync(join(here, 'fixtures', 't4-attach.bin'))
+const attachManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't4-attach.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -192,5 +198,159 @@ describe('runDebug', () => {
     }
     sub.spawns[sub.spawns.length - 1]!.handle.exitNow({ exitCode: 1, signal: null })
     await expect(run).rejects.toMatchObject({ code: 'GODOT_UNAVAILABLE' })
+  })
+
+  it('rejects a cross-drive absolute breakpoint path', async () => {
+    // On Windows `path.relative('C:\\proj', 'D:\\x.gd')` returns an absolute
+    // path (not `..`-prefixed); without the guard it silently produced a
+    // res:// path that never matches.
+    const sub = new FakeSubprocess()
+    await expect(
+      runDebug(baseOptions({ subprocess: sub, breakpoints: [{ file: 'D:\\outside.gd', line: 1 }] })),
+    ).rejects.toMatchObject({ code: 'GODOT_PARSE_ERROR' })
+  })
+
+  it('rejects a res:// escape spelled with backslashes', async () => {
+    const sub = new FakeSubprocess()
+    await expect(
+      runDebug(baseOptions({ subprocess: sub, breakpoints: [{ file: 'res://scripts/..\\outside.gd', line: 1 }] })),
+    ).rejects.toMatchObject({ code: 'GODOT_PARSE_ERROR' })
+  })
+})
+
+/** The Phase 4 attach path: joins a caller-started game over a fixed port. */
+describe('runDebug attach mode', () => {
+  function attachOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
+    // baseOptions ships a launch-only `scene`; attach must not carry one.
+    const { scene: _scene, ...rest } = baseOptions()
+    return {
+      ...rest,
+      mode: 'attach',
+      port: 6007,
+      ...overrides,
+    }
+  }
+
+  it('attaches, hits the dynamic breakpoint, and detaches with the game untouched', async () => {
+    const game = new FakeGame(attachBin, attachManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = attachOptions({
+      subprocess: sub,
+      breakpoints: [{ file: 'res://main.gd', line: 11 }],
+      pauseOnAttach: true,
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    // No spawn, no version probe, no executable resolution in attach mode.
+    expect(sub.spawns).toHaveLength(0)
+    expect(result.detached).toBe(true)
+    expect(result.exit).toBeNull()
+    expect(result.stops).toHaveLength(2)
+    // Stop 1: `break` pause — empty stack, empty reason rendered as [break].
+    expect(result.stops[0]!.isUserBreakpoint).toBe(true)
+    expect(result.stops[0]!.reason).toBe('')
+    expect(result.stops[0]!.snapshot.frames).toEqual([])
+    // Stop 2: the dynamic breakpoint at main.gd:11 @ _process.
+    expect(result.stops[1]!.reason).toBe('Breakpoint')
+    expect(result.stops[1]!.snapshot.frames[0]).toEqual({ file: 'res://main.gd', line: 11, func: '_process' })
+    const members = Object.fromEntries(result.stops[1]!.snapshot.scopes.members.map(v => [v.name, v.value]))
+    expect(members['ticks']).toBe('20')
+    expect(result.varsTruncated).toBe(false)
+  })
+
+  it('without pauseOnAttach there is no immediate stop (dynamic bp only)', async () => {
+    // The t4-attach recording's first debug_enter is triggered by `break`;
+    // without pauseOnAttach the tool never sends it, so no stop arrives.
+    const game = new FakeGame(attachBin, attachManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = attachOptions({
+      subprocess: sub,
+      breakpoints: [{ file: 'res://main.gd', line: 11 }],
+      idleTimeoutMs: 300,
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.stops).toEqual([])
+    expect(result.detached).toBe(true)
+  })
+
+  it('rejects a missing port with GODOT_PARSE_ERROR and startup guidance', async () => {
+    // 0 (the default when omitted) and an explicit 0 both fail the gate.
+    await expect(runDebug(attachOptions({ port: 0 }))).rejects.toMatchObject({
+      code: 'GODOT_PARSE_ERROR',
+    })
+  })
+
+  it('rejects scene/args in attach mode with GODOT_PARSE_ERROR', async () => {
+    await expect(runDebug(attachOptions({ scene: 'res://main.tscn' }))).rejects.toMatchObject({
+      code: 'GODOT_PARSE_ERROR',
+    })
+    await expect(runDebug(attachOptions({ args: ['--fixed-fps', '60'] }))).rejects.toMatchObject({
+      code: 'GODOT_PARSE_ERROR',
+    })
+  })
+
+  it('rejects pauseOnAttach outside attach mode', async () => {
+    await expect(runDebug(baseOptions({ pauseOnAttach: true }))).rejects.toMatchObject({
+      code: 'GODOT_PARSE_ERROR',
+    })
+  })
+
+  it('fails with GODOT_UNAVAILABLE and guidance when no game connects', async () => {
+    const sub = new FakeSubprocess()
+    await expect(runDebug(attachOptions({ subprocess: sub, connectWaitMs: 500 }))).rejects.toMatchObject({
+      code: 'GODOT_UNAVAILABLE',
+    })
+    expect(sub.spawns).toHaveLength(0)
+  })
+
+  it('fails with GODOT_UNAVAILABLE when the port is already bound', async () => {
+    const { createServer } = await import('node:net')
+    const occupied = createServer()
+    await new Promise<void>((resolve) => {
+      occupied.listen(0, '127.0.0.1', () => { resolve() })
+    })
+    const address = occupied.address()
+    try {
+      const sub = new FakeSubprocess()
+      await expect(
+        runDebug(attachOptions({ subprocess: sub, port: (address as { port: number }).port })),
+      ).rejects.toMatchObject({ code: 'GODOT_UNAVAILABLE' })
+      expect(sub.spawns).toHaveLength(0)
+    } finally {
+      await new Promise<void>((resolve) => {
+        occupied.close(() => { resolve() })
+      })
+    }
+  })
+
+  it('aborts with GODOT_ABORTED and still disposes the controller', async () => {
+    const controller = new AbortController()
+    const game = new FakeGame(attachBin, attachManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = attachOptions({
+      subprocess: sub,
+      signal: controller.signal,
+      breakpoints: [{ file: 'res://main.gd', line: 11 }],
+    })
+    let connected: (() => void) | undefined
+    const connectedPromise = new Promise<void>((resolve) => {
+      connected = resolve
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+      connected?.()
+    }
+    const run = runDebug(options)
+    await connectedPromise
+    controller.abort()
+    await expect(run).rejects.toMatchObject({ code: 'GODOT_ABORTED' })
+    await game.dispose()
   })
 })

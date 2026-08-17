@@ -53,6 +53,7 @@ export type DebugMeta = {
   stopCount: number
   maxStops: number
   stops: DebugMetaStop[]
+  detached: boolean
   outputTruncated: boolean
   varsTruncated: boolean
 }
@@ -75,7 +76,9 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
         func: frame?.func ?? '',
         reason: stop.reason,
       }
-    }),    outputTruncated: value.outputTruncated,
+    }),
+    detached: value.detached,
+    outputTruncated: value.outputTruncated,
     varsTruncated: value.varsTruncated,
   }
 }
@@ -92,11 +95,20 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
     lines.push(`no stops (max ${maxStops})`)
   } else {
     lines.push(`${value.stops.length} stops (max ${maxStops})`)
+    // Full scopes render on the FIRST stop that has a frame; an attach
+    // `break` pause reports an empty engine stack, so the full detail goes
+    // to the first real (breakpoint/error) stop instead. Launch stops always
+    // carry frames, so launch rendering is unchanged.
+    const firstFrameIdx = value.stops.findIndex(stop => stop.snapshot.frames.length > 0)
+    const fullIdx = firstFrameIdx === -1 ? 0 : firstFrameIdx
     for (const [i, stop] of value.stops.entries()) {
       const frame = stop.snapshot.frames[0]
       const where = frame === undefined ? '<no frame>' : `${frame.file}:${frame.line} @ ${frame.func}`
-      lines.push(`#${i} ${where} [${stop.reason}]`)
-      if (i === 0) {
+      // A `break` pause reports an empty reason with isUserBreakpoint=true
+      // (pinned, T4.0); label it so the stop reads unambiguously.
+      const reason = stop.reason === '' ? 'break' : stop.reason
+      lines.push(`#${i} ${where} [${reason}]`)
+      if (i === fullIdx) {
         for (const [scopeName, vars] of [
           ['locals', stop.snapshot.scopes.locals],
           ['members', stop.snapshot.scopes.members],
@@ -119,6 +131,9 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
       lines.push(`  ${err.file}:${err.line} ${err.warning ? 'warning' : 'error'}: ${err.error}`)
     }
   }
+  if (value.detached) {
+    lines.push('attached; game left running (not owned by the tool)')
+  }
   return lines.join('\n')
 }
 
@@ -133,10 +148,11 @@ export function debugViewFromMeta(meta: JsonValue | undefined): GenericResultVie
   const value = meta as DebugMeta
   if (typeof value.stopCount !== 'number' || !Array.isArray(value.stops)) return undefined
   const body = value.stops
-    .map(stop => `${stop.file === '' ? '<no frame>' : `${stop.file}:${stop.line} @ ${stop.func}`} [${stop.reason}]`)
+    .map(stop => `${stop.file === '' ? '<no frame>' : `${stop.file}:${stop.line} @ ${stop.func}`} [${stop.reason === '' ? 'break' : stop.reason}]`)
     .join('\n')
   const head = value.stopCount === 0 ? `no stops (max ${value.maxStops})` : `${value.stopCount} stops (max ${value.maxStops})`
   const notes: string[] = []
+  if (value.detached) notes.push('attached; game left running')
   if (value.outputTruncated) notes.push('output truncated')
   if (value.varsTruncated) notes.push('some variable snapshots incomplete')
   return {
@@ -178,28 +194,42 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
         text:
           'Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), '
           + 'the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues '
-          + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors.',
+          + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. '
+          + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
+          + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
+          + 'after detach.',
       }),
       (() => {
         const tool = defineTool({          name: 'godot_debug',
           description:
-            'Run a Godot project once under the debugger: set breakpoints (res:// path or absolute file path plus 1-based line), '
-            + 'the tool launches the project headless with --remote-debug, snapshots the stack and locals/members/globals at each stop, '
-            + 'auto-continues up to maxStops, then reports the stops, the game output, and any engine errors. Requires a godot '
-            + 'executable (4.2+) configured or on PATH; the project must have been imported once (headless game mode does not '
-            + 'auto-import).',
+            'Run a Godot project once under the debugger, or attach to a running game. launch (default): set breakpoints '
+            + '(res:// path or absolute file path plus 1-based line), the tool launches the project headless with --remote-debug, '
+            + 'snapshots the stack and locals/members/globals at each stop, auto-continues up to maxStops, then reports the stops, '
+            + 'the game output, and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project '
+            + 'imported once. attach: join a game the user already started with --remote-debug tcp://127.0.0.1:<port> (the port '
+            + 'must be explicit and the game must start AFTER the call — Godot does not retry a failed connection); breakpoints '
+            + 'are sent dynamically, pauseOnAttach pauses immediately, and the game keeps running after detach.',
           parameters: {
             path: {
               type: 'string',
               description: 'Project root (must contain project.godot). Defaults to the session working directory.',
             },
+            mode: {
+              type: 'string',
+              description: 'launch spawns the project headless; attach joins a game the user already started with --remote-debug.',
+              enum: ['launch', 'attach'],
+            },
+            port: {
+              type: 'number',
+              description: 'Remote-debug port. launch: 0/omitted = auto-pick a free port; attach: required (must equal the port the game connects to).',
+            },
             scene: {
               type: 'string',
-              description: 'Scene to run (res:// path); omitted = the project main scene.',
+              description: 'Scene to run (res:// path); omitted = the project main scene. launch only.',
             },
             breakpoints: {
               type: 'array',
-              description: 'Breakpoints to set before launch (CLI --breakpoints). Files must be inside the project.',
+              description: 'Breakpoints to hit: launch = set before launch (CLI --breakpoints); attach = sent dynamically after connect. Files must be inside the project.',
               items: {
                 type: 'object',
                 additionalProperties: false,
@@ -209,6 +239,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 },
               },
             },
+            pauseOnAttach: {
+              type: 'boolean',
+              description: 'attach only: pause the game immediately once connected (break) for a "what is the game doing now" probe stop.',
+            },
             maxStops: {
               type: 'number',
               default: 10,
@@ -216,7 +250,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             args: {
               type: 'array',
-              description: 'Extra argv passed to the game after -- (e.g. --fixed-fps 60).',
+              description: 'Extra argv passed to the game after -- (e.g. --fixed-fps 60). launch only.',
               items: { type: 'string' },
             },
           },
@@ -352,6 +386,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                     signal: { type: 'string' },
                   },
                 },
+                detached: { type: 'boolean', required: true },
                 outputTruncated: { type: 'boolean', required: true },
                 varsTruncated: { type: 'boolean', required: true },
               },
@@ -376,6 +411,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               maxStops: Math.min(input.maxStops ?? 10, MAX_STOPS),
               timeoutMs: c.timeoutMs,
               ...(c.debugPort !== 0 ? { port: c.debugPort } : {}),
+              ...(input.port !== undefined ? { port: input.port } : {}),
               connectWaitMs: c.connectWaitMs,
               idleTimeoutMs: c.idleTimeoutMs,
               graceMs: c.graceMs,
@@ -385,9 +421,13 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               signal: exec.signal,
               subprocess: ctx.subprocess,
               ...(input.args !== undefined ? { args: input.args } : {}),
+              ...(input.mode !== undefined ? { mode: input.mode } : {}),
+              ...(input.pauseOnAttach !== undefined ? { pauseOnAttach: input.pauseOnAttach } : {}),
             })
             // The exit schema is an optional object without nulls; a null exit
-            // (no game process data) and null exit fields are normalized away.
+            // (attach mode) and null exit fields are normalized away. Both
+            // branches carry `detached` — attach always takes the null-exit
+            // branch, so the flag must not be lost there.
             const exit = result.exit === null ? undefined : {
               ...(result.exit.exitCode !== null ? { exitCode: result.exit.exitCode } : {}),
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
@@ -397,14 +437,22 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 stops: result.stops,
                 output: result.output,
                 errors: result.errors,
+                detached: result.detached,
                 outputTruncated: result.outputTruncated,
                 varsTruncated: result.varsTruncated,
               }
-              : { ...result, exit }
+              : {
+                ...result,
+                exit,
+                detached: result.detached,
+                outputTruncated: result.outputTruncated,
+                varsTruncated: result.varsTruncated,
+              }
           },
           presentCall: (args): GenericCallView => {
             const where = args.path !== undefined ? ` ${args.path}` : ' workspace'
-            return { card: 'generic', title: `Debug Godot${where}` }
+            const verb = args.mode === 'attach' ? 'Attach debug to Godot' : 'Debug Godot'
+            return { card: 'generic', title: `${verb}${where}` }
           },
           presentResult: presentDebugResult,
         })

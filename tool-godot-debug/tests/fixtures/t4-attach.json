@@ -1,0 +1,140 @@
+{
+  "source": "t4/attach-running",
+  "frameCount": 19,
+  "totalBytes": 2316,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "breakpoint",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "breakpoint",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "window:title",
+      "trigger": "breakpoint",
+      "offset": 464,
+      "len": 80
+    },
+    {
+      "seq": 4,
+      "cmd": "output",
+      "trigger": "breakpoint",
+      "offset": 544,
+      "len": 84
+    },
+    {
+      "seq": 5,
+      "cmd": "debug_enter",
+      "trigger": "break",
+      "offset": 628,
+      "len": 80
+    },
+    {
+      "seq": 6,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 708,
+      "len": 56
+    },
+    {
+      "seq": 7,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 764,
+      "len": 60
+    },
+    {
+      "seq": 8,
+      "cmd": "error",
+      "trigger": "break",
+      "offset": 824,
+      "len": 264
+    },
+    {
+      "seq": 9,
+      "cmd": "error",
+      "trigger": "break",
+      "offset": 1088,
+      "len": 264
+    },
+    {
+      "seq": 10,
+      "cmd": "error",
+      "trigger": "break",
+      "offset": 1352,
+      "len": 260
+    },
+    {
+      "seq": 11,
+      "cmd": "debug_exit",
+      "trigger": "continue",
+      "offset": 1612,
+      "len": 48
+    },
+    {
+      "seq": 12,
+      "cmd": "debug_enter",
+      "trigger": "continue",
+      "offset": 1660,
+      "len": 92
+    },
+    {
+      "seq": 13,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 1752,
+      "len": 104
+    },
+    {
+      "seq": 14,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1856,
+      "len": 60
+    },
+    {
+      "seq": 15,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1916,
+      "len": 104
+    },
+    {
+      "seq": 16,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 2020,
+      "len": 92
+    },
+    {
+      "seq": 17,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 2112,
+      "len": 104
+    },
+    {
+      "seq": 18,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 2216,
+      "len": 100
+    }
+  ]
+}

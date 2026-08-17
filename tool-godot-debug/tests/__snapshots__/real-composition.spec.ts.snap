@@ -1,5 +1,26 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`REAL composition: tool → subprocess seam → controller → fake game > attaches to a running game: dynamic breakpoint stop, detached report 1`] = `
+"2 stops (max 10)
+#0 <no frame> [break]
+#1 res://main.gd:11 @ _process [Breakpoint]
+  locals:
+    _delta = 0.00267
+    f = null
+  members:
+    self = Object<27028096474>
+    ticks = 20
+output (2 lines):
+  Godot Engine v4.7.stable.mono.official.5b4e0cb0f - https://godotengine.org
+  main: starting
+errors (4):
+  platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null.
+  modules/gdscript/gdscript_editor.cpp:384 error: Index p_level = 0 is out of bounds ((int)_call_stack_size = 0).
+  modules/gdscript/gdscript_editor.cpp:359 error: Index p_level = 0 is out of bounds ((int)_call_stack_size = 0).
+  modules/gdscript/gdscript_editor.cpp:335 error: Index p_level = 0 is out of bounds ((int)_call_stack_size = 0).
+attached; game left running (not owned by the tool)"
+`;
+
 exports[`REAL composition: tool → subprocess seam → controller → fake game > round-trips a full debug run to model-visible output 1`] = `
 "2 stops (max 10)
 #0 res://player.gd:10 @ run [Breakpoint]
