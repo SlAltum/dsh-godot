@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-27-godot-ui-deintrusion.md
-2026-08-27-godot-ui-deintrusion.md: 
-2026-08-27-godot-ui-deintrusion.zh.md: 
+2026-08-27-godot-ui-deintrusion.md: 72866703c1aa8cd5a15468c297f19d1ae0d98d48
+2026-08-27-godot-ui-deintrusion.zh.md: a770f1dc0a13cfca64a2c61dbfee309eb62baf5c
