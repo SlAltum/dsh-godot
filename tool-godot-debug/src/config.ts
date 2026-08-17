@@ -37,6 +37,9 @@ export interface GodotDebugConfig {
   maxExpandedObjects?: number
   /** Max property rows kept per expanded object. */
   maxExpandedProps?: number
+  /** Max expansion depth: 1 = top-level objects only, 2 = nested objects
+   *  inside property values (direct/array/dictionary) are expanded too. */
+  maxExpandDepth?: number
   /** Max `scene:set_object_property` edits applied on the first frame-bearing
    *  stop (0 = edits disabled). */
   maxEdits?: number
@@ -61,6 +64,7 @@ export const Config: z<GodotDebugConfig> = z.object({
   timeoutMs: z.number().default(60_000),
   maxExpandedObjects: z.number().default(10),
   maxExpandedProps: z.number().default(100),
+  maxExpandDepth: z.number().default(2),
   maxEdits: z.number().default(10),
   maxTreeNodes: z.number().default(200),
 })
@@ -85,6 +89,11 @@ export function validateConfig(config: GodotDebugConfig): void {
   // 0 = expansion disabled (a documented sentinel, not an error).
   assertNonNegativeInteger('maxExpandedObjects', resolved.maxExpandedObjects)
   assertPositiveInteger('maxExpandedProps', resolved.maxExpandedProps)
+  // Depth is bounded: 1 (Phase 5 behavior) up to a sane recursion cap.
+  assertPositiveInteger('maxExpandDepth', resolved.maxExpandDepth)
+  if (resolved.maxExpandDepth > 4) {
+    throw new Error('tool-godot-debug: maxExpandDepth must be between 1 and 4')
+  }
   // 0 = edits disabled (a documented sentinel, not an error).
   assertNonNegativeInteger('maxEdits', resolved.maxEdits)
   // 0 = scene-tree snapshots disabled (a documented sentinel, not an error).

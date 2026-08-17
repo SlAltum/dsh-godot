@@ -48,6 +48,12 @@ const treeBin = readFileSync(join(here, 'fixtures', 't7-tree.bin'))
 const treeManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't7-tree.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 8 nested-expansion recording: self (23 props) then its nested
+// ObjectIds (member_a, player, arr[0], dict["k"]) — 5 inspect round-trips.
+const nestedBin = readFileSync(join(here, 'fixtures', 't8-nested.bin'))
+const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't8-nested.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -79,6 +85,7 @@ function baseOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions 
     maxStderrBytes: 100_000,
     maxExpandedObjects: 10,
     maxExpandedProps: 100,
+    maxExpandDepth: 1,
     maxEdits: 10,
     maxTreeNodes: 200,
     signal: new AbortController().signal,
@@ -558,5 +565,57 @@ describe('runDebug scene trees', () => {
     await game.dispose()
     expect(result.detached).toBe(true)
     expect(result.sceneTreeCount).toBeGreaterThan(0)
+  })
+})
+
+/** The Phase 8 nested expansion path: recursion into property ObjectIds. */
+describe('runDebug nested expansion', () => {
+  /** Full pipeline options: expansion with maxDepth 2 (the t8 fixture order:
+   *  top-level self/player, then nested member_a/arr[0]/dict["k"]). */
+  function nestedOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
+    return {
+      ...baseOptions({ subprocess: new FakeSubprocess() }),
+      maxExpandDepth: 2,
+      ...overrides,
+    }
+  }
+
+  it('recursively expands nested object values with location paths', async () => {
+    const game = new FakeGame(nestedBin, nestedManifest.frames)
+    const options = nestedOptions()
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.expansion).not.toBeNull()
+    // Top level: self + member_a + player (all three are top-level ObjectId
+    // vars in the t8 project). self's nested ids (member_a, player, arr[0],
+    // dict["k"]) recurse; member_a and player are deduped (top-level reserve,
+    // T8.0 fact 2) — the nested children are arr[0] and dict["k"] only.
+    expect(result.expandedObjects).toBe(5)
+    expect(result.expansionTruncated).toBe(false)
+    const self = result.expansion!.entries.find(e => e.name === 'self')
+    expect(self).toBeDefined()
+    expect(self!.children?.map(c => c.name)).toEqual(['arr[0]', 'dict["k"]'])
+    const arr0 = self!.children?.find(c => c.name === 'arr[0]')
+    expect(arr0!.className).toBe('Node')
+    // The deduped top-level player/member_a are sibling entries.
+    expect(result.expansion!.entries.some(e => e.name === 'player')).toBe(true)
+    expect(result.expansion!.entries.some(e => e.name === 'member_a')).toBe(true)
+  })
+
+  it('depth 1 (Phase 5 default) does not recurse', async () => {
+    const game = new FakeGame(nestedBin, nestedManifest.frames)
+    const options = nestedOptions({ maxExpandDepth: 1 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    // The three top-level ObjectIds expand; nothing recurses into children.
+    expect(result.expandedObjects).toBe(3)
+    const self = result.expansion!.entries.find(e => e.name === 'self')
+    expect(self!.children).toBeUndefined()
   })
 })

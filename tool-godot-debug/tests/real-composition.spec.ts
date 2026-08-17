@@ -51,6 +51,12 @@ const treeBin = readFileSync(join(here, 'fixtures', 't7-tree.bin'))
 const treeManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't7-tree.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 8 nested-expansion recording: self then its nested ObjectIds
+// (member_a, player, arr[0], dict["k"]) — 5 inspect round-trips.
+const nestedBin = readFileSync(join(here, 'fixtures', 't8-nested.bin'))
+const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't8-nested.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -364,6 +370,54 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       expect(text).toMatchSnapshot()
       const meta = result.meta as { sceneTreeCount: number }
       expect(meta.sceneTreeCount).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
+  }, 30_000)
+
+  it('renders nested expansion children into the model-visible output', async () => {
+    const game = new FakeGame(nestedBin, nestedManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        breakpoints: [{ file: 'res://main.gd', line: 38 }],
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as {
+        expandedObjects: number
+        expansionTruncated: boolean
+        expansion: {
+          entries: {
+            name: string
+            children?: { name: string; className: string; rows: { name: string; value: string }[] }[]
+          }[]
+        }
+      }
+      expect(value.expandedObjects).toBe(5)
+      expect(value.expansionTruncated).toBe(false)
+      const self = value.expansion.entries.find(e => e.name === 'self')
+      // member_a is a top-level var in the t8 project, so the top-level
+      // reserve dedups it (T8.0 fact 2) — only arr[0] and dict["k"] recurse.
+      expect(self!.children?.map(c => c.name)).toEqual(['arr[0]', 'dict["k"]'])
+      expect(self!.children?.find(c => c.name === 'arr[0]')!.className).toBe('Node')
+
+      // Model-visible render: nested children indent deeper under the parent.
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('expanded objects (5):')
+      expect(text).toContain('    self = Object<26994542042> [Node]')
+      expect(text).toContain('      arr[0] = Object<27061650907> [Node]')
+      expect(text).toContain('        name = StringName\'ArrObj\'')
+      expect(text).toContain('      dict["k"] = Object<27078428127> [Node]')
+      // The deduped top-level player is a sibling entry.
+      expect(text).toContain('    player = Object<27095205344> [Node]')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { expandedObjects: number }
+      expect(meta.expandedObjects).toBe(5)
     } finally {
       await ctx.fiber.dispose()
       await game.dispose()

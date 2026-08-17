@@ -17,23 +17,27 @@
 import type { DebugController } from './controller.ts'
 import { GodotError } from './error.ts'
 import { renderValue, type RenderOptions } from './snapshot.ts'
-import { ObjectId, RID } from './variants.ts'
+import { ObjectId, RID, RawObject } from './variants.ts'
 import type { DecodedVariant } from './variant-decoder.ts'
 
 /** One expanded object: the source variable name, its id, the class name
- *  from the response, and the rendered property rows. */
+ *  from the response, and the rendered property rows. Nested object values
+ *  (direct properties, array elements, dictionary values) that were expanded
+ *  recursively appear as `children` (Phase 8); `children` is absent when the
+ *  object has no expanded nested objects. */
 export interface ExpandedEntry {
   name: string
   id: string
   className: string
   rows: { name: string; value: string }[]
+  children?: ExpandedEntry[]
 }
 
 /** The expansion outcome for one stop. */
 export interface ExpansionResult {
-  /** The expanded objects, in request order. */
+  /** The expanded objects, in request order (children nested within). */
   entries: ExpandedEntry[]
-  /** Successful expansions (entries.length). */
+  /** Successful object expansions this run (top level + nested). */
   expandedObjects: number
   /** Any object skipped, property truncated, selection sliced, or budget spent. */
   expansionTruncated: boolean
@@ -41,10 +45,14 @@ export interface ExpansionResult {
 
 /** The expansion bounds, assembled by the tool layer from config and budget. */
 export interface ExpandOptions {
-  /** Max objects expanded on the first frame-bearing stop (0 = disabled). */
+  /** Max top-level objects expanded (0 = disabled). */
   maxObjects: number
   /** Max property rows kept per object. */
   maxProps: number
+  /** Max expansion depth (1 = top level only, the Phase 5 behavior; 2 =
+   *  nested objects in properties are expanded too; deeper stays a
+   *  placeholder). */
+  maxDepth: number
   /** The render bounds for property values. */
   render: RenderOptions
   /** Per-object wait budget (pinned: real responses are 12-21 ms). */
@@ -136,11 +144,51 @@ export function parseInspectProps(
 }
 
 /**
+ * Collect the expandable ObjectIds inside one decoded property value, with
+ * their display paths. Pinned T8.0 facts: containers decode as `Array`
+ * (elements) and `Map` (values); dictionary KEYS are NOT expanded (the
+ * source plugin only renders them, facts 1); RID values are excluded (their
+ * inspect returns an empty response, T5.0 fact 5); the same id can appear at
+ * top level AND nested (dedup is the caller's job, fact 2).
+ * @param value - the decoded property value.
+ * @param basePath - the display path of the value (e.g. `player`, `arr`,
+ *   `dict`), extended per element/key (`arr[0]`, `dict["k"]`).
+ * @returns the nested `{ path, id }` pairs, in traversal order.
+ */
+export function collectNestedIds(value: unknown, basePath: string): { path: string; id: bigint }[] {
+  const out: { path: string; id: bigint }[] = []
+  visit(value, basePath)
+  return out
+
+  function visit(v: unknown, path: string): void {
+    if (v instanceof ObjectId) {
+      if (!(v instanceof RID)) out.push({ path, id: v.id })
+      return
+    }
+    // RawObject (an inline-decoded object, extends Map) is NOT traversed: its
+    // members are the object's own properties, not nested containers to
+    // expand (the t8 probe walked only __type__-tagged values, matching this).
+    if (v instanceof RawObject) return
+    if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) visit(v[i], `${path}[${i}]`)
+      return
+    }
+    if (v instanceof Map) {
+      for (const [key, val] of v) visit(val, `${path}["${String(key)}"]`)
+    }
+  }
+}
+
+/**
  * Run the serial, budgeted expansion for one stop's raw vars. Runs only while
- * the game is paused (pinned: a running game answers with silence). Failure
- * taxonomy (plan D4): per-object timeout/malformed = skip + flag; disconnect
- * (GODOT_UNAVAILABLE) = propagate (the run loop ends and returns the partial
- * result); cancellation = propagate (GODOT_ABORTED).
+ * the game is paused (pinned: a running game answers with silence). Top-level
+ * object values are expanded; when `maxDepth > 1`, ObjectIds found inside
+ * their property values (direct, array elements, dictionary values) are
+ * expanded recursively with the same serial/id-matched protocol (T8.0 facts
+ * 1/4), deduplicated across levels (fact 2), and rendered as `children`.
+ * Failure taxonomy (plan D4/D5): per-object timeout/malformed = skip + flag;
+ * disconnect (GODOT_UNAVAILABLE) = propagate (the run loop ends and returns
+ * the partial result); cancellation = propagate (GODOT_ABORTED).
  * @param vars - the stop's raw vars.
  * @param controller - the protocol controller (send + waitForMessage).
  * @param options - the expansion bounds and budget.
@@ -156,13 +204,17 @@ export async function expandObjects(
     return { entries: [], expandedObjects: 0, expansionTruncated: false }
   }
   const entries: ExpandedEntry[] = []
+  let expandedObjects = 0
   let expansionTruncated = false
+  const expandedIds = new Set<string>()
   const start = Date.now()
-  for (const { name, id } of selected) {
+
+  /** Expand one object (recursively per maxDepth); returns null on skip. */
+  async function expandOne(id: bigint, name: string, depth: number): Promise<ExpandedEntry | null> {
     const remaining = options.budgetMs - (Date.now() - start)
     if (remaining <= 0) {
-      expansionTruncated = true // budget spent: skip the rest, keep partial result
-      break
+      expansionTruncated = true // budget spent: skip, keep partial result
+      return null
     }
     const waitMs = Math.min(options.idleTimeoutMs, remaining)
     try {
@@ -178,12 +230,50 @@ export async function expandObjects(
       const props = Array.isArray(params) && Array.isArray(params[2]) ? params[2] : []
       const { rows, truncated } = parseInspectProps(props, options.maxProps, options.render)
       if (truncated) expansionTruncated = true
-      entries.push({ name, id: id.toString(), className, rows })
+      expandedObjects++
+      let children: ExpandedEntry[] | undefined
+      if (depth < options.maxDepth) {
+        // Recurse into nested ObjectIds found in the property values.
+        for (const prop of props) {
+          if (!Array.isArray(prop) || prop.length < 6 || typeof prop[0] !== 'string') continue
+          if (prop[4] === 128) continue // category grouping element
+          const propName = stripPrefix(prop[0])
+          for (const nested of collectNestedIds(prop[5], propName)) {
+            const key = nested.id.toString()
+            if (expandedIds.has(key)) continue // cross-level dedup (T8.0 fact 2)
+            expandedIds.add(key)
+            const child = await expandOne(nested.id, nested.path, depth + 1)
+            if (child !== null) {
+              children ??= []
+              children.push(child)
+            }
+          }
+        }
+      }
+      return { name, id: id.toString(), className, rows, ...(children !== undefined ? { children } : {}) }
     } catch (error) {
       if (error instanceof GodotError && error.code === 'GODOT_ABORTED') throw error
       if (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE') throw error // disconnected
       expansionTruncated = true // timeout or malformed: skip this object
+      return null
     }
   }
-  return { entries, expandedObjects: entries.length, expansionTruncated }
+
+  // Top-level selection wins: pre-reserve every selected id so the nested
+  // recursion skips them (T8.0 fact 2 — a top-level object that also appears
+  // inside a property is expanded once, at top level).
+  for (const { id } of selected) expandedIds.add(id.toString())
+
+  for (const { name, id } of selected) {
+    const entry = await expandOne(id, name, 1)
+    if (entry !== null) entries.push(entry)
+  }
+  return { entries, expandedObjects, expansionTruncated }
+}
+
+/** Strip the `Members/` / `Constants/` prefix for display (T8.0 fact 6). */
+function stripPrefix(name: string): string {
+  if (name.startsWith('Members/')) return name.slice('Members/'.length)
+  if (name.startsWith('Constants/')) return name.slice('Constants/'.length)
+  return name
 }

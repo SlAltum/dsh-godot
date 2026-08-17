@@ -157,6 +157,116 @@ errors (1):
   platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
 `;
 
+exports[`REAL composition: tool → subprocess seam → controller → fake game > renders nested expansion children into the model-visible output 1`] = `
+"1 stops (max 10)
+#0 res://main.gd:38 @ _process [Breakpoint]
+  locals:
+    _delta = 0.06667
+  members:
+    self = Object<26994542042>
+    counter = 0
+    member_a = Object<27011319261>
+    player = Object<27095205344>
+    arr = (1) [Object<27061650907>]
+    dict = Dictionary(1)
+  expanded objects (5):
+    self = Object<26994542042> [Node]
+      counter = 0
+      member_a = Object<27011319261>
+      player = Object<27095205344>
+      arr = (1) [Object<27061650907>]
+      dict = Dictionary(1)
+      name = StringName'Main'
+      Node/multiplayer_authority = 1
+      Node/path = NodePath(/root/Main)
+      Process = null
+      process_mode = 0
+      process_priority = 0
+      process_physics_priority = 0
+      Thread Group = null
+      process_thread_group = 0
+      Physics Interpolation = null
+      physics_interpolation_mode = 0
+      Auto Translate = null
+      auto_translate_mode = 0
+      Editor Description = null
+      editor_description = ''
+      script = 'res://main.gd'
+      arr[0] = Object<27061650907> [Node]
+        name = StringName'ArrObj'
+        Node/multiplayer_authority = 1
+        Node/path = '[Orphan]'
+        Process = null
+        process_mode = 0
+        process_priority = 0
+        process_physics_priority = 0
+        Thread Group = null
+        process_thread_group = 0
+        Physics Interpolation = null
+        physics_interpolation_mode = 0
+        Auto Translate = null
+        auto_translate_mode = 0
+        Editor Description = null
+        editor_description = ''
+        script = null
+      dict["k"] = Object<27078428127> [Node]
+        name = StringName'DictObj'
+        Node/multiplayer_authority = 1
+        Node/path = '[Orphan]'
+        Process = null
+        process_mode = 0
+        process_priority = 0
+        process_physics_priority = 0
+        Thread Group = null
+        process_thread_group = 0
+        Physics Interpolation = null
+        physics_interpolation_mode = 0
+        Auto Translate = null
+        auto_translate_mode = 0
+        Editor Description = null
+        editor_description = ''
+        script = null
+    member_a = Object<27011319261> [Node]
+      name = StringName'MemberA'
+      Node/multiplayer_authority = 1
+      Node/path = NodePath(/root/Main/MemberA)
+      Process = null
+      process_mode = 0
+      process_priority = 0
+      process_physics_priority = 0
+      Thread Group = null
+      process_thread_group = 0
+      Physics Interpolation = null
+      physics_interpolation_mode = 0
+      Auto Translate = null
+      auto_translate_mode = 0
+      Editor Description = null
+      editor_description = ''
+      script = null
+    player = Object<27095205344> [Node]
+      name = StringName'Player'
+      Node/multiplayer_authority = 1
+      Node/path = NodePath(/root/Main/Player)
+      Process = null
+      process_mode = 0
+      process_priority = 0
+      process_physics_priority = 0
+      Thread Group = null
+      process_thread_group = 0
+      Physics Interpolation = null
+      physics_interpolation_mode = 0
+      Auto Translate = null
+      auto_translate_mode = 0
+      Editor Description = null
+      editor_description = ''
+      script = null
+output (2 lines):
+  Godot Engine v4.7.stable.mono.official.5b4e0cb0f - https://godotengine.org
+  main: starting
+errors (1):
+  platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
+`;
+
 exports[`REAL composition: tool → subprocess seam → controller → fake game > round-trips a full debug run to model-visible output 1`] = `
 "2 stops (max 10)
 #0 res://player.gd:10 @ run [Breakpoint]

@@ -1,8 +1,9 @@
 /**
- * Phase 5 expansion tests: the pure selection/parsing/id-normalization
+ * Phase 5/8 expansion tests: the pure selection/parsing/id-normalization
  * functions, plus expandObjects against a DebugController + FakeGame replaying
- * the T5.0 recording — success, unmatched-id timeout skip, budget exhaustion,
- * disconnect propagation and cancellation.
+ * the T5.0/T8.0 recordings — success, unmatched-id timeout skip, budget
+ * exhaustion, disconnect propagation, cancellation, and the Phase 8 nested
+ * recursion (depth cap, cross-level dedup, container paths).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,14 +11,20 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DebugController } from '../src/controller.ts'
-import { expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from '../src/inspect.ts'
-import { NodePath, ObjectId, RID } from '../src/variants.ts'
+import { collectNestedIds, expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from '../src/inspect.ts'
+import { NodePath, ObjectId, RawObject, RID } from '../src/variants.ts'
 import type { DecodedVariant } from '../src/variant-decoder.ts'
 import { FakeGame } from './fixtures/fake-game.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bin = readFileSync(join(here, 'fixtures', 't5-inspect.bin'))
 const manifest = JSON.parse(readFileSync(join(here, 'fixtures', 't5-inspect.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
+// The Phase 8 nested-expansion recording: self (23 props) then its nested
+// ObjectIds (member_a, player, arr[0], dict["k"]) — 5 inspect round-trips.
+const nestedBin = readFileSync(join(here, 'fixtures', 't8-nested.bin'))
+const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't8-nested.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
 
@@ -139,6 +146,7 @@ describe('expandObjects', () => {
     const result = await expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,
@@ -163,6 +171,7 @@ describe('expandObjects', () => {
     const result = await expandObjects(vars, controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 150,
       budgetMs: 10_000,
@@ -178,6 +187,7 @@ describe('expandObjects', () => {
     const result = await expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 2_000,
       budgetMs: 0, // nothing left: skip everything
@@ -193,6 +203,7 @@ describe('expandObjects', () => {
     await expect(expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,
@@ -207,6 +218,7 @@ describe('expandObjects', () => {
     await expect(expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,
@@ -228,6 +240,7 @@ describe('expandObjects', () => {
     const result = await expandObjects(vars, controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 150,
       budgetMs: 10_000,
@@ -247,6 +260,7 @@ describe('expandObjects', () => {
     const result = await expandObjects(vars, controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 1,
       render: renderOptions,
       idleTimeoutMs: 500,
       budgetMs: 10_000,
@@ -254,5 +268,117 @@ describe('expandObjects', () => {
     })
     expect(result.expandedObjects).toBe(0)
     expect(result.expansionTruncated).toBe(false)
+  })
+})
+
+/** Phase 8: the nested ObjectId collector (direct/array/dict, keys skipped). */
+describe('collectNestedIds', () => {
+  it('collects direct ObjectIds, array elements and dictionary values with paths', () => {
+    // The caller passes ONE property value with its display name as the base
+    // path (T8.0 fact 6): direct ObjectId, array element, dictionary value.
+    const direct = new ObjectId(1n)
+    expect(collectNestedIds(direct, 'player')).toEqual([{ path: 'player', id: 1n }])
+    const inArray = new ObjectId(2n)
+    expect(collectNestedIds([42, inArray], 'arr')).toEqual([{ path: 'arr[1]', id: 2n }])
+    const inDict = new ObjectId(3n)
+    expect(collectNestedIds(new Map([['k', inDict]]), 'dict')).toEqual([{ path: 'dict["k"]', id: 3n }])
+  })
+
+  it('skips RIDs, nulls and primitives', () => {
+    expect(collectNestedIds(new RID(5n), 'r')).toEqual([])
+    expect(collectNestedIds(null, 'n')).toEqual([])
+    expect(collectNestedIds(42, 'n')).toEqual([])
+    expect(collectNestedIds('s', 'n')).toEqual([])
+    expect(collectNestedIds([1, 'x', null], 'arr')).toEqual([])
+  })
+
+  it('does not traverse RawObject (inline-decoded objects, T8.0 probe rule)', () => {
+    const raw = new RawObject('Node')
+    raw.set('member', new ObjectId(9n))
+    expect(collectNestedIds(raw, 'raw')).toEqual([])
+  })
+
+  it('does not recurse into dictionary keys (source-plugin rule, T8.0 fact 1)', () => {
+    const asKey = new ObjectId(7n)
+    const asValue = new ObjectId(8n)
+    const dict = new Map([[asKey, asValue]])
+    expect(collectNestedIds(dict, 'd')).toEqual([{ path: 'd["[object Object]"]', id: 8n }])
+  })
+})
+
+/** Phase 8: recursive expansion against the T8.0 recording. */
+describe('expandObjects nested (Phase 8)', () => {
+  let controller: DebugController
+  let game: FakeGame
+
+  beforeEach(() => {
+    controller = new DebugController({ maxMessageBytes: 16_000_000, maxOutputBytes: 1_000_000 })
+    game = new FakeGame(nestedBin, nestedManifest.frames)
+  })
+
+  afterEach(async () => {
+    await game.dispose()
+    await controller.dispose()
+  })
+
+  /* oxlint-disable-next-line sonarjs/no-identical-functions -- the T5 suite
+     above declares the same helper; test-local duplication is intentional. */
+  async function connectGame(): Promise<void> {
+    await controller.listen(0)
+    await game.connect(controller.port)
+    await controller.waitForSetPid(5_000)
+  }
+
+  /** The t8 stop's vars: self (whose props hold member_a/player/arr/dict). */
+  function nestedVars(): DecodedVariant[][] {
+    return [
+      ['self', 1, 24, new ObjectId(26994542042n), 'Node'],
+      ['player', 1, 24, new ObjectId(27095205344n), 'Node'],
+      ['counter', 1, 2, 20, ''],
+    ]
+  }
+
+  it('expands nested ObjectIds up to maxDepth with location paths', async () => {
+    await connectGame()
+    const result = await expandObjects(nestedVars(), controller, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 2,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 20_000,
+      signal: new AbortController().signal,
+    })
+    // Top level: self + player. self's nested ids (member_a, player, arr[0],
+    // dict["k"]) recurse; player is deduped (already reserved top-level, T8.0
+    // fact 2) — the nested children are member_a, arr[0], dict["k"].
+    expect(result.expandedObjects).toBe(5)
+    expect(result.expansionTruncated).toBe(false)
+    const self = result.entries.find(e => e.name === 'self')
+    expect(self).toBeDefined()
+    const names = self!.children?.map(c => c.name) ?? []
+    expect(names).toEqual(['member_a', 'arr[0]', 'dict["k"]'])
+    // player appears as a top-level entry but NOT as self's child (dedup).
+    expect(result.entries.some(e => e.name === 'player')).toBe(true)
+    expect(self!.children?.some(c => c.name === 'player')).toBe(false)
+    const arr0 = self!.children?.find(c => c.name === 'arr[0]')
+    expect(arr0!.className).toBe('Node')
+    expect(arr0!.rows.length).toBeGreaterThan(0)
+  })
+
+  it('depth 1 behaves like Phase 5 (no recursion)', async () => {
+    await connectGame()
+    const result = await expandObjects(nestedVars(), controller, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 1,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 20_000,
+      signal: new AbortController().signal,
+    })
+    expect(result.expandedObjects).toBe(2)
+    const self = result.entries.find(e => e.name === 'self')
+    expect(self!.children).toBeUndefined()
   })
 })

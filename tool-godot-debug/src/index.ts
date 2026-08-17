@@ -24,6 +24,7 @@ import type { GenericCallView, GenericResultView, JsonValue, ToolResult } from '
 import { resolve } from 'node:path'
 import { validateConfig } from './config.ts'
 import type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
+import type { ExpandedEntry } from './inspect.ts'
 import { runDebug } from './tool.ts'
 import type { DebugRunResult } from './tool.ts'
 
@@ -33,7 +34,7 @@ export { runDebug } from './tool.ts'
 export type { DebugBreakpoint, DebugRunMode, DebugRunOptions, DebugRunResult, DebugStop } from './tool.ts'
 export { renderSnapshot, renderValue } from './snapshot.ts'
 export type { RenderOptions, RenderScopes, RenderVar, SnapshotFrame, StopSnapshot } from './snapshot.ts'
-export { expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from './inspect.ts'
+export { expandObjects, normalizeId, parseInspectProps, selectExpandableIds, collectNestedIds } from './inspect.ts'
 export type { ExpandedEntry, ExpansionResult } from './inspect.ts'
 export { applyEdits, findEditTarget, findPropValue, parseEditValue, valueEquals } from './edit.ts'
 export type { EditRequest, EditResult, EditValueType } from './edit.ts'
@@ -101,6 +102,24 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
   }
 }
 
+/** Render one expanded entry and its nested children (Phase 8 recursion) at
+ *  the given indentation. Children use their location path as the name
+ *  (`player`, `arr[0]`, `dict["k"]` — T8.0 fact 6).
+ * @param entry - the entry to render.
+ * @param indent - the base indentation (spaces) for the entry line.
+ * @returns the rendered lines.
+ */
+function renderEntry(entry: ExpandedEntry, indent: number): string[] {
+  const pad = ' '.repeat(indent)
+  const lines: string[] = []
+  lines.push(`${pad}${entry.name} = Object<${entry.id}> [${entry.className}]`)
+  for (const row of entry.rows) lines.push(`${' '.repeat(indent + 2)}${row.name} = ${row.value}`)
+  if (entry.children !== undefined) {
+    for (const child of entry.children) lines.push(...renderEntry(child, indent + 2))
+  }
+  return lines
+}
+
 /**
  * The plain-text projection of one debug run (also the render fallback).
  * @param value - the canonical run result.
@@ -144,13 +163,12 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
           for (const v of vars) lines.push(`    ${v.name} = ${v.value}`)
         }
         // Phase 5: the expanded objects of this same stop (expansion runs on
-        // the first frame-bearing stop, which is exactly fullIdx).
+        // the first frame-bearing stop, which is exactly fullIdx). Nested
+        // objects (Phase 8) render recursively with deeper indentation; the
+        // head counts ALL expanded objects (top level + nested children).
         if (value.expansion != null && value.expansion.entries.length > 0) {
-          lines.push(`  expanded objects (${value.expansion.entries.length}):`)
-          for (const entry of value.expansion.entries) {
-            lines.push(`    ${entry.name} = Object<${entry.id}> [${entry.className}]`)
-            for (const row of entry.rows) lines.push(`      ${row.name} = ${row.value}`)
-          }
+          lines.push(`  expanded objects (${value.expansion.expandedObjects}):`)
+          for (const entry of value.expansion.entries) lines.push(...renderEntry(entry, 4))
         }
         // Phase 6: the variable edits applied on this same stop, with the
         // per-edit outcome (verified against the engine via re-inspect).
@@ -244,7 +262,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           'Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), '
           + 'the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues '
           + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables '
-          + 'are expanded in place on the first stop (properties under "expanded objects"). '
+          + 'are expanded in place on the first stop (properties under "expanded objects"; nested objects inside properties are '
+          + 'expanded recursively, bounded by config maxExpandDepth, with location-path names like arr[0] or dict["k"]). '
           + 'Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give '
           + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
           + 'optional), value as a string, and type int|float|string|bool (default string). Only object properties are editable — '
@@ -261,7 +280,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             'Run a Godot project once under the debugger, or attach to a running game. launch (default): set breakpoints '
             + '(res:// path or absolute file path plus 1-based line), the tool launches the project headless with --remote-debug, '
             + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
-            + 'bounded by config maxExpandedObjects/maxExpandedProps), applies variable edits on the first stop while paused '
+            + 'bounded by config maxExpandedObjects/maxExpandedProps; nested objects inside property values are expanded '
+            + 'recursively up to config maxExpandDepth, deduplicated across levels), applies variable edits on the first stop while paused '
             + '(edits: target = a top-level object variable name from the expansion, property = its property name, value as a '
             + 'string, type int|float|string|bool, default string; only object properties are editable, each edit is verified '
             + 'against the engine and reports ok/failed), snapshots the scene tree on every stop that has a stack frame '
@@ -471,6 +491,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                   additionalProperties: false,
                   properties: {
                     stopIndex: { type: 'number', required: true },
+                    expandedObjects: { type: 'number', required: true },
                     entries: {
                       type: 'array',
                       required: true,
@@ -492,6 +513,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                                 value: { type: 'string', required: true },
                               },
                             },
+                          },
+                          children: {
+                            type: 'array',
+                            items: { type: 'json' },
                           },
                         },
                       },
@@ -577,6 +602,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               ...(input.edits !== undefined ? { edits: input.edits } : {}),
               maxExpandedObjects: c.maxExpandedObjects,
               maxExpandedProps: c.maxExpandedProps,
+              maxExpandDepth: c.maxExpandDepth,
               maxEdits: c.maxEdits,
               maxTreeNodes: c.maxTreeNodes,
             })
@@ -591,10 +617,28 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
             }
             const { expansion: _expansion, edits: _edits, sceneTrees: _sceneTrees, exit: _exit, ...resultRest } = result
+            // The expansion entries carry recursive `children` (Phase 8) that
+            // the schema types as json — the runtime values are plain JSON, so
+            // the only gap is the static type (children are declared with
+            // `items: json` because the schema cannot recurse).
+            type SchemaEntry = {
+              name: string
+              id: string
+              className: string
+              rows: { name: string; value: string }[]
+              children?: JsonValue[]
+            }
+            const expansion = result.expansion === null
+              ? undefined
+              : result.expansion as unknown as {
+                stopIndex: number
+                expandedObjects: number
+                entries: SchemaEntry[]
+              }
             return {
               ...resultRest,
               ...(exit !== undefined ? { exit } : {}),
-              ...(result.expansion !== null ? { expansion: result.expansion } : {}),
+              ...(expansion !== undefined ? { expansion } : {}),
               ...(result.edits !== null ? { edits: result.edits } : {}),
               ...(result.sceneTrees !== null
                 ? { sceneTrees: result.sceneTrees.map(t => ({ stopIndex: t.stopIndex, lines: t.lines })) }

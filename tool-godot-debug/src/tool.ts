@@ -61,10 +61,10 @@ export interface DebugRunResult {
   /** True when the game was not owned by the tool and keeps running after
    *  detach (attach mode); launch mode is always `false`. */
   detached: boolean
-  /** The Phase 5 variable expansion from the first frame-bearing stop;
+  /** The Phase 5/8 variable expansion from the first frame-bearing stop;
    *  `null` when no stop had a frame or expansion is disabled. */
-  expansion: { stopIndex: number; entries: ExpandedEntry[] } | null
-  /** Successful object expansions this run. */
+  expansion: { stopIndex: number; entries: ExpandedEntry[]; expandedObjects: number } | null
+  /** Successful object expansions this run (top level + nested children). */
   expandedObjects: number
   /** Any object skipped, property truncated, selection sliced, or budget spent. */
   expansionTruncated: boolean
@@ -133,6 +133,9 @@ export interface DebugRunOptions {
   maxExpandedObjects: number
   /** Max property rows kept per expanded object. */
   maxExpandedProps: number
+  /** Max expansion depth (1 = top level only; nested objects recurse while
+   *  below this depth). */
+  maxExpandDepth: number
   /** Variable edits to apply on the first frame-bearing stop, while paused. */
   edits?: EditRequest[]
   /** Max edits applied (0 = disabled). */
@@ -270,7 +273,7 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
       exit,
       detached: false,
       expansion,
-      expandedObjects: expansion?.entries.length ?? 0,
+      expandedObjects: expansion?.expandedObjects ?? 0,
       expansionTruncated,
       edits,
       editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
@@ -367,7 +370,7 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
       exit: null,
       detached: true,
       expansion,
-      expandedObjects: expansion?.entries.length ?? 0,
+      expandedObjects: expansion?.expandedObjects ?? 0,
       expansionTruncated,
       edits,
       editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
@@ -470,7 +473,7 @@ async function collectStops(
 ): Promise<{
   stops: DebugStop[]
   varsTruncated: boolean
-  expansion: { stopIndex: number; entries: ExpandedEntry[] } | null
+  expansion: { stopIndex: number; entries: ExpandedEntry[]; expandedObjects: number } | null
   expansionTruncated: boolean
   edits: { stopIndex: number; results: EditResult[] } | null
   editsTruncated: boolean
@@ -480,7 +483,7 @@ async function collectStops(
   const stops: DebugStop[] = []
   let varsTruncated = false
   let expanded = false
-  let expansion: { stopIndex: number; entries: ExpandedEntry[] } | null = null
+  let expansion: { stopIndex: number; entries: ExpandedEntry[]; expandedObjects: number } | null = null
   let expansionTruncated = false
   let edited = false
   let edits: { stopIndex: number; results: EditResult[] } | null = null
@@ -546,21 +549,22 @@ async function collectStops(
       if (!expanded && snapshot.frames.length > 0 && options.maxExpandedObjects > 0) {
         expanded = true
         // Expansion budget: min(remaining run budget minus a settle margin,
-        // the worst-case object cap). Budget exhaustion skips the rest and
-        // keeps the partial result — only an external cancel aborts (pinned
-        // T5.2 review H2).
+        // the worst-case object×depth cap). Budget exhaustion skips the rest
+        // and keeps the partial result — only an external cancel aborts
+        // (pinned T5.2 review H2; depth budget T8.2).
         const remaining = options.timeoutMs - (Date.now() - runStart) - EXPANSION_SETTLE_MS
-        const budgetMs = Math.max(0, Math.min(remaining, options.maxExpandedObjects * options.idleTimeoutMs))
+        const budgetMs = Math.max(0, Math.min(remaining, options.maxExpandedObjects * options.maxExpandDepth * options.idleTimeoutMs))
         try {
           const result = await expandObjects(collected.vars, controller, {
             maxObjects: options.maxExpandedObjects,
             maxProps: options.maxExpandedProps,
+            maxDepth: options.maxExpandDepth,
             render: RENDER_OPTIONS,
             idleTimeoutMs: options.idleTimeoutMs,
             budgetMs,
             signal: options.signal,
           })
-          expansion = { stopIndex: i, entries: result.entries }
+          expansion = { stopIndex: i, entries: result.entries, expandedObjects: result.expandedObjects }
           if (result.expansionTruncated) expansionTruncated = true
         } catch (error) {
           if (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE') {
