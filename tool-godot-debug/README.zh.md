@@ -100,7 +100,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`（子线程暂停标注 `[reason @ thread N]`——线程 id 1 为主线程不标注，已 pin `.context/t10/facts.md`）、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿的展开对象（`<name> = <repr> [<引擎类>]`——声明 `__repr__` 成员时显示其值，否则 `Object<<id>>`；属性行带引擎分组前缀如 `Node/process_mode`；嵌套对象以更深缩进与定位路径名呈现，如 `arr[0]`/`dict["snkey"]`，受 `maxExpandedObjects`/`maxExpandedProps`/`maxExpandDepth` 约束；StringName 渲染 `&'x'`，数组预览其值如 `(2) [(11, 12), (21, 22)]`，预览内 `__repr__` 名同样解析）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、每个有帧停顿的场景树（缩进 `name [class] (id)` 行 + 场景文件，受 `maxTreeNodes` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`（子线程暂停标注 `[reason @ thread N]`——线程 id 1 为主线程不标注，已 pin `.context/t10/facts.md`）、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿的展开对象（`<name> = <repr> [<引擎类>]`——声明 `__repr__` 成员时显示其值，否则 `Object<<id>>`；属性行带引擎分组前缀如 `Node/process_mode`；嵌套对象以更深缩进与定位路径名呈现，如 `arr[0]`/`dict["k"]`——StringName 字典键用 `&'x'` 形态（`dict["&'snkey'"]`），受 `maxExpandedObjects`/`maxExpandedProps`/`maxExpandDepth` 约束；StringName 渲染 `&'x'`，数组预览其值如 `(2) [(11, 12), (21, 22)]`，预览内 `__repr__` 名同样解析）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、每个有帧停顿的场景树（缩进 `name [class] (id)` 行 + 场景文件，受 `maxTreeNodes` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
 #### Token 影响
 

@@ -321,10 +321,10 @@ describe('collectNestedIds', () => {
     expect(collectNestedIds(dict, 'd')).toEqual([{ path: 'd["7"]', id: 8n }])
   })
 
-  it('renders StringName dictionary keys by their value (T13.0 fact 3)', () => {
+  it('renders StringName dictionary keys in the &\'x\' reference form (T16)', () => {
     const snKey = new StringName('snkey')
     const value = new ObjectId(8n)
-    expect(collectNestedIds(new Map([[snKey, value]]), 'dict')).toEqual([{ path: 'dict["snkey"]', id: 8n }])
+    expect(collectNestedIds(new Map([[snKey, value]]), 'dict')).toEqual([{ path: "dict[\"&'snkey'\"]", id: 8n }])
   })
 })
 

@@ -194,6 +194,17 @@ describe('findMapEntry', () => {
     expect(findMapEntry(map, '5')).toEqual({ key: 5, value: 'five' })
     expect(findMapEntry(map, 'missing')).toBeUndefined()
   })
+
+  it('matches the &\'x\' StringName display form back (T16 edit round-trip)', () => {
+    const map = new Map([[new StringName('snkey'), 'v']])
+    expect(findMapEntry(map, "&'snkey'")).toEqual({ key: new StringName('snkey'), value: 'v' })
+    expect(findMapEntry(map, '&' )).toBeUndefined() // incomplete form
+  })
+
+  it('matches ObjectId keys by their id display form', () => {
+    const map = new Map([[new ObjectId(7n), 'v']])
+    expect(findMapEntry(map, '7')).toEqual({ key: new ObjectId(7n), value: 'v' })
+  })
 })
 
 describe('rebuildReason', () => {

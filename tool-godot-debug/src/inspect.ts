@@ -131,14 +131,17 @@ export function propDisplayName(rawName: string, usage: number, category: string
 }
 
 /**
- * The display text of a dictionary KEY inside a location path (T13.0 fact 3:
- * StringName keys decode as StringName instances and must not render as
- * `[object Object]`; ObjectId keys render their id — key EXPANSION is T16).
+ * The display text of a dictionary KEY inside a location path (T16, aligned
+ * with the source plugin's get_sub_values rendering): StringName keys render
+ * the reference `&'x'` form, ObjectId keys their id (repr key names depend on
+ * expansion timing — recorded, revisited with T15), everything else verbatim.
+ * The path doubles as an edit target: `findMapEntry` accepts the `&'x'` form
+ * back (edit round-trip stays closed).
  * @param key - the decoded key.
  * @returns the key text used inside `dict["..."]`.
  */
 export function keyDisplay(key: unknown): string {
-  if (key instanceof StringName) return key.value
+  if (key instanceof StringName) return `&'${key.value}'`
   if (key instanceof ObjectId) return String(key.id)
   if (typeof key === 'string') return key
   return String(key)

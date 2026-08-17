@@ -229,18 +229,22 @@ export function findPropRow(props: DecodedVariant[] | undefined, property: strin
 
 /**
  * Find a dictionary entry by its display key: exact match, plain string,
- * StringName value, or numeric key stringified (`dict["5"]` addresses a
- * numeric key 5 — T14.2 path semantics).
+ * StringName value (bare or the `&'x'` display form — T16), numeric key
+ * stringified (`dict["5"]` addresses a numeric key 5 — T14.2 path semantics),
+ * or ObjectId id (`dict["<id>"]`; the container-rebuild gate still rejects
+ * object-bearing containers, so this match serves display/walk consistency).
  * @param map - the decoded dictionary.
  * @param key - the requested key from the path.
  * @returns the entry (actual key + value), or undefined.
  */
 export function findMapEntry(map: Map<unknown, unknown>, key: string): { key: unknown; value: unknown } | undefined {
+  const bare = key.startsWith("&'") && key.endsWith("'") ? key.slice(2, -1) : undefined
   for (const [k, v] of map) {
     if (k === key) return { key: k, value: v }
     if (typeof k === 'string' && k === key) return { key: k, value: v }
-    if (k instanceof StringName && k.value === key) return { key: k, value: v }
+    if (k instanceof StringName && (k.value === key || (bare !== undefined && k.value === bare))) return { key: k, value: v }
     if (typeof k === 'number' && String(k) === key) return { key: k, value: v }
+    if (k instanceof ObjectId && String(k.id) === key) return { key: k, value: v }
   }
   return undefined
 }
