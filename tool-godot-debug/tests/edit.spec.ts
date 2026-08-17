@@ -123,12 +123,24 @@ describe('findPropValue', () => {
     const props = [
       ['Members/counter', 2, 0, '', 4100, 42],
       ['Node/path', 22, 0, '', 6, null],
+      ['process_mode', 2, 0, '', 6, 0],
     ] as unknown as DecodedVariant[]
     expect(findPropValue(props, 'counter')).toBe(42)
     expect(findPropValue(props, 'Members/counter')).toBe(42)
     expect(findPropValue(props, 'Node/path')).toBe(null)
     expect(findPropValue(props, 'missing')).toBeUndefined()
     expect(findPropValue(undefined, 'counter')).toBeUndefined()
+  })
+
+  it('resolves category-tracked display prefixes to the raw row (T13.0 fact 7)', () => {
+    const props = [
+      ['process_mode', 2, 0, '', 6, 0],
+      ['Node/path', 22, 0, '', 6, null],
+    ] as unknown as DecodedVariant[]
+    // `Node/process_mode` is the display name of the raw `process_mode` row.
+    expect(findPropValue(props, 'Node/process_mode')).toBe(0)
+    // An exact raw name still wins over prefix stripping.
+    expect(findPropValue(props, 'Node/path')).toBe(null)
   })
 })
 
@@ -495,5 +507,55 @@ describe('applyEdits', () => {
       controller,
       { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 10_000, signal: aborter.signal },
     )).rejects.toMatchObject({ code: 'GODOT_ABORTED' })
+  })
+
+  it('keeps the Phase 6 shape (set → verify, no pre-inspect) for bare names', async () => {
+    const sends: unknown[][] = []
+    const stub = {
+      send(cmd: string, params: unknown[]): void {
+        sends.push([cmd, params])
+      },
+      async waitForMessage(): Promise<unknown[]> {
+        return ['scene:inspect_object', 1, [SELF_ID, 'Node', [['Members/counter', 2, 0, '', 4100, 42]]]]
+      },
+    }
+    const result = await applyEdits(
+      [{ target: 'self', property: 'counter', value: '42', type: 'int' }],
+      objectVars(),
+      stub as never,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 10_000, signal: new AbortController().signal },
+    )
+    expect(sends.map(s => s[0])).toEqual(['scene:set_object_property', 'scene:inspect_object'])
+    expect(sends[0]![1]).toEqual([SELF_ID, 'counter', 42])
+    expect(result.results[0]!.ok).toBe(true)
+  })
+
+  it('resolves a category-prefixed single-segment property to its RAW label before the set (T13.0 fact 5)', async () => {
+    const sends: unknown[][] = []
+    let inspects = 0
+    const stub = {
+      send(cmd: string, params: unknown[]): void {
+        sends.push([cmd, params])
+      },
+      async waitForMessage(): Promise<unknown[]> {
+        inspects++
+        // First inspect: raw resolution; second (verify): the engine's answer
+        // after the write — process_priority accepted the int.
+        const props = inspects === 1
+          ? [['process_priority', 2, 0, '', 6, 0], ['Members/counter', 2, 0, '', 4100, 42]]
+          : [['process_priority', 2, 0, '', 6, 7], ['Members/counter', 2, 0, '', 4100, 42]]
+        return ['scene:inspect_object', 1, [SELF_ID, 'Node', props]]
+      },
+    }
+    const result = await applyEdits(
+      [{ target: 'self', property: 'Node/process_priority', value: '7', type: 'int' }],
+      objectVars(),
+      stub as never,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 10_000, signal: new AbortController().signal },
+    )
+    // Pre-inspect (raw label resolution) → set with the RAW name → verify.
+    expect(sends.map(s => s[0])).toEqual(['scene:inspect_object', 'scene:set_object_property', 'scene:inspect_object'])
+    expect(sends[1]![1]).toEqual([SELF_ID, 'process_priority', 7])
+    expect(result.results[0]!.ok).toBe(true)
   })
 })

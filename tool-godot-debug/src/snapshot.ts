@@ -9,7 +9,7 @@
  */
 
 import type { DecodedVariant } from './variant-decoder.ts'
-import { GDObject, StringName, formatNumber } from './variants.ts'
+import { GDObject, ObjectId, RID, StringName, formatNumber } from './variants.ts'
 
 /** One stack frame after rendering. */
 export interface SnapshotFrame {
@@ -106,12 +106,26 @@ export function renderSnapshot(
 
 /**
  * Render one value with the source plugin's display rules and the bounds.
+ * Phase 13 (T13.0 facts 1/3): StringNames render `&'x'` (2.7.0 form); array
+ * preview items render their ACTUAL values — math types as bare
+ * stringify_value (`(11, 12)`, matching the source plugin's preview),
+ * StringNames as `&'x'`, ObjectIds resolved through `resolveRepr` when known.
+ * Top-level/row values keep the `type_name + stringify_value` form
+ * (`Vector2(10, 20)`).
  * @param value - the decoded protocol value.
  * @param depth - current container nesting depth.
  * @param options - the render bounds.
+ * @param resolveRepr - optional resolver turning an ObjectId into its target
+ *  object's `__repr__` display name (expansion rows only; scope-level values
+ *  have no fetch budget and keep `Object<id>`).
  * @returns the display text.
  */
-export function renderValue(value: unknown, depth: number, options: RenderOptions): string {
+export function renderValue(
+  value: unknown,
+  depth: number,
+  options: RenderOptions,
+  resolveRepr?: (id: bigint) => string | undefined,
+): string {
   if (depth > options.maxDepth) return '…'
   let rendered = ''
   if (typeof value === 'number') {
@@ -126,14 +140,20 @@ export function renderValue(value: unknown, depth: number, options: RenderOption
   } else if (Array.isArray(value)) {
     const preview = value
       .slice(0, MAX_PREVIEW_ITEMS)
-      .map(item => renderValue(item, depth + 1, options))
+      .map(item => renderPreview(item, depth + 1, options, resolveRepr))
       .join(', ')
     const ellipsis = value.length > MAX_PREVIEW_ITEMS ? ', …' : ''
     rendered = `(${value.length}) [${preview}${ellipsis}]`
   } else if (value instanceof Map) {
     rendered = `Dictionary(${value.size})`
   } else if (value instanceof StringName) {
-    rendered = `StringName'${value.value}'`
+    rendered = `&'${value.value}'`
+  } else if (value instanceof ObjectId) {
+    // Object references (T13.0 facts 1/2): the target's `__repr__` display
+    // name when the expansion resolved it, else the id form. RIDs keep the
+    // GDObject rendering (`RID<id>`) — no inspect exists for them.
+    const repr = value instanceof RID ? undefined : resolveRepr?.(value.id)
+    rendered = repr !== undefined ? repr : `${value.type_name()}<${value.id}>`
   } else if (typeof (value as GDObject).type_name === 'function') {
     const obj = value as GDObject
     try {
@@ -155,4 +175,47 @@ export function renderValue(value: unknown, depth: number, options: RenderOption
     return `${rendered.slice(0, options.maxValueLength)}…`
   }
   return rendered
+}
+
+/**
+ * Render one ARRAY PREVIEW item (source-plugin parity, T13.0 fact 3): math
+ * types as bare `stringify_value()` — no type prefix (`(11, 12)`, not
+ * `Vector2i(11, 12)`); StringNames `&'x'`; ObjectIds resolve through repr
+ * when known; primitives use the top-level rules. Nested arrays/maps keep
+ * the full {@link renderValue} rules (the source plugin's preview is
+ * shallow; our recursion is bounded by `maxDepth`).
+ * @param value - the array item.
+ * @param depth - the current nesting depth.
+ * @param options - the render bounds.
+ * @param resolveRepr - the expansion repr resolver (may be undefined).
+ * @returns the item's display text.
+ */
+function renderPreview(value: unknown, depth: number, options: RenderOptions, resolveRepr?: (id: bigint) => string | undefined): string {
+  if (depth > options.maxDepth) return '…'
+  if (typeof value === 'number') return formatNumber(value)
+  if (typeof value === 'bigint' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'string') return `'${value}'`
+  if (value === null || value === undefined) return 'null'
+  if (value instanceof StringName) return `&'${value.value}'`
+  if (value instanceof ObjectId) {
+    if (!(value instanceof RID)) {
+      const repr = resolveRepr?.(value.id)
+      if (repr !== undefined) return repr
+    }
+    return `${value.type_name()}<${value.id}>`
+  }
+  if (Array.isArray(value)) return renderValue(value, depth, options, resolveRepr)
+  if (value instanceof Map) return `Dictionary(${value.size})`
+  if (typeof (value as GDObject).type_name === 'function') {
+    try {
+      return (value as GDObject).stringify_value()
+    } catch {
+      return '<unrenderable value>'
+    }
+  }
+  if (typeof value === 'symbol') return value.toString()
+  if (typeof value === 'object') return '<opaque value>'
+  if (typeof value === 'function') return '<function>'
+  // oxlint-disable-next-line typescript/no-base-to-string -- primitive-only remainder
+  return String(value)
 }

@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { ObjectId, StringName, Vector2, Vector3, formatNumber } from '../src/variants.ts'
 import type { DecodedVariant } from '../src/variant-decoder.ts'
-import { renderSnapshot, type RenderOptions } from '../src/snapshot.ts'
+import { renderSnapshot, renderValue, type RenderOptions } from '../src/snapshot.ts'
 
 const options: RenderOptions = {
   maxDepth: 3,
@@ -72,7 +72,7 @@ describe('renderSnapshot', () => {
     const snapshot = renderSnapshot([0], vars, options)
     const byName = Object.fromEntries(snapshot.scopes.members.map(v => [v.name, v.value]))
     expect(byName['self']).toBe('Object<27262977501>')
-    expect(byName['tag']).toBe("StringName'hero'")
+    expect(byName['tag']).toBe("&'hero'") // 2.7.0 form (was StringName'hero')
     expect(byName['pos']).toBe('Vector2(10, 20)')
   })
 
@@ -85,6 +85,37 @@ describe('renderSnapshot', () => {
     const byName = Object.fromEntries(snapshot.scopes.locals.map(v => [v.name, v.value]))
     expect(byName['arr']).toBe('(3) [1, 2, 3]')
     expect(byName['dict']).toBe('Dictionary(1)')
+  })
+
+  it('previews array items with their actual values (2.7.0 parity)', () => {
+    const vars: DecodedVariant[][] = [
+      // Math types render BARE in previews (no type prefix), StringNames as
+      // &'x', ObjectIds keep the id form at scope level (no fetch budget).
+      ['vecs', 0, 28, [new Vector2(11, 12), new Vector2(21, 22)], ''],
+      ['tags', 0, 28, [new StringName('a'), new StringName('b')], ''],
+      ['objs', 0, 28, [new ObjectId(5n), new ObjectId(6n)], ''],
+      ['nested', 0, 28, [[1, 2], [3]], ''],
+    ]
+    const snapshot = renderSnapshot([0], vars, options)
+    const byName = Object.fromEntries(snapshot.scopes.locals.map(v => [v.name, v.value]))
+    expect(byName['vecs']).toBe('(2) [(11, 12), (21, 22)]')
+    expect(byName['tags']).toBe("(2) [&'a', &'b']")
+    expect(byName['objs']).toBe('(2) [Object<5>, Object<6>]')
+    expect(byName['nested']).toBe('(2) [(2) [1, 2], (1) [3]]')
+  })
+
+  it('resolves expanded object references through the repr resolver', () => {
+    const vars: DecodedVariant[][] = [
+      ['arr', 0, 28, [new ObjectId(42n)], ''],
+    ]
+    const reprs = new Map<bigint, string>([[42n, 'Thing(hero)']])
+    const snapshot = renderSnapshot([0], vars, { ...options, maxDepth: 3 })
+    const byName = Object.fromEntries(snapshot.scopes.locals.map(v => [v.name, v.value]))
+    expect(byName['arr']).toBe('(1) [Object<42>]') // scope level: no resolver
+    const direct = renderValue([new ObjectId(42n)], 0, options, id => reprs.get(id))
+    expect(direct).toBe('(1) [Thing(hero)]')
+    const unknown = renderValue([new ObjectId(43n)], 0, options, id => reprs.get(id))
+    expect(unknown).toBe('(1) [Object<43>]')
   })
 
   it('strips Members/ and Constants/ prefixes on non-object member names', () => {

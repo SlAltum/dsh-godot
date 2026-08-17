@@ -416,7 +416,7 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       expect(text).toContain('expanded objects (5):')
       expect(text).toContain('    self = Object<26994542042> [Node]')
       expect(text).toContain('      arr[0] = Object<27061650907> [Node]')
-      expect(text).toContain('        name = StringName\'ArrObj\'')
+      expect(text).toContain('        name = &\'ArrObj\'')
       expect(text).toContain('      dict["k"] = Object<27078428127> [Node]')
       // The deduped top-level player is a sibling entry.
       expect(text).toContain('    player = Object<27095205344> [Node]')

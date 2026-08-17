@@ -106,7 +106,9 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
 
 /** Render one expanded entry and its nested children (Phase 8 recursion) at
  *  the given indentation. Children use their location path as the name
- *  (`player`, `arr[0]`, `dict["k"]` — T8.0 fact 6).
+ *  (`player`, `arr[0]`, `dict["k"]` — T8.0 fact 6). The head value shows the
+ *  object's `__repr__` display name when it declares one (T13.0 fact 1),
+ *  else the id form `Object<id>`.
  * @param entry - the entry to render.
  * @param indent - the base indentation (spaces) for the entry line.
  * @returns the rendered lines.
@@ -114,7 +116,8 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
 function renderEntry(entry: ExpandedEntry, indent: number): string[] {
   const pad = ' '.repeat(indent)
   const lines: string[] = []
-  lines.push(`${pad}${entry.name} = Object<${entry.id}> [${entry.className}]`)
+  const value = entry.repr !== undefined ? entry.repr : `Object<${entry.id}>`
+  lines.push(`${pad}${entry.name} = ${value} [${entry.className}]`)
   for (const row of entry.rows) lines.push(`${' '.repeat(indent + 2)}${row.name} = ${row.value}`)
   if (entry.children !== undefined) {
     for (const child of entry.children) lines.push(...renderEntry(child, indent + 2))
@@ -271,7 +274,11 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues '
           + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables '
           + 'are expanded in place on the first stop (properties under "expanded objects"; nested objects inside properties are '
-          + 'expanded recursively, bounded by config maxExpandDepth, with location-path names like arr[0] or dict["k"]). '
+          + 'expanded recursively, bounded by config maxExpandDepth, with location-path names like arr[0] or dict["k"]; StringNames '
+          + 'render as &\'x\', arrays preview their actual values like (2) [(11, 12), (21, 22)], and an object that declares a '
+          + '__repr__ member displays it as its name — e.g. self = Thing(hero) [Node]; without one, Object<id> [engine class]). '
+          + 'Property names may carry group prefixes from the engine (e.g. Node/process_mode); edits accept the bare name, the '
+          + 'Members/ prefix, or the displayed prefixed form. '
           + 'Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give '
           + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
           + 'optional — or a NESTED PATH like arr[0], dict["k"], arr[0].x, arr[0][1]: container members are written by rebuilding '
@@ -515,6 +522,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                           name: { type: 'string', required: true },
                           id: { type: 'string', required: true },
                           className: { type: 'string', required: true },
+                          repr: { type: 'string' },
                           rows: {
                             type: 'array',
                             required: true,
@@ -638,6 +646,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               name: string
               id: string
               className: string
+              repr?: string
               rows: { name: string; value: string }[]
               children?: JsonValue[]
             }

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DebugController } from '../src/controller.ts'
 import { collectNestedIds, expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from '../src/inspect.ts'
-import { NodePath, ObjectId, RawObject, RID } from '../src/variants.ts'
+import { NodePath, ObjectId, RawObject, RID, StringName } from '../src/variants.ts'
 import type { DecodedVariant } from '../src/variant-decoder.ts'
 import { FakeGame } from './fixtures/fake-game.ts'
 
@@ -67,13 +67,15 @@ describe('selectExpandableIds', () => {
 })
 
 describe('parseInspectProps', () => {
-  it('strips Members/Constants prefixes, keeps other prefixes, skips usage=128', () => {
+  it('strips Members/Constants, keeps baked prefixes, and category-prefixes following bare names (2.7.0 rules)', () => {
     const props = [
       ['Members/counter', 2, 0, '', 4100, 20],
       ['Node/path', 22, 0, '', 6, new NodePath(['root', 'Main'], [], true)],
       ['Constants/MAX', 2, 0, '', 64, 100],
-      ['category', 21, 0, '', 128, null], // usage=128: grouping element, skipped
-      ['plain', 4, 0, '', 0, 'hello'],
+      ['plain', 4, 0, '', 0, 'hello'], // before any marker: bare
+      ['Node', 0, 0, '', 128, null], // category marker (T13.0 fact 7): names the group
+      ['process_mode', 2, 0, '', 6, 0], // bare names after the marker get the prefix
+      ['process_priority', 2, 0, '', 6, 0],
     ] as unknown as DecodedVariant[]
     const { rows, truncated } = parseInspectProps(props, 10, renderOptions)
     expect(truncated).toBe(false)
@@ -82,7 +84,19 @@ describe('parseInspectProps', () => {
       { name: 'Node/path', value: 'NodePath(/root/Main)' },
       { name: 'MAX', value: '100' },
       { name: 'plain', value: "'hello'" },
+      { name: 'Node/process_mode', value: '0' },
+      { name: 'Node/process_priority', value: '0' },
     ])
+  })
+
+  it('resolves ObjectId values through the repr resolver (2.7.0 __repr__)', () => {
+    const props = [
+      ['Members/friend', 24, 22, '', 6, new ObjectId(99n)],
+    ] as unknown as DecodedVariant[]
+    const { rows } = parseInspectProps(props, 10, renderOptions, id => (id === 99n ? 'Thing(hero)' : undefined))
+    expect(rows).toEqual([{ name: 'friend', value: 'Thing(hero)' }])
+    const { rows: without } = parseInspectProps(props, 10, renderOptions)
+    expect(without).toEqual([{ name: 'friend', value: 'Object<99>' }])
   })
 
   it('caps rows at maxProps and flags truncation', () => {
@@ -302,7 +316,15 @@ describe('collectNestedIds', () => {
     const asKey = new ObjectId(7n)
     const asValue = new ObjectId(8n)
     const dict = new Map([[asKey, asValue]])
-    expect(collectNestedIds(dict, 'd')).toEqual([{ path: 'd["[object Object]"]', id: 8n }])
+    // Key display (T13.0 fact 3): ObjectId keys render their id, not
+    // `[object Object]`; key EXPANSION is deferred (T16).
+    expect(collectNestedIds(dict, 'd')).toEqual([{ path: 'd["7"]', id: 8n }])
+  })
+
+  it('renders StringName dictionary keys by their value (T13.0 fact 3)', () => {
+    const snKey = new StringName('snkey')
+    const value = new ObjectId(8n)
+    expect(collectNestedIds(new Map([[snKey, value]]), 'dict')).toEqual([{ path: 'dict["snkey"]', id: 8n }])
   })
 })
 
@@ -380,5 +402,91 @@ describe('expandObjects nested (Phase 8)', () => {
     expect(result.expandedObjects).toBe(2)
     const self = result.entries.find(e => e.name === 'self')
     expect(self!.children).toBeUndefined()
+  })
+})
+
+/** Phase 13: __repr__ display-name resolution across the fetched tree. */
+describe('expandObjects repr (Phase 13)', () => {
+  it('resolves __repr__ members into entry heads and object references', async () => {
+    // Two canned objects: `thing` declares __repr__ (T13.0 fact 1) and holds
+    // a reference to `friend`, which declares its own __repr__; the reference
+    // renders the target's repr even though the row renders before the child
+    // is fetched (the two-phase pipeline resolves after all fetches).
+    const propsBy = new Map<bigint, unknown[]>([
+      [11n, [
+        ['Members/__repr__', 4, 0, '', 4100, 'Thing(hero)'],
+        ['Members/some_val', 4, 0, '', 4100, 'hero'],
+        ['Members/friend', 24, 22, '', 6, new ObjectId(22n)],
+      ]],
+      [22n, [
+        ['Members/__repr__', 4, 0, '', 4100, 'Friend(buddy)'],
+        ['Members/name', 4, 0, '', 0, 'plain'],
+      ]],
+    ])
+    let lastId: bigint | null = null
+    const stub = {
+      send(_cmd: string, params: unknown[]): void {
+        lastId = params[0] as bigint
+      },
+      async waitForMessage(): Promise<unknown[]> {
+        const id = lastId ?? 0n
+        return ['scene:inspect_object', 1, [id, 'Node', propsBy.get(id) ?? []]]
+      },
+    }
+    const vars: DecodedVariant[][] = [
+      ['thing', 1, 24, new ObjectId(11n), 'RefCounted'],
+    ]
+    const result = await expandObjects(vars, stub as never, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 2,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 20_000,
+      signal: new AbortController().signal,
+    })
+    expect(result.expandedObjects).toBe(2)
+    expect(result.expansionTruncated).toBe(false)
+    const thing = result.entries[0]
+    expect(thing!.repr).toBe('Thing(hero)')
+    // The __repr__ row itself renders as a quoted string (normal value rules).
+    expect(thing!.rows).toContainEqual({ name: '__repr__', value: "'Thing(hero)'" })
+    // The reference to the expanded friend renders the FRIEND's repr.
+    expect(thing!.rows).toContainEqual({ name: 'friend', value: 'Friend(buddy)' })
+    const friend = thing!.children?.find(c => c.name === 'friend')
+    expect(friend!.repr).toBe('Friend(buddy)')
+    expect(friend!.rows).toContainEqual({ name: 'name', value: "'plain'" })
+  })
+
+  it('keeps Object<id> for objects without __repr__ and for unresolvable ids', async () => {
+    const propsBy = new Map<bigint, unknown[]>([
+      [11n, [
+        ['Members/self_ref', 24, 22, '', 6, new ObjectId(11n)], // self-reference: deduped
+        ['Members/plain', 4, 0, '', 0, 'x'],
+      ]],
+    ])
+    let lastId: bigint | null = null
+    const stub = {
+      send(_cmd: string, params: unknown[]): void {
+        lastId = params[0] as bigint
+      },
+      async waitForMessage(): Promise<unknown[]> {
+        const id = lastId ?? 0n
+        return ['scene:inspect_object', 1, [id, 'Node', propsBy.get(id) ?? []]]
+      },
+    }
+    const vars: DecodedVariant[][] = [['obj', 1, 24, new ObjectId(11n), 'Node']]
+    const result = await expandObjects(vars, stub as never, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 2,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 20_000,
+      signal: new AbortController().signal,
+    })
+    const obj = result.entries[0]
+    expect(obj!.repr).toBeUndefined()
+    expect(obj!.rows).toContainEqual({ name: 'self_ref', value: 'Object<11>' })
   })
 })

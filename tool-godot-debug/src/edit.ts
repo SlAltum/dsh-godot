@@ -202,19 +202,27 @@ export function valueEquals(actual: unknown, requested: number | string | boolea
 }
 
 /**
- * Find the property row (name + decoded value) whose name matches `property`
- * (bare or prefixed; the engine echoes `Members/`-prefixed names, T6.0 facts
- * 2/4). The verbatim row name is what the rebuild write must use as the label.
+ * Find the property row (name + decoded value) whose name matches `property`.
+ * Matching order: exact raw name first (a baked prefix like `Node/path` is a
+ * real property name), then `Members/`/`Constants/`-prefix-insensitive
+ * (T6.0 facts 2/4 — the engine echoes prefixed names), then a
+ * category-tracked display prefix stripped from the REQUEST side
+ * (T13.0 fact 7: the expansion displays `Node/process_mode` for the raw
+ * `process_mode` row). The verbatim row name is what the rebuild write must
+ * use as the label.
  * @param props - the re-inspect response's props array.
- * @param property - the requested property name.
+ * @param property - the requested property name (display or raw form).
  * @returns the row tuple, or `undefined` when the property is absent.
  */
 export function findPropRow(props: DecodedVariant[] | undefined, property: string): DecodedVariant[] | undefined {
   if (!Array.isArray(props)) return undefined
   const bare = property.replace(/^(Members|Constants)\//, '')
+  const stripped = property.replace(/^[^/]+\//, '')
   for (const prop of props) {
     if (!Array.isArray(prop) || typeof prop[0] !== 'string') continue
-    if (prop[0] === property || prop[0].replace(/^(Members|Constants)\//, '') === bare) return prop
+    if (prop[0] === property) return prop
+    if (prop[0].replace(/^(Members|Constants)\//, '') === bare) return prop
+    if (prop[0] === stripped) return prop
   }
   return undefined
 }
@@ -419,7 +427,20 @@ async function resolveEditPath(
   // A single-segment path is a plain Phase 6 property edit on the target
   // object: no pre-inspect needed (the target id comes from the stack vars),
   // keeping the Phase 6 request shape unchanged (one set + one verify).
-  if (segments.length === 1) return { kind: 'property', id: currentId, name: first.name }
+  // EXCEPT a category-tracked display prefix (T13.0 fact 5): the engine
+  // SILENTLY rejects `Node/...` labels, so the RAW property name must be
+  // resolved by a live inspect first. Bare and `Members/`/`Constants/`-
+  // prefixed names are sent verbatim (T6.0 facts 2/4 — the pinned shape).
+  if (segments.length === 1) {
+    if (/^[^/]+\//.test(first.name) && !/^(Members|Constants)\//.test(first.name)) {
+      const props = await inspectObject(currentId)
+      if (props === null) return { error: 'target inspect timed out' }
+      const row = findPropRow(props, first.name)
+      if (row === undefined) return { error: `property "${first.name}" not found` }
+      return { kind: 'property', id: currentId, name: typeof row[0] === 'string' ? row[0] : first.name }
+    }
+    return { kind: 'property', id: currentId, name: first.name }
+  }
 
   // First segment: a property on the target object.
   const stepped = await stepProp(currentId, first.name)

@@ -172,6 +172,23 @@ describe('encode', () => {
     expect(decoder.decodeMessage(frame.subarray(4))).toEqual(['scene:inspect_object', 1, [id]])
   })
 
+  it('encodes unsigned-high bigint ids as two-complement UINT64 bits (T13.0 fact 6)', () => {
+    // RefCounted counters wrap past 2^63-1 (the t13 probe pinned
+    // 9223372064000312793); writeBigInt64LE would throw RangeError — the
+    // encoder must emit the unsigned two-complement bits the engine expects.
+    const high = 9223372064000312793n // > 2^63-1, < 2^64
+    const encoded = encoder.encodeVariant(high)
+    // The INT64 DECODER reads signed: the two-complement bits come back as
+    // the negative view — exactly what the engine sees for these ids (and
+    // what the response side normalizes back to the unsigned form, T5.0).
+    expect(decoder.decodeVariant(encoded)).toBe(high - (1n << 64n))
+    const frame = encoder.encodeMessage(['scene:inspect_object', 1, [high]])
+    expect(decoder.decodeMessage(frame.subarray(4))).toEqual(['scene:inspect_object', 1, [high - (1n << 64n)]])
+    // Negative bigints keep their signed bits (round-trip unchanged).
+    const negative = -7n
+    expect(decoder.decodeVariant(encoder.encodeVariant(negative))).toBe(negative)
+  })
+
   it('round-trips the math types the container rebuilds need (Phase 12)', () => {
     const cases: [unknown, Record<string, number>][] = [
       [new Vector2(1.5, -2.25), { x: 1.5, y: -2.25 }],

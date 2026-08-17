@@ -65,7 +65,9 @@ export class VariantEncoder {
       if (Number.isInteger(value) && (value > 2147483647 || value < -2147483648)) {
         // Out of int32 range: promote to a 64-bit int variant.
         off = this.writeUInt32(off, GDScriptTypes.INT | ENCODE_FLAG_64, buffer)
-        buffer.writeBigInt64LE(BigInt(value), off)
+        // Two's-complement UINT64 bits (T13.0 fact 6, same rule as bigint).
+        if (value < 0) buffer.writeBigInt64LE(BigInt(value), off)
+        else buffer.writeBigUInt64LE(BigInt(value), off)
         return off + 8
       }
       if (Number.isInteger(value)) {
@@ -79,7 +81,14 @@ export class VariantEncoder {
     }
     if (typeof value === 'bigint') {
       off = this.writeUInt32(off, GDScriptTypes.INT | ENCODE_FLAG_64, buffer)
-      buffer.writeBigInt64LE(value, off)
+      // Two's-complement UINT64 bits (T13.0 fact 6): object ids decoded from
+      // responses are UNSIGNED 64-bit and can exceed 2^63-1 (RefCounted
+      // counters wrap into the unsigned high range — the t13 probe pinned
+      // 9223372064000312793); writeBigInt64LE would throw RangeError there.
+      // Negative bigints keep their sign; both writes produce identical bits
+      // for values inside the signed range, so the normal path is unchanged.
+      if (value < 0n) buffer.writeBigInt64LE(value, off)
+      else buffer.writeBigUInt64LE(value, off)
       return off + 8
     }
     if (typeof value === 'boolean') {
