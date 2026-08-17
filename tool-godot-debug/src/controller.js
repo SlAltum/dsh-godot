@@ -1,0 +1,458 @@
+/**
+ * The Godot debugger protocol controller: the DSH side is the TCP server the
+ * game connects INTO (`--remote-debug tcp://127.0.0.1:<port>`). Owns frame
+ * assembly, variant decoding, message routing, command sending (threadId from
+ * `set_pid`), bounded output/error collection, and the abortable waiters the
+ * run pipeline (tool layer) is built on. Protocol facts pinned in
+ * `.context/t3/facts.md`.
+ * @module @deepseek-ai/dsh-tool-godot-debug/controller
+ */
+import { createServer } from 'node:net';
+import { FrameAssembler } from './frames.ts';
+import { VariantDecoder } from './variant-decoder.ts';
+import { VariantEncoder } from './variant-encoder.ts';
+import { GodotError } from './error.ts';
+/** A protocol wait that elapsed without the expected message; the run
+ *  pipeline treats stop/snapshot timeouts as "no more stops" rather than
+ *  infrastructure failures. */
+export class WaitTimeoutError extends Error {
+    constructor(label, timeoutMs) {
+        super(`controller: ${label} timed out after ${timeoutMs}ms`);
+        this.name = 'WaitTimeoutError';
+    }
+}
+/** The `params` element of a protocol message (the array at index 2). */
+function paramsOf(msg) {
+    const params = msg[2];
+    return Array.isArray(params) ? params : undefined;
+}
+/**
+ * The Godot debugger protocol controller: the DSH side is the TCP server the
+ * game connects INTO (`--remote-debug tcp://127.0.0.1:<port>`). Owns frame
+ * assembly, variant decoding, message routing, command sending (threadId from
+ * `set_pid`), bounded output/error collection, and the abortable waiters the
+ * run pipeline (tool layer) is built on. Protocol facts pinned in
+ * `.context/t3/facts.md`.
+ */
+export class DebugController {
+    options;
+    server;
+    socket;
+    assembler = new FrameAssembler();
+    decoder = new VariantDecoder();
+    encoder = new VariantEncoder();
+    pending = [];
+    received = [];
+    closeWaiters = [];
+    disposed = false;
+    socketClosed = false;
+    protocolError;
+    threadIdValue;
+    /** The paused thread id captured from the last `debug_enter`; commands sent
+     *  while paused must use it (T10.0 fact 3). */
+    pausedThreadIdValue;
+    outputLines = [];
+    errorMessages = [];
+    outputBytesValue = 0;
+    outputTruncatedValue = false;
+    outputOverflow = false;
+    constructor(options) {
+        this.options = options;
+    }
+    /** The bound port the game connects to (valid after {@link listen}). */
+    get port() {
+        const address = this.server?.address();
+        if (address === null || address === undefined || typeof address === 'string') {
+            throw new Error('controller: no bound port');
+        }
+        return address.port;
+    }
+    /** The game's thread id, captured from `set_pid` (needed for commands on Godot 4.2+). */
+    get threadId() {
+        return this.threadIdValue;
+    }
+    /** The paused thread id from the last `debug_enter` (undefined until a
+     *  stop). Commands sent while paused must use this id — a wrong id is
+     *  answered with silence (T10.0 fact 3). */
+    get pausedThreadId() {
+        return this.pausedThreadIdValue;
+    }
+    /** Collected game output lines (split per line, trailing NUL stripped). */
+    get output() {
+        return this.outputLines;
+    }
+    /** Collected structured engine error messages. */
+    get errors() {
+        return this.errorMessages;
+    }
+    /** Bytes of output/error content collected (before the cap). */
+    get outputBytes() {
+        return this.outputBytesValue;
+    }
+    /** True once retained output/error content hit `maxOutputBytes`. */
+    get outputTruncated() {
+        return this.outputTruncatedValue;
+    }
+    /**
+     * Bind the listening socket on loopback. The game connects to this port.
+     * @param port - the port to bind; 0 (default) picks an ephemeral port.
+     */
+    async listen(port = 0) {
+        if (this.server !== undefined)
+            return;
+        const server = createServer((socket) => {
+            this.accept(socket);
+        });
+        await new Promise((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(port, '127.0.0.1', () => {
+                server.off('error', reject);
+                resolve();
+            });
+        });
+        this.server = server;
+    }
+    /**
+     * Wait for `set_pid` and return the game's thread id. Also resolves
+     * immediately when the controller already captured it.
+     * @param timeoutMs - budget before the wait fails.
+     * @param signal - caller cancellation; aborts the wait.
+     * @returns the thread id (also exposed via {@link threadId}).
+     */
+    async waitForSetPid(timeoutMs, signal) {
+        await this.waitFor(msg => msg[0] === 'set_pid', timeoutMs, signal, 'set_pid');
+        const threadId = this.threadIdValue;
+        if (threadId === undefined)
+            throw new GodotError('controller: set_pid carried no thread id', 'GODOT_UNAVAILABLE');
+        return threadId;
+    }
+    /**
+     * Wait for the game to pause (`debug_enter`) and report why, plus the
+     * paused thread id (pinned T10.0: the message-level threadId equals
+     * params[3]; the controller switches subsequent `send`s to it).
+     * @param timeoutMs - budget before the wait fails.
+     * @param signal - caller cancellation.
+     * @returns whether this was a user breakpoint, the reason string, and the
+     * paused thread id.
+     */
+    async waitForStop(timeoutMs, signal) {
+        const msg = await this.waitFor(m => m[0] === 'debug_enter', timeoutMs, signal, 'debug_enter');
+        const params = paramsOf(msg);
+        const threadId = typeof msg[1] === 'number' ? msg[1] : 1;
+        this.pausedThreadIdValue = threadId;
+        return {
+            isUserBreakpoint: params?.[0] === true,
+            reason: typeof params?.[1] === 'string' ? params[1] : '',
+            threadId,
+        };
+    }
+    /**
+     * Send one command to the game (Godot 4.2+ frames carry the thread id).
+     * While a stop is active the PAUSED thread id is used (T10.0 fact 3: the
+     * threadId field selects the command's target thread — a wrong id is
+     * answered with silence); before the first stop the `set_pid` id is used.
+     * @param cmd - the protocol command name.
+     * @param params - the command's parameter array.
+     * @throws GodotError when the thread id is not known yet (set_pid must
+     * precede commands — T3.0 pinned the ordering).
+     */
+    send(cmd, params = []) {
+        const threadId = this.pausedThreadIdValue ?? this.threadIdValue;
+        if (this.socket === undefined || this.socket.destroyed) {
+            throw new GodotError(`controller: cannot send ${cmd}, game not connected`, 'GODOT_UNAVAILABLE');
+        }
+        if (threadId === undefined) {
+            throw new GodotError(`controller: cannot send ${cmd} before set_pid`, 'GODOT_UNAVAILABLE');
+        }
+        this.socket.write(this.encoder.encodeMessage([cmd, threadId, params]));
+    }
+    /**
+     * Wait for one complete stop snapshot: the stack dump and every
+     * `stack_frame_var` the game announces via `stack_frame_vars`. Returns the
+     * messages' `params` arrays (the dump's `[N, file, line, func, ...]` shape
+     * is pinned by T3.0).
+     * @param timeoutMs - budget for the whole snapshot.
+     * @param signal - caller cancellation.
+     * @returns the dump params and one params array per variable.
+     */
+    async waitForSnapshot(timeoutMs, signal) {
+        const dumpMsg = await this.waitFor(m => m[0] === 'stack_dump', timeoutMs, signal, 'stack_dump');
+        const dump = paramsOf(dumpMsg);
+        if (dump === undefined)
+            throw new GodotError('controller: stack_dump carried no params', 'GODOT_PARSE_ERROR');
+        const varsMsg = await this.waitFor(m => m[0] === 'stack_frame_vars', timeoutMs, signal, 'stack_frame_vars');
+        const varsHead = paramsOf(varsMsg);
+        const remaining = typeof varsHead?.[0] === 'number' ? varsHead[0] : 0;
+        const vars = [];
+        for (let i = 0; i < remaining; i++) {
+            const varMsg = await this.waitFor(m => m[0] === 'stack_frame_var', timeoutMs, signal, `stack_frame_var #${i}`);
+            const params = paramsOf(varMsg);
+            if (params === undefined)
+                throw new GodotError('controller: stack_frame_var carried no params', 'GODOT_PARSE_ERROR');
+            vars.push(params);
+        }
+        return { dump, vars };
+    }
+    /**
+     * Wait for any message matching a caller predicate (used by the inspect
+     * expansion, whose responses carry no request id — the predicate must
+     * compare the normalized response id with the requested one; pinned
+     * T5.0 facts).
+     * @param pred - the message predicate (params at index 2).
+     * @param timeoutMs - budget before the wait fails.
+     * @param signal - caller cancellation.
+     * @param label - the wait label for diagnostics.
+     * @returns the matching message.
+     */
+    async waitForMessage(pred, timeoutMs, signal, label = 'message') {
+        return this.waitFor(pred, timeoutMs, signal, label);
+    }
+    /**
+     * Wait for `debug_exit` (the game left the paused state after a continue).
+     * @param timeoutMs - budget before the wait fails.
+     * @param signal - caller cancellation.
+     */
+    async waitForDebugExit(timeoutMs, signal) {
+        await this.waitFor(m => m[0] === 'debug_exit', timeoutMs, signal, 'debug_exit');
+    }
+    /**
+     * Wait for the game's TCP connection to close (game exit or disconnect).
+     * @param timeoutMs - budget before the wait fails.
+     * @param signal - caller cancellation.
+     */
+    async waitForSocketClose(timeoutMs, signal) {
+        if (this.socketClosed)
+            return;
+        if (this.disposed) {
+            throw new GodotError('controller: socket close after dispose', 'GODOT_ABORTED');
+        }
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                this.closeWaiters.splice(this.closeWaiters.indexOf(done), 1);
+                signal?.removeEventListener('abort', onAbort);
+                reject(new WaitTimeoutError('socket close', timeoutMs));
+            }, timeoutMs);
+            const done = () => {
+                clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
+                resolve();
+            };
+            const onAbort = () => {
+                clearTimeout(timer);
+                this.closeWaiters.splice(this.closeWaiters.indexOf(done), 1);
+                reject(new GodotError('controller: socket close aborted', 'GODOT_ABORTED'));
+            };
+            if (signal !== undefined)
+                signal.addEventListener('abort', onAbort, { once: true });
+            this.closeWaiters.push(done);
+        });
+    }
+    /**
+     * The protocol-level failure that ended the connection, if any (malformed
+     * or oversized frame); the run pipeline surfaces it as `GODOT_PARSE_ERROR`.
+     */
+    get protocolFailure() {
+        return this.protocolError;
+    }
+    /**
+     * Tear the controller down: reject in-flight waiters, destroy the socket
+     * and close the server. Idempotent.
+     */
+    async dispose() {
+        if (this.disposed)
+            return;
+        this.disposed = true;
+        this.socket?.destroy();
+        this.socket = undefined;
+        for (const done of this.closeWaiters.splice(0)) {
+            done();
+        }
+        this.rejectAll(new GodotError('controller: disposed', 'GODOT_ABORTED'));
+        const server = this.server;
+        this.server = undefined;
+        if (server !== undefined) {
+            await new Promise((resolve) => {
+                server.close(() => {
+                    resolve();
+                });
+            });
+        }
+    }
+    accept(socket) {
+        if (this.socket !== undefined && !this.socket.destroyed) {
+            socket.destroy(); // one game per run
+            return;
+        }
+        this.socket = socket;
+        socket.on('data', (chunk) => {
+            this.onData(chunk);
+        });
+        socket.on('error', () => { });
+        socket.on('close', () => {
+            this.socketClosed = true;
+            this.socket = undefined;
+            for (const done of this.closeWaiters.splice(0))
+                done();
+            this.rejectAll(new GodotError('controller: game disconnected', 'GODOT_UNAVAILABLE'));
+        });
+    }
+    onData(chunk) {
+        if (this.disposed)
+            return;
+        let frames;
+        try {
+            frames = this.assembler.push(chunk);
+        }
+        catch (error) {
+            this.failProtocol(error);
+            return;
+        }
+        for (const payload of frames) {
+            if (payload.length > this.options.maxMessageBytes) {
+                this.failProtocol(new Error(`frame of ${payload.length} bytes exceeds maxMessageBytes ${this.options.maxMessageBytes}`));
+                return;
+            }
+            let msg;
+            try {
+                msg = this.decoder.decodeMessage(payload);
+            }
+            catch (error) {
+                this.failProtocol(error);
+                return;
+            }
+            this.route(msg);
+        }
+    }
+    failProtocol(error) {
+        this.protocolError = error instanceof Error ? error : new Error(String(error));
+        this.socket?.destroy();
+    }
+    route(msg) {
+        const cmd = msg[0];
+        if (cmd === 'set_pid' && this.threadIdValue === undefined && typeof msg[1] === 'number') {
+            this.threadIdValue = msg[1];
+        }
+        else if (cmd === 'output') {
+            this.collectOutput(paramsOf(msg));
+        }
+        else if (cmd === 'error') {
+            this.collectError(paramsOf(msg));
+        }
+        this.received.push(msg);
+        for (const entry of this.pending) {
+            if (entry.pred(msg)) {
+                clearTimeout(entry.timer);
+                entry.signalListener();
+                this.pending.splice(this.pending.indexOf(entry), 1);
+                this.received.splice(this.received.indexOf(msg), 1);
+                entry.resolve(msg);
+                return;
+            }
+        }
+    }
+    collectOutput(params) {
+        if (this.outputOverflow)
+            return;
+        const lines = params?.[0];
+        if (!Array.isArray(lines))
+            return;
+        for (const entry of lines) {
+            if (typeof entry !== 'string')
+                continue;
+            this.accumulate(entry);
+            for (const line of entry.split('\n')) {
+                const clean = line.replace(/\u0000+$/, '');
+                if (clean.length > 0)
+                    this.outputLines.push(clean);
+            }
+        }
+    }
+    collectError(params) {
+        if (this.outputOverflow)
+            return;
+        if (!Array.isArray(params) || typeof params[4] !== 'string')
+            return;
+        const stackCount = typeof params[10] === 'number' ? params[10] : 0;
+        const stack = [];
+        for (let i = 0; i < stackCount; i++) {
+            stack.push({
+                file: typeof params[11 + i * 3] === 'string' ? params[11 + i * 3] : '',
+                func: typeof params[12 + i * 3] === 'string' ? params[12 + i * 3] : '',
+                line: typeof params[13 + i * 3] === 'number' ? params[13 + i * 3] : 0,
+            });
+        }
+        const err = {
+            hr: typeof params[0] === 'number' ? params[0] : 0,
+            min: typeof params[1] === 'number' ? params[1] : 0,
+            sec: typeof params[2] === 'number' ? params[2] : 0,
+            msec: typeof params[3] === 'number' ? params[3] : 0,
+            file: typeof params[4] === 'string' ? params[4] : '',
+            func: typeof params[5] === 'string' ? params[5] : '',
+            line: typeof params[6] === 'number' ? params[6] : 0,
+            error: typeof params[7] === 'string' ? params[7] : '',
+            desc: typeof params[8] === 'string' ? params[8] : '',
+            warning: params[9] === true,
+            stack,
+        };
+        this.accumulate(`${err.file}:${err.line} ${err.error} ${err.desc}`);
+        this.errorMessages.push(err);
+    }
+    accumulate(text) {
+        if (this.outputOverflow)
+            return;
+        this.outputBytesValue += Buffer.byteLength(text, 'utf8');
+        if (this.outputBytesValue > this.options.maxOutputBytes) {
+            this.outputOverflow = true;
+            this.outputTruncatedValue = true;
+        }
+    }
+    waitFor(pred, timeoutMs, signal, label) {
+        if (this.disposed) {
+            return Promise.reject(new GodotError(`controller: ${label} after dispose`, 'GODOT_ABORTED'));
+        }
+        // Consume history first: messages that arrived before this waiter was
+        // registered still satisfy the predicate.
+        const idx = this.received.findIndex(pred);
+        if (idx !== -1) {
+            const msg = this.received[idx];
+            this.received.splice(idx, 1);
+            return Promise.resolve(msg);
+        }
+        return new Promise((resolve, reject) => {
+            const entry = {
+                pred,
+                resolve,
+                reject,
+                timer: setTimeout(() => {
+                    this.pending.splice(this.pending.indexOf(entry), 1);
+                    entry.signalListener();
+                    reject(new WaitTimeoutError(label, timeoutMs));
+                }, timeoutMs),
+                signalListener: () => { },
+            };
+            if (signal !== undefined) {
+                entry.signalListener = () => {
+                    signal.removeEventListener('abort', onAbort);
+                };
+                const onAbort = () => {
+                    clearTimeout(entry.timer);
+                    this.pending.splice(this.pending.indexOf(entry), 1);
+                    reject(new GodotError(`controller: ${label} aborted`, 'GODOT_ABORTED'));
+                };
+                if (signal.aborted) {
+                    onAbort();
+                    return;
+                }
+                signal.addEventListener('abort', onAbort, { once: true });
+            }
+            this.pending.push(entry);
+        });
+    }
+    rejectAll(error) {
+        for (const entry of this.pending.splice(0)) {
+            clearTimeout(entry.timer);
+            entry.signalListener();
+            entry.reject(error);
+        }
+    }
+}

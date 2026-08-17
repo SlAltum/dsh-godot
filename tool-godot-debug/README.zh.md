@@ -22,7 +22,7 @@ export async function mount(ctx: Context): Promise<void> {
 
 Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定预选空闲端口，spawn `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`，游戏进程作为 TCP 客户端连入。每帧为 `[u32 LE 长度][variant 编码数组]`，数组为 `[command, threadId, params]`（Godot 4.2+）。每次停顿工具请求堆栈转储与帧变量、快照（有界深度）并继续。协议事实已 pin 在 `.context/t3/facts.md`（Godot 4.7 实测）。
 
-**attach 模式**下工具只绑定端口并等待：用户自行启动游戏（`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`），工具在 `set_pid` 后动态发送断点（attach 的唯一断点来源——CLI `--breakpoints` 仅 launch 可用），可选 `pauseOnAttach` 发 `break` 立即暂停一次，执行同样的停顿循环，然后 detach：best-effort 断点移除 + continue + 断开。游戏绝不被杀死并继续运行；报告携带 `detached: true`，无 `exit` 事实。已 pin 的 attach 事实（`.context/t4/facts.md`）：连接时已暂停的游戏会补发 `debug_enter`；`break` 暂停的 reason 为空字符串、`isUserBreakpoint=true`、引擎栈为空；detach 从不把游戏留在暂停态（自动恢复），无调试器时残留断点被忽略；**Godot 不重试失败的连接**——游戏必须在工具调用之后启动（或端口已先处于监听状态）。
+**attach 模式**下工具只绑定端口并等待：用户自行启动游戏（`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`），工具在 `set_pid` 后动态发送断点（attach 的唯一断点来源——CLI `--breakpoints` 仅 launch 可用），可选 `pauseOnAttach` 发 `break` 立即暂停一次，执行同样的停顿循环，然后 detach：best-effort 断点移除 + continue + 断开。游戏绝不被杀死并继续运行；报告携带 `detached: true`，无 `exit` 事实。已 pin 的 attach 事实（`.context/t4/facts.md`）：连接时已暂停的游戏会补发 `debug_enter`；`break` 暂停的 reason 为空字符串、`isUserBreakpoint=true`、引擎栈为空；detach 从不把游戏留在暂停态（自动恢复），无调试器时残留断点被忽略；**Godot 不重试失败的连接**——游戏必须在工具调用之后启动（或端口已先处于监听状态）。编辑器调试器共存已 pin（`.context/t11/facts.md`）：空闲的 Godot 编辑器**不**绑定任何调试端口——外部启动的游戏以 `--remote-debug` 指向编辑器默认端口（6007）时会打印一次 `Remote Debugger: Unable to connect` 并照常运行——因此编辑器运行时 attach 完全不受影响（完整停顿循环 + detach，编辑器无感知地继续运行）。一个游戏**只有一个调试目标**：传入多个 `--remote-debug` 参数时**最后一个生效**；已在拨号其他目标的游戏永远不会连入 attach 端口——运行以上述启动顺序指引超时。编辑器自己启动（F5）的游戏由编辑器自身的服务器调试，无法 attach。
 
 ## Settings
 
@@ -140,5 +140,6 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **attach 需要显式端口与正确的启动顺序**——调用方必须预知端口，且游戏必须在工具调用之后启动：Godot 不重试失败的调试器连接（已 pin，`.context/t4/facts.md`）。`pauseOnAttach` 停顿提供「游戏此刻在做什么」探测。
 - **attach 命中依赖游戏再次执行到目标行**——动态断点不回退已执行代码；可配合 `pauseOnAttach` 或瞄准会再次运行的代码。
 - **attach 假设项目与运行中的游戏一致**——调试协议没有工作区握手；`path` 错误会产生永不命中的断点（运行报告 `stops: []`）。
+- **一个游戏一个调试器——attach 与 Godot 编辑器调试器不能共享游戏**——游戏启动时只拨一个调试服务器（`--remote-debug`；传多个参数时最后一个生效）。空闲的 Godot 编辑器不绑定任何调试端口，因此编辑器运行时 attach 不受影响（已 pin，`.context/t11/facts.md`）；指向编辑器默认端口（6007）的游戏会打印一次 `Remote Debugger: Unable to connect` 并照常运行。只有编辑器自己启动（F5）的游戏才由它调试，而这些游戏无法 attach。attach 到被其他服务器持有的端口会快速失败并返回 `GODOT_UNAVAILABLE`（`could not bind port …: EADDRINUSE`）。
 - **多线程停顿延后**——launch/attach 覆盖脚本化逐停顿快照；原始协议事实（`.context/t3/facts.md`）为这些路径保留依据。
 - **harness 崩溃可能遗留孤儿 godot 进程**——工具在 teardown 时终止进程树；harness 骤然死亡仍可能遗留自起游戏进程。attach 模式下骤然死亡只是 detach：游戏自动恢复运行（断开从不使其保持暂停，已 pin）。
