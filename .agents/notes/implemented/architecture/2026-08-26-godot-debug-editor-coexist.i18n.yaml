@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-26-godot-debug-editor-coexist.md
+2026-08-26-godot-debug-editor-coexist.md: a350a2cb2f4ec900c96abd83e8ef39e308ef0ac8
+2026-08-26-godot-debug-editor-coexist.zh.md: 2d388859918d79873e81c0d1b20fc33265240608
