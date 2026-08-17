@@ -1,19 +1,30 @@
 /**
- * The Godot variant encoder, trimmed to what the debug tool sends: the
+ * The Godot variant encoder: primitives, containers and — since Phase 12 —
+ * the math types the decoder produces, so decoded containers can be rebuilt
+ * after an edit (the whole-container write needs a symmetric codec). The
  * command messages are arrays of primitives (`breakpoint [path, line, bool]`,
- * `get_stack_dump []`), so only numbers, bigints, booleans, strings, arrays,
- * dictionaries and null are encodable. Two source-plugin bugs are fixed here
- * (plan D12): strings use byte-accurate lengths (`Buffer.byteLength`, the
- * plugin's UTF-16 `str.length` truncated non-ASCII payloads and desynced the
- * frame), and `undefined` throws instead of emitting a zero-byte variant that
- * disagrees with its size precomputation.
+ * `get_stack_dump []`); the math-type branches exist for `set_object_property`
+ * values (T14.2). Two source-plugin bugs are fixed here (plan D12): strings
+ * use byte-accurate lengths (`Buffer.byteLength`, the plugin's UTF-16
+ * `str.length` truncated non-ASCII payloads and desynced the frame), and
+ * `undefined` throws instead of emitting a zero-byte variant that disagrees
+ * with its size precomputation.
  * @module @deepseek-ai/dsh-tool-godot-debug/variant-encoder
  */
 
-import { GDScriptTypes, ENCODE_FLAG_64, StringName } from './variants.ts'
+import {
+  GDScriptTypes, ENCODE_FLAG_64, StringName, Vector2, Vector2i, Vector3, Vector3i,
+  Vector4, Vector4i, Rect2, Rect2i, Basis, AABB, Transform3D, Transform2D, Plane,
+  Quat, Projection, Color,
+} from './variants.ts'
 
 /** A value the encoder can serialize. */
-export type Encodable = number | bigint | boolean | string | null | Encodable[] | Map<unknown, unknown> | StringName
+export type Encodable =
+  | number | bigint | boolean | string | null
+  | StringName | Vector2 | Vector2i | Vector3 | Vector3i | Vector4 | Vector4i
+  | Rect2 | Rect2i | Basis | AABB | Transform3D | Transform2D | Plane | Quat
+  | Projection | Color
+  | Encodable[] | Map<unknown, unknown>
 
 /** Encodes command values into variant frames (primitives and arrays only). */
 
@@ -104,10 +115,132 @@ export class VariantEncoder {
       off = this.writeUInt32(off, GDScriptTypes.STRING_NAME, buffer)
       return this.encodeString(value.value, buffer, off)
     }
+    // Math types (Phase 12): encoded float32 (matching the decoder's default
+    // width and the source plugin's writer), integers for the *i variants.
+    if (value instanceof Vector2i) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR2I, buffer)
+      return this.encodeInt2(value, buffer, off)
+    }
+    if (value instanceof Vector3i) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR3I, buffer)
+      return this.encodeInt3(value, buffer, off)
+    }
+    if (value instanceof Vector4i) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR4I, buffer)
+      return this.encodeInt4(value, buffer, off)
+    }
+    if (value instanceof Rect2i) {
+      off = this.writeUInt32(off, GDScriptTypes.RECT2I, buffer)
+      return this.encodeInt2(value.size, buffer, this.encodeInt2(value.position, buffer, off))
+    }
+    if (value instanceof Vector2) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR2, buffer)
+      return this.encodeVec2(value, buffer, off)
+    }
+    if (value instanceof Vector3) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR3, buffer)
+      return this.encodeVec3(value, buffer, off)
+    }
+    if (value instanceof Vector4) {
+      off = this.writeUInt32(off, GDScriptTypes.VECTOR4, buffer)
+      return this.encodeVec4(value, buffer, off)
+    }
+    if (value instanceof Rect2) {
+      off = this.writeUInt32(off, GDScriptTypes.RECT2, buffer)
+      return this.encodeVec2(value.size, buffer, this.encodeVec2(value.position, buffer, off))
+    }
+    if (value instanceof Basis) {
+      off = this.writeUInt32(off, GDScriptTypes.BASIS, buffer)
+      return this.encodeVec3(value.z, buffer, this.encodeVec3(value.y, buffer, this.encodeVec3(value.x, buffer, off)))
+    }
+    if (value instanceof AABB) {
+      off = this.writeUInt32(off, GDScriptTypes.AABB, buffer)
+      return this.encodeVec3(value.size, buffer, this.encodeVec3(value.position, buffer, off))
+    }
+    if (value instanceof Transform3D) {
+      off = this.writeUInt32(off, GDScriptTypes.TRANSFORM3D, buffer)
+      return this.encodeVec3(
+        value.origin, buffer,
+        this.encodeVec3(value.basis.z, buffer, this.encodeVec3(value.basis.y, buffer, this.encodeVec3(value.basis.x, buffer, off))),
+      )
+    }
+    if (value instanceof Transform2D) {
+      off = this.writeUInt32(off, GDScriptTypes.TRANSFORM2D, buffer)
+      return this.encodeVec2(value.y, buffer, this.encodeVec2(value.x, buffer, this.encodeVec2(value.origin, buffer, off)))
+    }
+    if (value instanceof Plane) {
+      off = this.writeUInt32(off, GDScriptTypes.PLANE, buffer)
+      return this.encodeF32(
+        value.d, buffer,
+        this.encodeF32(value.z, buffer, this.encodeF32(value.y, buffer, this.encodeF32(value.x, buffer, off))),
+      )
+    }
+    if (value instanceof Quat) {
+      off = this.writeUInt32(off, GDScriptTypes.QUATERNION, buffer)
+      return this.encodeF32(
+        value.w, buffer,
+        this.encodeF32(value.z, buffer, this.encodeF32(value.y, buffer, this.encodeF32(value.x, buffer, off))),
+      )
+    }
+    if (value instanceof Projection) {
+      off = this.writeUInt32(off, GDScriptTypes.PROJECTION, buffer)
+      return this.encodeVec4(
+        value.w, buffer,
+        this.encodeVec4(value.z, buffer, this.encodeVec4(value.y, buffer, this.encodeVec4(value.x, buffer, off))),
+      )
+    }
+    if (value instanceof Color) {
+      off = this.writeUInt32(off, GDScriptTypes.COLOR, buffer)
+      return this.encodeF32(
+        value.a, buffer,
+        this.encodeF32(value.b, buffer, this.encodeF32(value.g, buffer, this.encodeF32(value.r, buffer, off))),
+      )
+    }
     if (value === undefined) {
       throw new Error('variant-encoder: cannot encode undefined (would emit a size-mismatched frame)')
     }
     throw new Error(`variant-encoder: unsupported value type ${typeof value}`)
+  }
+
+  private encodeInt2(value: Vector2i, buffer: Buffer, offset: number): number {
+    buffer.writeInt32LE(value.x, offset)
+    buffer.writeInt32LE(value.y, offset + 4)
+    return offset + 8
+  }
+
+  private encodeInt3(value: Vector3i, buffer: Buffer, offset: number): number {
+    buffer.writeInt32LE(value.x, offset)
+    buffer.writeInt32LE(value.y, offset + 4)
+    buffer.writeInt32LE(value.z, offset + 8)
+    return offset + 12
+  }
+
+  private encodeInt4(value: Vector4i, buffer: Buffer, offset: number): number {
+    buffer.writeInt32LE(value.x, offset)
+    buffer.writeInt32LE(value.y, offset + 4)
+    buffer.writeInt32LE(value.z, offset + 8)
+    buffer.writeInt32LE(value.w, offset + 12)
+    return offset + 16
+  }
+
+  private encodeF32(v: number, buffer: Buffer, offset: number): number {
+    buffer.writeFloatLE(v, offset)
+    return offset + 4
+  }
+
+  private encodeVec2(value: Vector2, buffer: Buffer, offset: number): number {
+    return this.encodeF32(value.y, buffer, this.encodeF32(value.x, buffer, offset))
+  }
+
+  private encodeVec3(value: Vector3, buffer: Buffer, offset: number): number {
+    return this.encodeF32(value.z, buffer, this.encodeF32(value.y, buffer, this.encodeF32(value.x, buffer, offset)))
+  }
+
+  private encodeVec4(value: Vector4, buffer: Buffer, offset: number): number {
+    return this.encodeF32(
+      value.w, buffer,
+      this.encodeF32(value.z, buffer, this.encodeF32(value.y, buffer, this.encodeF32(value.x, buffer, offset))),
+    )
   }
 
   private encodeString(s: string, buffer: Buffer, offset: number): number {
@@ -149,6 +282,16 @@ export class VariantEncoder {
       return size
     }
     if (value instanceof StringName) return 4 + this.sizeString(value.value)
+    // Math types (Phase 12): type word + flat components (int32/float32).
+    if (value instanceof Vector2i || value instanceof Vector2) return 12
+    if (value instanceof Vector3i || value instanceof Vector3) return 16
+    if (value instanceof Vector4i || value instanceof Vector4) return 20
+    if (value instanceof Rect2i || value instanceof Rect2) return 20
+    if (value instanceof Plane || value instanceof Quat || value instanceof Color) return 20
+    if (value instanceof AABB || value instanceof Transform2D) return 28
+    if (value instanceof Basis) return 40
+    if (value instanceof Transform3D) return 52
+    if (value instanceof Projection) return 68
     if (value === undefined) {
       throw new Error('variant-encoder: cannot encode undefined (would emit a size-mismatched frame)')
     }

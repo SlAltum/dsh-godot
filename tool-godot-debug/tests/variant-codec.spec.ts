@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { VariantDecoder } from '../src/variant-decoder.ts'
 import { VariantEncoder } from '../src/variant-encoder.ts'
-import { ObjectId, StringName, Vector2 } from '../src/variants.ts'
+import { ObjectId, StringName, Vector2, Vector2i, Vector3, Vector3i, Vector4, Vector4i, Color } from '../src/variants.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bin = readFileSync(join(here, 'fixtures', 't3-breakpoints.bin'))
@@ -170,6 +170,38 @@ describe('encode', () => {
     // (regression: sizeVariant sized bigints as 8 bytes, the write overflowed).
     const frame = encoder.encodeMessage(['scene:inspect_object', 1, [id]])
     expect(decoder.decodeMessage(frame.subarray(4))).toEqual(['scene:inspect_object', 1, [id]])
+  })
+
+  it('round-trips the math types the container rebuilds need (Phase 12)', () => {
+    const cases: [unknown, Record<string, number>][] = [
+      [new Vector2(1.5, -2.25), { x: 1.5, y: -2.25 }],
+      [new Vector2i(1, 2), { x: 1, y: 2 }],
+      [new Vector3(1, 2, 3), { x: 1, y: 2, z: 3 }],
+      [new Vector3i(1, 2, 3), { x: 1, y: 2, z: 3 }],
+      [new Vector4(1, 2, 3, 4), { x: 1, y: 2, z: 3, w: 4 }],
+      [new Vector4i(1, 2, 3, 4), { x: 1, y: 2, z: 3, w: 4 }],
+      [new Color(0.1, 0.2, 0.3, 1), { r: 0.1, g: 0.2, b: 0.3, a: 1 }],
+    ]
+    for (const [value, fields] of cases) {
+      const encoded = encoder.encodeVariant(value)
+      const decoded = decoder.decodeVariant(encoded) as unknown as Record<string, number>
+      expect(decoded.constructor.name).toBe((value as object).constructor.name)
+      for (const [key, expected] of Object.entries(fields)) {
+        expect(decoded[key]).toBeCloseTo(expected, 4) // float32 wire
+      }
+    }
+  })
+
+  it('round-trips a container holding math types (Phase 12 rebuilds)', () => {
+    const container: unknown[] = [1, new Vector2(9, 9), new StringName('named'), [2, 3]]
+    const encoded = encoder.encodeVariant(container)
+    const decoded = decoder.decodeVariant(encoded) as unknown[]
+    expect(decoded).toHaveLength(4)
+    expect(decoded[0]).toBe(1)
+    expect((decoded[1] as Vector2).x).toBeCloseTo(9, 4)
+    expect((decoded[1] as Vector2).y).toBeCloseTo(9, 4)
+    expect(decoded[2]).toEqual(new StringName('named'))
+    expect(decoded[3]).toEqual([2, 3])
   })
 })
 

@@ -13,9 +13,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DebugController } from '../src/controller.ts'
-import { applyEdits, findEditTarget, findPropValue, parseEditValue, valueEquals } from '../src/edit.ts'
+import {
+  applyEdits, findEditTarget, findMapEntry, findPropValue, parseEditPath, parseEditValue,
+  rebuildContainer, rebuildReason, valueEquals,
+} from '../src/edit.ts'
 import { expandObjects } from '../src/inspect.ts'
-import { ObjectId, RID } from '../src/variants.ts'
+import { ObjectId, RID, RawObject, StringName, Vector2, Vector3, NodePath } from '../src/variants.ts'
 import type { DecodedVariant } from '../src/variant-decoder.ts'
 import { FakeGame } from './fixtures/fake-game.ts'
 
@@ -24,9 +27,14 @@ const bin = readFileSync(join(here, 'fixtures', 't6-edit.bin'))
 const manifest = JSON.parse(readFileSync(join(here, 'fixtures', 't6-edit.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+const nestedBin = readFileSync(join(here, 'fixtures', 't14-edit.bin'))
+const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't14-edit.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 const SELF_ID = 27028096474n
 const PLAYER_ID = 27061650910n
+const T14_SELF_ID = 26994542042n
 
 /** The t6 stop's object vars (self/player ObjectId, r_id RID, dead null). */
 function objectVars(): DecodedVariant[][] {
@@ -121,6 +129,224 @@ describe('findPropValue', () => {
     expect(findPropValue(props, 'Node/path')).toBe(null)
     expect(findPropValue(props, 'missing')).toBeUndefined()
     expect(findPropValue(undefined, 'counter')).toBeUndefined()
+  })
+})
+
+describe('parseEditPath', () => {
+  it('parses plain property names and Members/-prefixed names (Phase 6 compatible)', () => {
+    expect(parseEditPath('health')).toEqual([{ kind: 'prop', name: 'health' }])
+    expect(parseEditPath('Members/arr')).toEqual([{ kind: 'prop', name: 'Members/arr' }])
+    expect(parseEditPath('player')).toEqual([{ kind: 'prop', name: 'player' }])
+  })
+
+  it('parses container member and nested paths', () => {
+    expect(parseEditPath('arr[0]')).toEqual([{ kind: 'prop', name: 'arr' }, { kind: 'index', index: 0 }])
+    expect(parseEditPath('arr[0][1]')).toEqual([{ kind: 'prop', name: 'arr' }, { kind: 'index', index: 0 }, { kind: 'index', index: 1 }])
+    expect(parseEditPath('dict["hp"]')).toEqual([{ kind: 'prop', name: 'dict' }, { kind: 'key', key: 'hp' }])
+    expect(parseEditPath('arr[0].x')).toEqual([{ kind: 'prop', name: 'arr' }, { kind: 'index', index: 0 }, { kind: 'prop', name: 'x' }])
+    expect(parseEditPath('dict["nested"]["k"]')).toEqual([
+      { kind: 'prop', name: 'dict' }, { kind: 'key', key: 'nested' }, { kind: 'key', key: 'k' },
+    ])
+    expect(parseEditPath('a[1].b[2].c["d"]')).toEqual([
+      { kind: 'prop', name: 'a' }, { kind: 'index', index: 1 }, { kind: 'prop', name: 'b' },
+      { kind: 'index', index: 2 }, { kind: 'prop', name: 'c' }, { kind: 'key', key: 'd' },
+    ])
+  })
+
+  it('unescapes quoted keys', () => {
+    expect(parseEditPath('dict["a\\"b"]')).toEqual([{ kind: 'prop', name: 'dict' }, { kind: 'key', key: 'a"b' }])
+    expect(parseEditPath('dict["a\\\\b"]')).toEqual([{ kind: 'prop', name: 'dict' }, { kind: 'key', key: 'a\\b' }])
+  })
+
+  it('rejects malformed paths', () => {
+    expect(parseEditPath('arr[')).toBeNull()
+    expect(parseEditPath('arr[]')).toBeNull()
+    expect(parseEditPath('arr[0')).toBeNull()
+    expect(parseEditPath('arr["unclosed')).toBeNull()
+    expect(parseEditPath('1arr')).toBeNull()
+    expect(parseEditPath('arr[-1]')).toBeNull() // negative indexes are not a path form
+    expect(parseEditPath('arr[0]x')).toBeNull()
+    expect(parseEditPath('')).toBeNull()
+  })
+})
+
+describe('findMapEntry', () => {
+  it('matches string, StringName and numeric keys by display form', () => {
+    const map = new Map([
+      ['hp', 100],
+      [new StringName('named'), 'v'],
+      [5, 'five'],
+    ])
+    expect(findMapEntry(map, 'hp')).toEqual({ key: 'hp', value: 100 })
+    expect(findMapEntry(map, 'named')).toEqual({ key: new StringName('named'), value: 'v' })
+    expect(findMapEntry(map, '5')).toEqual({ key: 5, value: 'five' })
+    expect(findMapEntry(map, 'missing')).toBeUndefined()
+  })
+})
+
+describe('rebuildReason', () => {
+  it('accepts primitives, containers, math types and StringName', () => {
+    expect(rebuildReason(42)).toBeNull()
+    expect(rebuildReason('x')).toBeNull()
+    expect(rebuildReason(null)).toBeNull()
+    expect(rebuildReason(true)).toBeNull()
+    expect(rebuildReason(new StringName('named'))).toBeNull()
+    expect(rebuildReason(new Vector2(1, 2))).toBeNull()
+    expect(rebuildReason(new Vector3(1, 2, 3))).toBeNull()
+    expect(rebuildReason([1, 'x', null, [2, 3]])).toBeNull()
+    expect(rebuildReason(new Map([['k', 1]]))).toBeNull()
+    expect(rebuildReason([new Vector2(1, 2)])).toBeNull()
+    expect(rebuildReason([1, 2, 3])).toBeNull() // packed arrays decode as plain arrays
+  })
+
+  it('rejects object references, raw objects and other non-rebuildable values', () => {
+    expect(rebuildReason(new ObjectId(42n))).toBe('object references')
+    expect(rebuildReason([new ObjectId(42n)])).toBe('object references')
+    const raw = new RawObject('Node')
+    expect(rebuildReason(raw)).toBe('object references')
+    expect(rebuildReason(new NodePath(['a'], [], false))).toContain('non-rebuildable')
+    expect(rebuildReason({ __type__: 'Callable' })).toContain('non-rebuildable')
+  })
+})
+
+describe('rebuildContainer', () => {
+  it('rebuilds a nested member through arrays and maps without mutating the original', () => {
+    const original = [1, 2.5, 'x', null, [10, 20]]
+    const rebuilt = rebuildContainer(original, [
+      { kind: 'index', index: 4 },
+      { kind: 'index', index: 0 },
+    ], 30)
+    expect(rebuilt).toEqual([1, 2.5, 'x', null, [30, 20]])
+    expect(original).toEqual([1, 2.5, 'x', null, [10, 20]]) // original untouched
+  })
+
+  it('rebuilds a dict member and preserves StringName keys', () => {
+    const original = new Map<string | StringName, unknown>([
+      ['hp', 100],
+      [new StringName('named'), 'v'],
+    ])
+    const rebuilt = rebuildContainer(original, [{ kind: 'key', key: 'hp' }], 50) as Map<unknown, unknown>
+    expect(rebuilt.get('hp')).toBe(50)
+    expect(findMapEntry(rebuilt, 'named')?.value).toBe('v') // StringName key matched by display form
+    expect(original.get('hp')).toBe(100) // original untouched
+  })
+
+  it('grows an array when the last index is past the end (length follows the write)', () => {
+    const rebuilt = rebuildContainer([1, 2], [{ kind: 'index', index: 2 }], 3)
+    expect(rebuilt).toEqual([1, 2, 3])
+  })
+})
+
+describe('valueEquals', () => {
+  it('treats StringName properties as equal to the requested plain string (T14.0 fact 3)', () => {
+    expect(valueEquals(new StringName('P2'), 'P2')).toBe(true)
+    expect(valueEquals(new StringName('P2'), 'P3')).toBe(false)
+    expect(valueEquals(new StringName('P2'), 2)).toBe(false)
+  })
+})
+
+describe('applyEdits nested paths (Phase 12)', () => {
+  let controller: DebugController
+  let game: FakeGame
+
+  beforeEach(() => {
+    controller = new DebugController({ maxMessageBytes: 16_000_000, maxOutputBytes: 1_000_000 })
+    game = new FakeGame(nestedBin, nestedManifest.frames)
+  })
+
+  afterEach(async () => {
+    await game.dispose()
+    await controller.dispose()
+  })
+
+  /** Connect the fake game and wait for set_pid (shared with the t6 block). */
+  async function connectNestedGame(): Promise<void> {
+    await controller.listen(0)
+    await game.connect(controller.port)
+    await controller.waitForSetPid(5_001) // distinct wait: same behavior
+  }
+
+  /** The t14 stop's object var (self only — the target resolution needs it). */
+  function t14Vars(): DecodedVariant[][] {
+    return [['self', 1, 24, new ObjectId(T14_SELF_ID), 'Node']]
+  }
+
+  it('applies member edits (whole-container rebuild) and nested-object property edits', async () => {
+    await connectNestedGame()
+    // Prime the fixture's expansion phase (self + children[0] + children[1] +
+    // player — the first inspect request per id), like the product loop does.
+    await expandObjects(t14Vars(), controller, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 2,
+      render: { maxDepth: 3, maxVarsPerScope: 200, maxValueLength: 200 },
+      idleTimeoutMs: 2_000,
+      budgetMs: 10_000,
+      signal: new AbortController().signal,
+    })
+    const result = await applyEdits(
+      [
+        { target: 'self', property: 'arr[0]', value: '99', type: 'int' },
+        { target: 'self', property: 'dict["hp"]', value: '50', type: 'int' },
+        { target: 'self', property: 'arr[4][0]', value: '30', type: 'int' },
+        { target: 'self', property: 'player.name', value: 'P2', type: 'string' },
+      ],
+      t14Vars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 20_000, signal: new AbortController().signal },
+    )
+    expect(result.truncated).toBe(false)
+    expect(result.results.map(r => r.ok)).toEqual([true, true, true, true])
+    expect(result.results[0]).toEqual({ target: 'self', property: 'arr[0]', requested: 99, type: 'int', ok: true })
+  })
+
+  it('fails a member edit whose container holds object references (gate)', async () => {
+    await connectNestedGame()
+    const result = await applyEdits(
+      [{ target: 'self', property: 'children[0]', value: '5', type: 'int' }],
+      t14Vars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 20_000, signal: new AbortController().signal },
+    )
+    expect(result.results[0]!.ok).toBe(false)
+    expect(result.results[0]!.detail).toContain('object references')
+    expect(result.truncated).toBe(true)
+  })
+
+  it('fails a path that descends into a primitive member with a readable detail', async () => {
+    await connectNestedGame()
+    const result = await applyEdits(
+      [{ target: 'self', property: 'arr[0][1]', value: '5', type: 'int' }],
+      t14Vars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 20_000, signal: new AbortController().signal },
+    )
+    expect(result.results[0]!.ok).toBe(false)
+    expect(result.results[0]!.detail).toContain('cannot descend')
+  })
+
+  it('fails an out-of-range index with a readable detail', async () => {
+    await connectNestedGame()
+    const result = await applyEdits(
+      [{ target: 'self', property: 'arr[9]', value: '5', type: 'int' }],
+      t14Vars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 20_000, signal: new AbortController().signal },
+    )
+    expect(result.results[0]!.ok).toBe(false)
+    expect(result.results[0]!.detail).toContain('out of range')
+  })
+
+  it('fails a missing dict key with a readable detail', async () => {
+    await connectNestedGame()
+    const result = await applyEdits(
+      [{ target: 'self', property: 'dict["ghost"]', value: '5', type: 'int' }],
+      t14Vars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 20_000, signal: new AbortController().signal },
+    )
+    expect(result.results[0]!.ok).toBe(false)
+    expect(result.results[0]!.detail).toContain('not found')
   })
 })
 

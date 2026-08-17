@@ -61,6 +61,15 @@ const workerBin = readFileSync(join(here, 'fixtures', 't10-worker.bin'))
 const workerManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't10-worker.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 12 nested-edit recording: expansion (self, children[0],
+// children[1], player), then four nested edits — two whole-container member
+// rebuilds (arr[0], dict["hp"]), one nested-member rebuild (arr[4][0]) and
+// one nested-object property edit (player.name) — each with path-walk and
+// verify re-inspects (per-id request sequence).
+const nestedEditBin = readFileSync(join(here, 'fixtures', 't14-edit.bin'))
+const nestedEditManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't14-edit.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -446,6 +455,64 @@ describe('runDebug expansion', () => {
     await game.dispose()
     expect(result.detached).toBe(true)
     expect(result.expandedObjects).toBe(2)
+  })
+})
+
+/** The Phase 12 nested-edit path: whole-container member rebuilds + a
+ *  nested-object property edit. The fixture's expansion recurses to depth 2
+ *  (self, children[0], children[1], player), and no scene tree is requested. */
+describe('runDebug nested edits', () => {
+  function nestedOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
+    return {
+      ...baseOptions({ subprocess: new FakeSubprocess() }),
+      edits: [
+        { target: 'self', property: 'arr[0]', value: '99', type: 'int' },
+        { target: 'self', property: 'dict["hp"]', value: '50', type: 'int' },
+        { target: 'self', property: 'arr[4][0]', value: '30', type: 'int' },
+        { target: 'self', property: 'player.name', value: 'P2', type: 'string' },
+      ],
+      maxExpandDepth: 2,
+      maxTreeNodes: 0,
+      maxStops: 1,
+      ...overrides,
+    }
+  }
+
+  it('applies nested member edits and nested-object property edits, all verified', async () => {
+    const game = new FakeGame(nestedEditBin, nestedEditManifest.frames)
+    const options = nestedOptions()
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.edits).not.toBeNull()
+    expect(result.editsApplied).toBe(4)
+    expect(result.editsTruncated).toBe(false)
+    expect(result.edits!.stopIndex).toBe(0)
+    expect(result.edits!.results.map(r => r.ok)).toEqual([true, true, true, true])
+    // Expansion ran on the same stop before the edits (fixture order):
+    // self (top level, with children[0]/children[1] nested) + player (a
+    // top-level variable itself, so the NESTED self.player is deduplicated
+    // away — T8.0 fact 2: top level wins).
+    expect(result.expandedObjects).toBe(4)
+    expect(result.expansion!.entries[0]!.children!.map(c => c.name)).toEqual(['children[0]', 'children[1]'])
+    expect(result.expansion!.entries[1]!.name).toBe('player')
+  })
+
+  it('flags an edit whose container holds object references (gate)', async () => {
+    const game = new FakeGame(nestedEditBin, nestedEditManifest.frames)
+    const options = nestedOptions({
+      edits: [{ target: 'self', property: 'children[0]', value: '5', type: 'int' }],
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.editsApplied).toBe(0)
+    expect(result.editsTruncated).toBe(true)
+    expect(result.edits!.results[0]!.detail).toContain('object references')
   })
 })
 

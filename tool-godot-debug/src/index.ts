@@ -274,8 +274,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'expanded recursively, bounded by config maxExpandDepth, with location-path names like arr[0] or dict["k"]). '
           + 'Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give '
           + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
-          + 'optional), value as a string, and type int|float|string|bool (default string). Only object properties are editable — '
-          + 'scalar variables are not. Each edit reports ok/failed. '
+          + 'optional — or a NESTED PATH like arr[0], dict["k"], arr[0].x, arr[0][1]: container members are written by rebuilding '
+          + 'the whole container and fail explicitly when the container holds object references), value as a string, and type '
+          + 'int|float|string|bool (default string). Only object properties and container members are editable — scalar variables '
+          + 'are not. Each edit reports ok/failed. '
           + 'The scene tree (current node hierarchy, "scene tree" block under each stop) is snapshotted on every stop that has a '
           + 'stack frame; node ids are usable for future inspect linkage. '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
@@ -290,8 +292,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
             + 'bounded by config maxExpandedObjects/maxExpandedProps; nested objects inside property values are expanded '
             + 'recursively up to config maxExpandDepth, deduplicated across levels), applies variable edits on the first stop while paused '
-            + '(edits: target = a top-level object variable name from the expansion, property = its property name, value as a '
-            + 'string, type int|float|string|bool, default string; only object properties are editable, each edit is verified '
+            + '(edits: target = a top-level object variable name from the expansion, property = its property name or a NESTED PATH '
+            + '(arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent '
+            + 'semantics; containers holding object references fail explicitly), value as a '
+            + 'string, type int|float|string|bool, default string; only object properties and container members are editable, each edit is verified '
             + 'against the engine and reports ok/failed), snapshots the scene tree on every stop that has a stack frame '
             + '(bounded by config maxTreeNodes), auto-continues up to maxStops, then reports the stops, the game output, '
             + 'and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project imported once. '
@@ -334,13 +338,13 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             edits: {
               type: 'array',
-              description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (e.g. self, player) from the expansion; property = the property name; value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties are editable — scalar variables are not.',
+              description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (e.g. self, player) from the expansion; property = the property name or a nested path (arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent semantics; containers holding object references fail explicitly); value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties and container members are editable — scalar variables are not.',
               items: {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
                   target: { type: 'string', required: true, description: 'Top-level variable name of an object (locals/members/globals).' },
-                  property: { type: 'string', required: true, description: 'Property name on that object (Members/ prefix optional).' },
+                  property: { type: 'string', required: true, description: 'Property name or nested path (arr[0], dict["k"], arr[0].x, arr[0][1]; Members/ prefix optional).' },
                   value: { type: 'string', required: true, description: 'New value as a raw string, parsed per type.' },
                   type: {
                     type: 'string',

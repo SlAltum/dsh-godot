@@ -1,0 +1,238 @@
+{
+  "source": "t6/pipeline",
+  "frameCount": 33,
+  "totalBytes": 29580,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "window:title",
+      "trigger": "connect",
+      "offset": 464,
+      "len": 84
+    },
+    {
+      "seq": 4,
+      "cmd": "debug_enter",
+      "trigger": "connect",
+      "offset": 548,
+      "len": 92
+    },
+    {
+      "seq": 5,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 640,
+      "len": 84
+    },
+    {
+      "seq": 6,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 724,
+      "len": 104
+    },
+    {
+      "seq": 7,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 828,
+      "len": 60
+    },
+    {
+      "seq": 8,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 888,
+      "len": 104
+    },
+    {
+      "seq": 9,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 992,
+      "len": 104
+    },
+    {
+      "seq": 10,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1096,
+      "len": 100
+    },
+    {
+      "seq": 11,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1196,
+      "len": 152
+    },
+    {
+      "seq": 12,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1348,
+      "len": 128
+    },
+    {
+      "seq": 13,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1476,
+      "len": 188
+    },
+    {
+      "seq": 14,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1664,
+      "len": 148
+    },
+    {
+      "seq": 15,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1812,
+      "len": 112
+    },
+    {
+      "seq": 16,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1924,
+      "len": 124
+    },
+    {
+      "seq": 17,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 2048,
+      "len": 108
+    },
+    {
+      "seq": 18,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042",
+      "offset": 2156,
+      "len": 2456
+    },
+    {
+      "seq": 19,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27011319261",
+      "offset": 4612,
+      "len": 1524
+    },
+    {
+      "seq": 20,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27028096478",
+      "offset": 6136,
+      "len": 1524
+    },
+    {
+      "seq": 21,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27044873689",
+      "offset": 7660,
+      "len": 1532
+    },
+    {
+      "seq": 22,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:2",
+      "offset": 9192,
+      "len": 2456
+    },
+    {
+      "seq": 23,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:3",
+      "offset": 11648,
+      "len": 2456
+    },
+    {
+      "seq": 24,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:4",
+      "offset": 14104,
+      "len": 2456
+    },
+    {
+      "seq": 25,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:5",
+      "offset": 16560,
+      "len": 2456
+    },
+    {
+      "seq": 26,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:6",
+      "offset": 19016,
+      "len": 2456
+    },
+    {
+      "seq": 27,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:7",
+      "offset": 21472,
+      "len": 2456
+    },
+    {
+      "seq": 28,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26994542042:8",
+      "offset": 23928,
+      "len": 2456
+    },
+    {
+      "seq": 29,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27044873689:2",
+      "offset": 26384,
+      "len": 1532
+    },
+    {
+      "seq": 30,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27044873689:3",
+      "offset": 27916,
+      "len": 1524
+    },
+    {
+      "seq": 31,
+      "cmd": "debug_exit",
+      "trigger": "continue",
+      "offset": 29440,
+      "len": 48
+    },
+    {
+      "seq": 32,
+      "cmd": "debug_enter",
+      "trigger": "continue",
+      "offset": 29488,
+      "len": 92
+    }
+  ]
+}
