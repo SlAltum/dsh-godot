@@ -80,7 +80,7 @@ exports[`REAL composition: tool → subprocess seam → controller → fake game
 #0 <no frame> [break]
 #1 res://main.gd:11 @ _process [Breakpoint]
   locals:
-    _delta = 0.00267
+    _delta = 0.002670333
     f = null
   members:
     self = Object<27028096474>
@@ -100,7 +100,7 @@ exports[`REAL composition: tool → subprocess seam → controller → fake game
 "1 stops (max 10)
 #0 res://main.gd:25 @ _process [Breakpoint]
   locals:
-    _delta = 0.00694
+    _delta = 0.006944444
   members:
     self = Object<27028096474>
     counter = 20
@@ -161,7 +161,7 @@ exports[`REAL composition: tool → subprocess seam → controller → fake game
 "1 stops (max 10)
 #0 res://main.gd:38 @ _process [Breakpoint]
   locals:
-    _delta = 0.06667
+    _delta = 0.06666667
   members:
     self = Object<26994542042>
     counter = 0
@@ -300,7 +300,7 @@ exports[`REAL composition: tool → subprocess seam → controller → fake game
           Child [Node] (27078428127)
         Player [Node] (27095205344)
   locals:
-    _delta = 0.08014
+    _delta = 0.080139
   members:
     self = Object<26994542042>
     counter = 1

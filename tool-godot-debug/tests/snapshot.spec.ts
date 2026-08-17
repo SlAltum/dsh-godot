@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ObjectId, StringName, Vector2 } from '../src/variants.ts'
+import { ObjectId, StringName, Vector2, Vector3, formatNumber } from '../src/variants.ts'
 import type { DecodedVariant } from '../src/variant-decoder.ts'
 import { renderSnapshot, type RenderOptions } from '../src/snapshot.ts'
 
@@ -56,7 +56,7 @@ describe('renderSnapshot', () => {
     const snapshot = renderSnapshot([0], vars, options)
     const byName = Object.fromEntries(snapshot.scopes.locals.map(v => [v.name, v.value]))
     expect(byName['i']).toBe('7')
-    expect(byName['f']).toBe('0.12346') // toFixed(5)
+    expect(byName['f']).toBe('0.1234567') // Phase 9: 7 significant digits (was toFixed(5) → 0.12346)
     expect(byName['b']).toBe('true')
     expect(byName['s']).toBe("'hello'")
     expect(byName['n']).toBe('null')
@@ -126,5 +126,49 @@ describe('renderSnapshot', () => {
     expect(snapshot.scopes.locals).toHaveLength(0)
     expect(snapshot.scopes.members).toHaveLength(0)
     expect(snapshot.scopes.globals).toHaveLength(0)
+  })
+})
+
+/** Phase 9: the significant-digit number formatter. */
+describe('formatNumber', () => {
+  it('renders integers verbatim', () => {
+    expect(formatNumber(0)).toBe('0')
+    expect(formatNumber(7)).toBe('7')
+    expect(formatNumber(-42)).toBe('-42')
+    expect(formatNumber(9007199254740991)).toBe('9007199254740991')
+  })
+
+  it('keeps up to 7 significant digits with trailing zeros removed', () => {
+    expect(formatNumber(0.1234567)).toBe('0.1234567')
+    expect(formatNumber(0.123456789)).toBe('0.1234568')
+    expect(formatNumber(1.5)).toBe('1.5')
+    expect(formatNumber(-0.25)).toBe('-0.25')
+    expect(formatNumber(0.00625)).toBe('0.00625')
+  })
+
+  it('normalizes float32 wire artifacts back to the clean value', () => {
+    // 0.1 encoded as float32 and decoded to float64 carries the artifact;
+    // the significant-digit formatting restores the display (Phase 9, D3).
+    expect(formatNumber(0.10000000149011612)).toBe('0.1')
+    expect(formatNumber(12.300000190734863)).toBe('12.3')
+  })
+
+  it('falls through to exponential form for very large/small magnitudes', () => {
+    expect(formatNumber(1e21)).toBe('1e+21')
+    expect(formatNumber(1e-7)).toBe('1e-7')
+  })
+})
+
+/** Phase 9: math types render with significant digits (was toFixed(1)). */
+describe('renderValue math types (Phase 9)', () => {
+  it('renders fractional Vector2/Vector3 coordinates with precision', () => {
+    const vars: DecodedVariant[][] = [
+      ['v2', 0, 5, new Vector2(0.123456, 2.5), ''],
+      ['v3', 0, 9, new Vector3(0.1, 12.3, -0.25), ''],
+    ]
+    const snapshot = renderSnapshot([0], vars, options)
+    const byName = Object.fromEntries(snapshot.scopes.locals.map(v => [v.name, v.value]))
+    expect(byName['v2']).toBe('Vector2(0.123456, 2.5)') // was Vector2(0.1, 2.5)
+    expect(byName['v3']).toBe('Vector3(0.1, 12.3, -0.25)') // was Vector3(0.1, 12.3, -0.3)
   })
 })

@@ -101,9 +101,28 @@ export interface GodotVariable {
   sub_values?: GodotVariable[]
 }
 
-/** Round numbers the way the source plugin's UI does (toFixed(1)). */
+/**
+ * Format a number for display with significant digits instead of a fixed
+ * decimal count (Phase 9): integers render verbatim, non-integers keep up to
+ * `maxSignificantDigits` significant digits with trailing zeros removed.
+ * This replaces the source plugin's `toFixed(1)` UI rounding (`0.123456` →
+ * `0.1`) and the snapshot layer's `toFixed(5)` — 7 digits round-trip any
+ * float32 value losslessly, and float32 wire artifacts (`0.10000000149011612`)
+ * normalize back to `0.1`. Very large/small values fall through to JS
+ * exponential form (`1e+21`, `1e-7`).
+ * @param value - the number to format.
+ * @param maxSignificantDigits - the significant-digit cap (default 7).
+ * @returns the display string.
+ */
+export function formatNumber(value: number, maxSignificantDigits = 7): string {
+  if (Number.isInteger(value)) return String(value)
+  return String(Number.parseFloat(value.toPrecision(maxSignificantDigits)))
+}
+
+/** Round numbers for the math types' stringify_value (Phase 9: significant
+ *  digits; the source plugin's toFixed(1) UI rounding is superseded). */
 function clean_number(value: number): string {
-  return String(+Number.parseFloat(String(value)).toFixed(1))
+  return formatNumber(value)
 }
 
 /** A decoded object whose properties were inlined (class name + entries). */

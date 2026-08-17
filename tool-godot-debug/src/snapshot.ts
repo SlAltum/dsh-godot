@@ -9,7 +9,7 @@
  */
 
 import type { DecodedVariant } from './variant-decoder.ts'
-import { GDObject, StringName } from './variants.ts'
+import { GDObject, StringName, formatNumber } from './variants.ts'
 
 /** One stack frame after rendering. */
 export interface SnapshotFrame {
@@ -115,7 +115,8 @@ export function renderValue(value: unknown, depth: number, options: RenderOption
   if (depth > options.maxDepth) return '…'
   let rendered = ''
   if (typeof value === 'number') {
-    rendered = Number.isInteger(value) ? String(value) : String(Number.parseFloat(value.toFixed(5)))
+    // Phase 9: significant digits (7) instead of the old toFixed(5).
+    rendered = formatNumber(value)
   } else if (typeof value === 'bigint' || typeof value === 'boolean') {
     rendered = String(value)
   } else if (typeof value === 'string') {

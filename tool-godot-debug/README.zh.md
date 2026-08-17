@@ -132,7 +132,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **`--breakpoints` 值无法转义逗号**——Godot 按 `,` 分割参数，含逗号的文件名无法经 CLI 断点定位（可用 `godot_debug` 的 `args` 传入并依赖动态停顿，或重命名文件）。
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
-- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）。
+- **变量渲染保留有效数字**——数字最多保留 7 位有效数字渲染（整数直出、尾零去除；float32 线伪影如 `0.10000000149011612` 归一为 `0.1`）；超大/极小值用指数形式。源插件的 `toFixed(1)` UI 四舍五入（`0.123456` → `0.1`）已被取代。
 - **变量编辑仅限首个停顿的顶层标量属性**——`scene:set_object_property` 只在首个有帧的停顿执行，目标是顶层对象变量（标量变量没有对象 id，引擎也没有对应机制），只写标量值（`int`/`float`/`string`/`bool`）——嵌套/容器属性（数组/字典成员、源插件 `changes_parent` 路径）延后。引擎对 set **无协议级确认**（已 pin，`.context/t6/facts.md`），每条编辑经 re-inspect 对象并比对值来验证；失败的写入（属性不存在、只读属性、类型不匹配）在协议层静默，呈现为逐条 `failed` 结果并标记 `editsTruncated`。`int` 值按引擎式截断解析（`12.5` → `12`）；`string` 属性拒绝非字符串值。运行中的游戏也会接受写入，但工具只在暂停态应用编辑。
 - **对象展开仅限首个停顿、递归、去重**——`scene:inspect_object` 只在首个有帧的停顿对顶层对象值执行；当 `maxExpandDepth > 1`（默认 2）时，属性值内的 ObjectId（直接成员、数组元素 `arr[i]`、字典值 `dict["k"]`）以定位路径名递归展开，同一 id 同时出现在顶层与嵌套时只展开一次（顶层优先）。深度超过 `maxExpandDepth` 的对象保持 `Object<id>` 占位。无响应的对象被跳过并标记 `expansionTruncated`（非暂停态的游戏不响应——已 pin）。展开的类名为**引擎类**（`get_class()`，如 `class_name Player` 脚本显示为 `Node`），非脚本类名；脚本节点渲染其脚本路径。
 - **场景树仅呈现且按有帧停顿快照**——`scene:request_scene_tree` 在每个有帧的停顿执行；树渲染为缩进 `name [class] (id)` 行（脚本节点的类为其脚本路径，如 `res://main.gd`，已 pin `.context/t7/facts.md`），每停顿受 `maxTreeNodes` 约束。节点 id **不**联动展开/编辑（延后）；`break` 暂停上报仅根节点的树（引擎行为，非错误）。
