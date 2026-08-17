@@ -62,6 +62,8 @@ describe('abortable', () => {
 
   it('wraps a non-Error rejection into an Error', async () => {
     const controller = new AbortController()
+    // The test intentionally rejects with a non-Error to pin the wrap behavior.
+    /* oxlint-disable-next-line typescript/prefer-promise-reject-errors */
     await expect(abortable(Promise.reject('plain string'), controller.signal)).rejects.toThrow('plain string')
   })
 })

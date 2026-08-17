@@ -40,6 +40,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `maxMessageBytes` | `16000000` | Largest single framed message accepted from the server. |
 | `maxStderrBytes` | `1000000` | Largest spawned-editor stderr tail retained for diagnostics. |
 | `killGraceMs` | `2000` | Cancel-grace and terminate-escalation budget for spawned processes. |
+| `spawnRetryCooldownMs` | `60000` | Cooldown after a FAILED spawn: further spawn attempts for the same workspace fail fast with `LSP_UNAVAILABLE` until it elapses (a broken project may never start its LSP — the server does not initialize when the project has errors); a successful spawn clears it. `0` disables the cooldown. |
 
 ## Model Experience
 
@@ -98,6 +99,7 @@ Append-only.
 - **An abrupt disconnect may leave a stale open document on the server** — the provider sends a best-effort `didClose` before dropping an aborted connection; the next `didOpen` overwrites server-side state.
 - **spawn needs Godot 4.2+ / 3.6+** — older binaries silently skip LSP startup; the provider fails loudly with the reported version instead.
 - **Spawned editors are owned by the provider** — connection close terminates the editor process; a harness crash can leave an orphan headless editor (the subprocess seam cleans up only on the normal lifecycle).
+- **A failed spawn arms a per-workspace retry cooldown** (`spawnRetryCooldownMs`, default 60 s) — the server may not initialize when the project has errors (godotengine/godot#103313), so a broken project is not cold-started on every query; inside the cooldown queries fail fast with `LSP_UNAVAILABLE` and the retry hint. A successful spawn clears the cooldown.
 - **A spawned editor cold start writes `.godot/` import artifacts** and can exceed the `lsp` tool's 60 s budget on large projects.
 - **`gdscript/capabilities` notifications are ignored** — the native-class table is large and not part of the seam's four operations.
 - **No formatting or rename** — the seam exposes only the four semantic operations; Godot's LSP formatting/rename surface is out of scope (see `tool-godot` for headless formatting).

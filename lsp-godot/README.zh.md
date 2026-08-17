@@ -40,6 +40,7 @@ await ctx.plugin(ToolGodotLsp, { connectMode: 'spawn', spawnExecutable: 'C:\\God
 | `maxMessageBytes` | `16000000` | 接受的最大单条帧消息。 |
 | `maxStderrBytes` | `1000000` | 自起编辑器保留的 stderr 尾部上限（用于诊断）。 |
 | `killGraceMs` | `2000` | 取消宽限与进程终止升级预算。 |
+| `spawnRetryCooldownMs` | `60000` | spawn 失败后的冷却：同一工作区在冷却期内再次 spawn 会以 `LSP_UNAVAILABLE` 快速失败（项目有错误时服务器可能不初始化——LSP 无法启动）；一次成功的 spawn 会清除冷却。`0` = 禁用冷却。 |
 
 ## 模型体验
 
@@ -98,6 +99,7 @@ No provider guidance: the lsp tool's operation semantics are covered by tool-lsp
 - **异常断开可能在服务器端残留 open 文档**——provider 在放弃中止连接前尽力发送 `didClose`；下一次 `didOpen` 会覆盖服务器端状态。
 - **spawn 需要 Godot 4.2+ / 3.6+**——旧版本会静默跳过 LSP 启动；provider 会带着报告的版本号明确失败。
 - **自起编辑器由 provider 持有**——连接关闭即终止编辑器进程；harness 崩溃可能遗留孤儿 headless 编辑器（subprocess seam 只在正常生命周期清理）。
+- **spawn 失败触发按工作区冷却**（`spawnRetryCooldownMs`，默认 60s）——项目有错误时服务器可能不初始化（godotengine/godot#103313），坏项目不会每次查询都冷启动；冷却期内查询以 `LSP_UNAVAILABLE` 快速失败并附重试提示；一次成功的 spawn 清除冷却。
 - **自起编辑器冷启动会写 `.godot/` import 产物**，大项目上可能超过 `lsp` 工具的 60s 预算。
 - **`gdscript/capabilities` 通知被忽略**——native 类表很大，且不属于 seam 的四个操作。
 - **无格式化与重命名**——seam 只暴露四个语义操作；Godot LSP 的格式化/重命名面超出范围（headless 格式化见 `tool-godot`）。

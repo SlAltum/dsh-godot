@@ -41,6 +41,11 @@ export interface GodotLspConfig {
   maxStderrBytes?: number
   /** Cancel-grace and terminate-escalation budget for spawned processes. */
   killGraceMs?: number
+  /** Cooldown after a FAILED spawn (broken project / environment, godot#103313):
+   *  further spawn attempts for the same workspace fail fast with
+   *  `LSP_UNAVAILABLE` until it elapses; a successful spawn clears it. `0` =
+   *  no cooldown (retry every query, the pre-T17 behavior). */
+  spawnRetryCooldownMs?: number
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -60,6 +65,7 @@ export const Config: z<GodotLspConfig> = z.object({
   maxMessageBytes: z.number().default(16_000_000),
   maxStderrBytes: z.number().default(1_000_000),
   killGraceMs: z.number().default(2_000),
+  spawnRetryCooldownMs: z.number().default(60_000),
 })
 
 /**
@@ -78,6 +84,9 @@ export function validateConfig(config: GodotLspConfig): void {
   assertTimer('idleTimeoutMs', resolved.idleTimeoutMs)
   assertTimer('killGraceMs', resolved.killGraceMs)
   assertTimer('spawnReadyTimeoutMs', resolved.spawnReadyTimeoutMs)
+  if (!Number.isInteger(resolved.spawnRetryCooldownMs) || resolved.spawnRetryCooldownMs < 0) {
+    throw new Error('lsp-godot: spawnRetryCooldownMs must be a non-negative integer (0 disables the retry cooldown)')
+  }
   assertPositiveInteger('maxDocumentBytes', resolved.maxDocumentBytes)
   assertPositiveInteger('maxMessageBytes', resolved.maxMessageBytes)
   assertPositiveInteger('maxStderrBytes', resolved.maxStderrBytes)

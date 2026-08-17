@@ -11,6 +11,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { LspError } from '@deepseek-ai/dsh-lsp'
 import type { HostWorkspace } from '@deepseek-ai/dsh-lsp-stdio/src/host.ts'
 import { validateConfig } from './config.ts'
 import type { GodotLspConfig, ResolvedGodotLspConfig } from './config.ts'
@@ -67,7 +68,10 @@ export function apply(ctx: Context, config: ResolvedGodotLspConfig): void {
 /**
  * Assemble the attach/spawn primitives the connect modes need. Extracted from
  * `apply` so the spawn pipeline (version probe → editor spawn → readiness) is
- * testable against a fake subprocess without a Godot binary.
+ * testable against a fake subprocess without a Godot binary. Spawn failures
+ * arm a per-workspace retry cooldown (T17-A): a broken project/environment
+ * (godot#103313) is not cold-started on every query; a successful spawn
+ * clears the cooldown.
  * @param subprocess - the subprocess seam (or a test double).
  * @param config - the plugin configuration (defaults filled by the schema).
  * @returns the connect-mode dependencies.
@@ -79,20 +83,39 @@ export function createConnectDeps(subprocess: SubprocessLike, config: GodotLspCo
     killGraceMs: resolved.killGraceMs,
     spawnReadyTimeoutMs: resolved.spawnReadyTimeoutMs,
   })
+  const spawnCooldownUntil = new Map<string, number>()
   return {
     attach: options => establishConnection(options),
     spawnEditor: async (cfg, workspace, signal) => {
       const spawnConfig = cfg as ResolvedGodotLspConfig
-      const { port, editor } = await spawnGodotLsp({
-        executable: spawnConfig.spawnExecutable,
-        spawnArgs: spawnConfig.spawnArgs,
-        projectDir: workspace.canonicalPath,
-        spawnPort: spawnConfig.spawnPort,
-        signal,
-        versionProbe: executable => probeGodotVersion(subprocess, executable, resolved, signal),
-        spawner,
-      })
-      return { port, editor }
+      if (spawnConfig.spawnRetryCooldownMs > 0) {
+        const until = spawnCooldownUntil.get(workspace.canonicalPath)
+        if (until !== undefined && Date.now() < until) {
+          const waitMs = until - Date.now()
+          throw new LspError(
+            `Godot LSP spawn is cooling down (a previous spawn attempt failed; retry in ~${Math.ceil(waitMs / 1000)}s or fix the project — the server may not start when the project has errors)`,
+            'LSP_UNAVAILABLE',
+          )
+        }
+      }
+      try {
+        const { port, editor } = await spawnGodotLsp({
+          executable: spawnConfig.spawnExecutable,
+          spawnArgs: spawnConfig.spawnArgs,
+          projectDir: workspace.canonicalPath,
+          spawnPort: spawnConfig.spawnPort,
+          signal,
+          versionProbe: executable => probeGodotVersion(subprocess, executable, resolved, signal),
+          spawner,
+        })
+        spawnCooldownUntil.delete(workspace.canonicalPath)
+        return { port, editor }
+      } catch (error) {
+        if (spawnConfig.spawnRetryCooldownMs > 0 && !signal.aborted) {
+          spawnCooldownUntil.set(workspace.canonicalPath, Date.now() + spawnConfig.spawnRetryCooldownMs)
+        }
+        throw error
+      }
     },
   }
 }

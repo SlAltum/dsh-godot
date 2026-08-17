@@ -183,4 +183,59 @@ describe('createConnectDeps spawn pipeline over a fake subprocess', () => {
       target: { targetKey: ws, displayPath: ws },
     } as never, new AbortController().signal)).rejects.toThrow(/headless LSP requires/)
   }, 30_000)
+
+  it('arms a per-workspace spawn cooldown after a failure and clears it on success (T17-A)', async () => {
+    let server: Server | undefined
+    const port = await new Promise<number>((resolve, reject) => {
+      server = createServer()
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () =>{  resolve((server!.address() as { port: number }).port) })
+    })
+    const probeHandle = handleWithOutput('4.7.stable.mono.official')
+    const spawns: unknown[] = []
+    // The version probe and the editor spawn are distinguished by argv; the
+    // EDITOR handle is switched per phase (exits-immediately vs long-lived).
+    let editorHandle: SubprocessHandle = handleWithOutput('', false)
+    const spawnImpl = vi.fn((spec: { argv: string[] }) => {
+      spawns.push(spec)
+      return spec.argv.includes('--version') ? probeHandle : editorHandle
+    })
+    const subprocess: SubprocessLike = {
+      resolveExecutable: vi.fn(async () => 'C:/Godot/godot.exe'),
+      spawn: spawnImpl,
+    }
+    const workspace = {
+      canonicalPath: ws,
+      fileUrl: `file:///${ws.replace(/\\/g, '/')}`,
+      target: { targetKey: ws, displayPath: ws },
+    } as never
+    // Failure injection uses an UNLISTENED port (the readiness probe wins the
+    // race against the exited-process check when the port answers); success
+    // uses the listening server port. The cooldown is per-workspace, so the
+    // two configs share it.
+    const failCfg = Config({ connectMode: 'spawn', spawnExecutable: 'godot', spawnPort: 1, spawnReadyTimeoutMs: 500, spawnRetryCooldownMs: 150 })
+    const okCfg = Config({ connectMode: 'spawn', spawnExecutable: 'godot', spawnPort: port, spawnReadyTimeoutMs: 500, spawnRetryCooldownMs: 150 })
+    try {
+      const deps = createConnectDeps(subprocess, failCfg)
+      // 1. The editor process exits before its LSP starts → the spawn fails.
+      await expect(deps.spawnEditor(failCfg, workspace, new AbortController().signal)).rejects.toThrow(/exited before LSP/)
+      const spawnsAfterFailure = spawns.length
+      // 2. Inside the cooldown: fail fast with LSP_UNAVAILABLE, no re-spawn.
+      await expect(deps.spawnEditor(okCfg, workspace, new AbortController().signal))
+        .rejects.toMatchObject({ code: 'LSP_UNAVAILABLE' })
+      expect(spawns.length).toBe(spawnsAfterFailure) // neither probe nor editor spawned again
+      // 3. After the cooldown elapses a retry succeeds against the listening
+      //    server and clears the cooldown.
+      await new Promise(resolve => setTimeout(resolve, 200))
+      editorHandle = handleWithOutput('', true) // long-lived editor; the port answers
+      const result = await deps.spawnEditor(okCfg, workspace, new AbortController().signal)
+      expect(result.port).toBe(port)
+      const spawnsAfterSuccess = spawns.length
+      // 4. The cooldown was cleared: the next call spawns again (no fast fail).
+      await deps.spawnEditor(okCfg, workspace, new AbortController().signal)
+      expect(spawns.length).toBeGreaterThan(spawnsAfterSuccess)
+    } finally {
+      await new Promise<void>(resolve => server!.close(() =>{  resolve() }))
+    }
+  }, 30_000)
 })
