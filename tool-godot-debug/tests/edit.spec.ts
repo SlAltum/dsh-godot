@@ -92,6 +92,16 @@ describe('findEditTarget', () => {
     expect(findEditTarget(objectVars(), 'dead')).toBeNull() // freed → null
     expect(findEditTarget(objectVars(), 'ghost')).toBeNull()
   })
+
+  it('resolves an explicit node:<id> reference without a stack variable (T15)', () => {
+    // A scene-tree node id is a valid edit target even when the node is not
+    // one of the stop's variables (same id space, pinned T7.0 fact 8).
+    expect(findEditTarget(objectVars(), 'node:27061650910')).toBe(PLAYER_ID)
+    expect(findEditTarget([], 'node:123')).toBe(123n)
+    expect(findEditTarget(objectVars(), 'node:abc')).toBeNull() // not digits
+    expect(findEditTarget(objectVars(), 'node:27061650910:2')).toBeNull() // no suffix
+    expect(findEditTarget(objectVars(), 'node:')).toBeNull()
+  })
 })
 
 describe('valueEquals', () => {
@@ -483,6 +493,26 @@ describe('applyEdits', () => {
     )
     expect(result.results).toEqual([])
     expect(result.truncated).toBe(false)
+  })
+
+  it('edits a scene-tree node target by its id (T15: node:<id>)', async () => {
+    await connectGame()
+    // Prime the expansion phase like the product loop does (t6 fixture).
+    await expandObjects(objectVars(), controller, {
+      maxObjects: 10,
+      maxProps: 100,
+      render: { maxDepth: 3, maxVarsPerScope: 200, maxValueLength: 200 },
+      idleTimeoutMs: 2_000,
+      budgetMs: 10_000,
+      signal: new AbortController().signal,
+    })
+    const result = await applyEdits(
+      [{ target: `node:${SELF_ID}`, property: 'counter', value: '42', type: 'int' }],
+      objectVars(),
+      controller,
+      { maxEdits: 10, idleTimeoutMs: 2_000, budgetMs: 10_000, signal: new AbortController().signal },
+    )
+    expect(result.results).toEqual([{ target: `node:${SELF_ID}`, property: 'counter', requested: 42, type: 'int', ok: true }])
   })
 
   it('stops early when the budget is exhausted and keeps the partial result', async () => {

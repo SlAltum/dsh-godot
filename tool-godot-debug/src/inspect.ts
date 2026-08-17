@@ -64,6 +64,12 @@ export interface ExpandOptions {
   budgetMs: number
   /** Caller cancellation. */
   signal: AbortSignal
+  /** Explicit objects to expand FIRST (T15): scene-tree node ids (name
+   *  `node:<id>`) and scene-node paths (name = the path, e.g. `Main`) — all
+   *  in the SAME id space as stack variables (pinned T7.0 fact 8; strings
+   *  avoid JSON bigint precision loss). Merged with the top-level variable
+   *  selection and deduplicated across all sources. */
+  extraIds?: { name: string; id: bigint }[]
 }
 
 /**
@@ -263,9 +269,30 @@ export async function expandObjects(
   controller: DebugController,
   options: ExpandOptions,
 ): Promise<ExpansionResult> {
-  const selected = selectExpandableIds(vars, options.maxObjects)
-  if (selected.length === 0) {
+  // T15: explicit scene-tree node ids expand FIRST (model-specified targets
+  // win), the top-level variable selection fills the remaining budget; the
+  // two sources dedup against each other (a tree node id IS a stack var id
+  // when the same object is in scope — pinned T7.0 fact 8). The object cap
+  // covers both sources (explicit ids work even with maxObjects = 0).
+  const objectCap = Math.max(options.maxObjects, options.extraIds?.length ?? 0)
+  if (objectCap <= 0) {
     return { entries: [], expandedObjects: 0, expansionTruncated: false }
+  }
+  const selected = selectExpandableIds(vars, objectCap)
+  if (selected.length === 0 && (options.extraIds === undefined || options.extraIds.length === 0)) {
+    return { entries: [], expandedObjects: 0, expansionTruncated: false }
+  }
+  const explicit = (options.extraIds ?? []).slice(0, objectCap)
+  const merged = [...explicit]
+  {
+    const seen = new Set(explicit.map(e => e.id.toString()))
+    for (const entry of selected) {
+      if (merged.length >= objectCap) break
+      const key = entry.id.toString()
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(entry)
+    }
   }
   const roots: FetchedEntry[] = []
   let expandedObjects = 0
@@ -324,9 +351,9 @@ export async function expandObjects(
   // Top-level selection wins: pre-reserve every selected id so the nested
   // recursion skips them (T8.0 fact 2 — a top-level object that also appears
   // inside a property is expanded once, at top level).
-  for (const { id } of selected) expandedIds.add(id.toString())
+  for (const { id } of merged) expandedIds.add(id.toString())
 
-  for (const { name, id } of selected) {
+  for (const { name, id } of merged) {
     const fetched = await fetchOne(id, name, 1)
     if (fetched !== null) roots.push(fetched)
   }

@@ -444,6 +444,65 @@ describe('runDebug expansion', () => {
     expect(result.expandedObjects).toBe(0)
   })
 
+  it('expands explicit scene-tree node ids (T15), even with expansion otherwise off', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const sub = new FakeSubprocess()
+    // maxExpandedObjects = 0 disables the VARIABLE expansion, but explicit
+    // node ids still expand (FakeGame dispatches inspect responses by id).
+    const options = baseOptions({ subprocess: sub, maxExpandedObjects: 0, expandNodes: ['27061650910'] })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.expansion).not.toBeNull()
+    expect(result.expandedObjects).toBe(1)
+    expect(result.expansion!.entries[0]!.name).toBe('node:27061650910')
+    expect(result.expansion!.entries[0]!.className).toBe('Node')
+  })
+
+  it('rejects malformed expandNodes ids with GODOT_PARSE_ERROR', async () => {
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub, expandNodes: ['abc'] })
+    await expect(runDebug(options)).rejects.toMatchObject({ code: 'GODOT_PARSE_ERROR' })
+  })
+
+  it('resolves nodePaths against the stop tree and requests the node (T15)', async () => {
+    // The t7 recording has the scene-tree response; its stop also carries a
+    // player ObjectId, but no inspect responses exist in the recording — so
+    // the resolved node request times out and flags truncation. That proves
+    // nodePaths was parsed into an inspect request (expansion would be null
+    // otherwise), while the tree itself stays intact.
+    const game = new FakeGame(treeBin, treeManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub, maxExpandedObjects: 0, nodePaths: ['Main'], maxTreeNodes: 200 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.sceneTrees).not.toBeNull()
+    expect(result.expansion).not.toBeNull() // nodePaths wired the request
+    expect(result.expandedObjects).toBe(0)
+    expect(result.expansionTruncated).toBe(true) // inspect had no answer in the fixture
+  })
+
+  it('fails a path: edit cleanly when no tree was snapshotted (T15)', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const sub = new FakeSubprocess()
+    // maxTreeNodes = 0: no tree → the path cannot resolve → the edit keeps
+    // its target and fails with the standard not-editable detail.
+    const options = baseOptions({ subprocess: sub, maxTreeNodes: 0, edits: [{ target: 'path:Main', property: 'counter', value: '42', type: 'int' }] })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.edits).not.toBeNull()
+    expect(result.edits!.results[0]!.ok).toBe(false)
+    expect(result.edits!.results[0]!.detail).toContain('not an editable object')
+  })
+
   it('expands objects in attach mode too (same stop-loop integration)', async () => {
     const game = new FakeGame(inspectBin, inspectManifest.frames)
     const sub = new FakeSubprocess()

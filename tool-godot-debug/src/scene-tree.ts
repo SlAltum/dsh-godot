@@ -91,6 +91,50 @@ export function parseSceneTree(params: unknown, maxNodes: number): SceneTreePars
 }
 
 /**
+ * Resolve scene-node PATHS to node ids (T15). Scene structure is static
+ * across runs, so a path like `Main/Player` is a stable way to address a
+ * node — unlike raw ids, which are per-run random (launch) or single-session
+ * (attach: a game dials exactly one debug server and never reconnects after
+ * detach, pinned T4.0/T11.0). The path starts below the engine root (`root
+ * [Window]` is skipped); the FIRST node matching the name chain wins
+ * (duplicate names are documented as first-match).
+ * @param root - the parsed tree root (may be null).
+ * @param paths - the requested paths (e.g. `Main`, `Main/Player`).
+ * @returns the resolved `{ path, id }` pairs, in request order; unresolvable
+ *  paths are omitted (the caller treats them like a skipped object).
+ */
+export function resolveNodePaths(root: SceneTreeNode | null, paths: string[]): { path: string; id: bigint }[] {
+  const out: { path: string; id: bigint }[] = []
+  if (root === null) return out
+  for (const path of paths) {
+    const segments = path.split('/')
+    if (segments.length === 0 || segments.some(s => s.length === 0)) continue // empty/blank segments are invalid
+    const id = findNode(root, segments, 0)
+    if (id !== null) out.push({ path, id })
+  }
+  return out
+
+  /** Depth-first name-chain match; returns the first node id, or null. */
+  function findNode(node: SceneTreeNode, segments: string[], depth: number): bigint | null {
+    // The engine root (Window) is skipped: paths start at its children.
+    if (depth === 0 && node.name === 'root') {
+      for (const child of node.children) {
+        const id = findNode(child, segments, 0)
+        if (id !== null) return id
+      }
+      return null
+    }
+    if (node.name !== segments[depth]) return null
+    if (depth === segments.length - 1) return node.id
+    for (const child of node.children) {
+      const id = findNode(child, segments, depth + 1)
+      if (id !== null) return id
+    }
+    return null
+  }
+}
+
+/**
  * Render one parsed tree into indented model-facing lines. The root node is
  * rendered like any other (it is the engine's `Window` root — its id is
  * usable for future inspect linkage, T7.0 fact 8); a root-only tree (break

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { parseSceneTree, renderSceneTree, type SceneTreeNode } from '../src/scene-tree.ts'
+import { parseSceneTree, renderSceneTree, resolveNodePaths, type SceneTreeNode } from '../src/scene-tree.ts'
 
 /** The t7 main-scene tree params: root(Window) > Main > {Branch > Leaf中文
  *  > Sprite, Other > Child, Player}. */
@@ -108,5 +108,31 @@ describe('renderSceneTree', () => {
 
   it('returns empty for a null root', () => {
     expect(renderSceneTree(null, options)).toEqual({ lines: [], truncated: false })
+  })
+})
+
+describe('resolveNodePaths (T15)', () => {
+  it('resolves scene paths below the engine root to node ids', () => {
+    const { root } = parseSceneTree(treeParams(), 200)
+    expect(resolveNodePaths(root, ['Main'])).toEqual([{ path: 'Main', id: 26994542042n }])
+    expect(resolveNodePaths(root, ['Main/Branch/Leaf中文/Sprite'])).toEqual([{ path: 'Main/Branch/Leaf中文/Sprite', id: 27044873689n }])
+    expect(resolveNodePaths(root, ['Main/Other/Child', 'Main/Player'])).toEqual([
+      { path: 'Main/Other/Child', id: 27078428127n },
+      { path: 'Main/Player', id: 27095205344n },
+    ])
+  })
+
+  it('skips unresolvable paths, empty segments and a null root', () => {
+    const { root } = parseSceneTree(treeParams(), 200)
+    expect(resolveNodePaths(root, ['Ghost', 'Main/Ghost', 'Main/Player/extra'])).toEqual([])
+    expect(resolveNodePaths(root, ['', '/', 'Main//Player'])).toEqual([])
+    expect(resolveNodePaths(null, ['Main'])).toEqual([])
+    // First match wins for duplicate names.
+    const { root: dup } = parseSceneTree([
+      1, 'root', 'Window', 1n, '', 0,
+      1, 'Dup', 'Node', 2n, '', 0,
+      0, 'Dup', 'Node', 3n, '', 0,
+    ], 200)
+    expect(resolveNodePaths(dup, ['Dup'])).toEqual([{ path: 'Dup', id: 2n }])
   })
 })

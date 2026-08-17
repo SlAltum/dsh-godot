@@ -23,7 +23,7 @@ import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subpr
 import { DebugController, WaitTimeoutError, type GodotRuntimeError, type StopInfo } from './controller.ts'
 import { expandObjects, type ExpandedEntry } from './inspect.ts'
 import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
-import { parseSceneTree, renderSceneTree, type SceneTreeNode } from './scene-tree.ts'
+import { parseSceneTree, renderSceneTree, resolveNodePaths, type SceneTreeNode } from './scene-tree.ts'
 import { GodotError } from './error.ts'
 import { renderSnapshot, type RenderOptions, type StopSnapshot } from './snapshot.ts'
 
@@ -144,6 +144,18 @@ export interface DebugRunOptions {
   maxEdits: number
   /** Max scene-tree nodes parsed/rendered per frame-bearing stop (0 = disabled). */
   maxTreeNodes: number
+  /** Explicit scene-tree node ids to expand on the first frame-bearing stop
+   *  (T15 — node ids share the stack variables' id space, pinned T7.0 fact 8;
+   *  strings avoid JSON bigint precision loss). Expanded BEFORE the top-level
+   *  variable selection and deduplicated against it. */
+  expandNodes?: string[]
+  /** Scene-node PATHS to expand on the first frame-bearing stop (T15 — the
+   *  path form is the stable cross-call channel: scene structure is static
+   *  across runs, raw ids are per-run random in launch and single-session in
+   *  attach). Resolved against the stop's scene tree (`Main/Player`, root
+   *  excluded); requires `maxTreeNodes > 0`. Unresolvable paths are skipped
+   *  like timed-out objects. */
+  nodePaths?: string[]
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -195,6 +207,15 @@ export async function runDebug(options: DebugRunOptions): Promise<DebugRunResult
 
   if (options.pauseOnAttach === true && options.mode !== 'attach') {
     throw new GodotError('godot_debug: pauseOnAttach is only valid in attach mode', 'GODOT_PARSE_ERROR')
+  }
+
+  // T15: explicit scene-tree node ids must be digits-only (strings on the
+  // wire because JSON cannot carry bigints losslessly; ids can exceed 2^53
+  // and even 2^63-1 — pinned T13.0 fact 6).
+  for (const id of options.expandNodes ?? []) {
+    if (!/^\d+$/.test(id) || BigInt(id) >= 1n << 64n) {
+      throw new GodotError(`godot_debug: expandNodes entry "${id}" is not a valid node id (digits only)`, 'GODOT_PARSE_ERROR')
+    }
   }
 
   // Project validation (shared by both modes; breakpoints convert against it).
@@ -493,8 +514,9 @@ async function collectStops(
   const sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] = []
   let sceneTreeTruncated = false
   const runStart = Date.now()
-  for (let i = 0; i < options.maxStops; i++) {
-    let stop: StopInfo
+  // The current stop's parsed tree (T15: nodePaths resolve against it).
+  let stopTreeRoot: SceneTreeNode | null = null
+  for (let i = 0; i < options.maxStops; i++) {    let stop: StopInfo
     try {
       stop = await controller.waitForStop(options.idleTimeoutMs, options.signal)
     } catch (error) {
@@ -530,6 +552,7 @@ async function collectStops(
             )
             const parsed = parseSceneTree(Array.isArray(resp[2]) ? resp[2] : undefined, options.maxTreeNodes)
             if (parsed.root !== null) {
+              stopTreeRoot = parsed.root // T15: nodePaths / path: edits resolve against this stop's tree
               const { lines, truncated } = renderSceneTree(parsed.root, { maxNodes: options.maxTreeNodes, maxLineLength: 200 })
               if (truncated || parsed.truncated) sceneTreeTruncated = true
               sceneTrees.push({ stopIndex: i, root: parsed.root, lines })
@@ -548,15 +571,28 @@ async function collectStops(
           }
         }
       }
-      if (!expanded && snapshot.frames.length > 0 && options.maxExpandedObjects > 0) {
+      const wantsExpansion = options.maxExpandedObjects > 0
+        || (options.expandNodes ?? []).length > 0
+        || (options.nodePaths ?? []).length > 0
+      if (!expanded && snapshot.frames.length > 0 && wantsExpansion) {
         expanded = true
         // Expansion budget: min(remaining run budget minus a settle margin,
         // the worst-case object×depth cap). Budget exhaustion skips the rest
         // and keeps the partial result — only an external cancel aborts
-        // (pinned T5.2 review H2; depth budget T8.2).
+        // (pinned T5.2 review H2; depth budget T8.2). T15: explicit node ids
+        // count toward the same cap (they expand first).
+        const objectCap = Math.max(options.maxExpandedObjects, options.expandNodes?.length ?? 0, options.nodePaths?.length ?? 0)
         const remaining = options.timeoutMs - (Date.now() - runStart) - EXPANSION_SETTLE_MS
-        const budgetMs = Math.max(0, Math.min(remaining, options.maxExpandedObjects * options.maxExpandDepth * options.idleTimeoutMs))
+        const budgetMs = Math.max(0, Math.min(remaining, objectCap * options.maxExpandDepth * options.idleTimeoutMs))
         try {
+          // T15: explicit node ids + scene-node paths resolve into one extra
+          // id list (paths need this stop's tree — a frame-bearing stop
+          // snapshots it above; unresolvable paths are skipped like timeouts).
+          // The entry names carry the source: `node:<id>` for ids, the path
+          // (`Main`) for path references — readable in the report.
+          const pathIds = resolveNodePaths(stopTreeRoot, options.nodePaths ?? []).map(e => ({ name: e.path, id: e.id }))
+          const idIds = (options.expandNodes ?? []).map(id => ({ name: `node:${id}`, id: BigInt(id) }))
+          const extraIds = [...idIds, ...pathIds]
           const result = await expandObjects(collected.vars, controller, {
             maxObjects: options.maxExpandedObjects,
             maxProps: options.maxExpandedProps,
@@ -565,6 +601,7 @@ async function collectStops(
             idleTimeoutMs: options.idleTimeoutMs,
             budgetMs,
             signal: options.signal,
+            ...(extraIds.length > 0 ? { extraIds } : {}),
           })
           expansion = { stopIndex: i, entries: result.entries, expandedObjects: result.expandedObjects }
           if (result.expansionTruncated) expansionTruncated = true
@@ -586,7 +623,16 @@ async function collectStops(
         const remaining = options.timeoutMs - (Date.now() - runStart) - EDIT_SETTLE_MS
         const budgetMs = Math.max(0, Math.min(remaining, options.maxEdits * options.idleTimeoutMs))
         try {
-          const result = await applyEdits(options.edits, collected.vars, controller, {
+          // T15: `path:` targets resolve against this stop's tree into
+          // `node:<id>` form (an unresolvable path keeps its target and
+          // fails the edit with the standard "not an editable object"
+          // detail — the tree snapshot above ran before edits).
+          const editsForApply = options.edits.map((edit) => {
+            if (!edit.target.startsWith('path:')) return edit
+            const resolved = resolveNodePaths(stopTreeRoot, [edit.target.slice('path:'.length)])[0]
+            return resolved === undefined ? edit : { ...edit, target: `node:${resolved.id}` }
+          })
+          const result = await applyEdits(editsForApply, collected.vars, controller, {
             maxEdits: options.maxEdits,
             idleTimeoutMs: options.idleTimeoutMs,
             budgetMs,

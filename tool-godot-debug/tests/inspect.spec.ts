@@ -283,6 +283,45 @@ describe('expandObjects', () => {
     expect(result.expandedObjects).toBe(0)
     expect(result.expansionTruncated).toBe(false)
   })
+
+  it('expands explicit scene-tree node ids first, deduplicated against the variables (T15)', async () => {
+    await connectGame()
+    // expandNodes = [PLAYER_ID, SELF_ID]: PLAYER_ID is not a top-level var in
+    // this stop (it only appears nested), SELF_ID is — the explicit ids win
+    // and the variable selection dedups against them (T7.0 fact 8: node ids
+    // share the variables' id space). FakeGame dispatches by id, so the t5
+    // fixture answers both.
+    const result = await expandObjects(objectVars(), controller, {
+      maxObjects: 10,
+      maxProps: 100,
+      maxDepth: 1,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 10_000,
+      signal: new AbortController().signal,
+      extraIds: [{ name: 'node:27061650910', id: PLAYER_ID }, { name: 'node:27028096474', id: SELF_ID }],
+    })
+    expect(result.expandedObjects).toBe(2) // player + self, no duplicates
+    expect(result.expansionTruncated).toBe(false)
+    expect(result.entries.map(e => e.name)).toEqual(['node:27061650910', 'node:27028096474'])
+  })
+
+  it('expands explicit node ids even when maxObjects is 0 (T15)', async () => {
+    await connectGame()
+    const result = await expandObjects([], controller, {
+      maxObjects: 0,
+      maxProps: 100,
+      maxDepth: 1,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 10_000,
+      signal: new AbortController().signal,
+      extraIds: [{ name: 'Main', id: SELF_ID }],
+    })
+    expect(result.expandedObjects).toBe(1)
+    expect(result.entries[0]!.name).toBe('Main')
+    expect(result.entries[0]!.className).toBe('Node')
+  })
 })
 
 /** Phase 8: the nested ObjectId collector (direct/array/dict, keys skipped). */

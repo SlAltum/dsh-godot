@@ -157,12 +157,15 @@ export function parseEditValue(type: EditValueType | undefined, raw: string): nu
 }
 
 /**
- * Find the target object's id in one stop's raw vars. Only `ObjectId` values
- * are editable (pinned T6.0 fact 10: scalar variables carry no object id and
- * the engine has no mechanism for them); `RID` values are excluded (inspect
- * returns an empty response for them, T5.0 fact 5).
+ * Find the target object's id in one stop's raw vars, or resolve an explicit
+ * `node:<id>` reference (T15 — scene-tree node ids live in the SAME id space
+ * as stack variables, pinned T7.0 fact 8, so a tree node can be edited
+ * directly by its rendered id). Only `ObjectId` values are editable (pinned
+ * T6.0 fact 10: scalar variables carry no object id and the engine has no
+ * mechanism for them); `RID` values are excluded (inspect returns an empty
+ * response for them, T5.0 fact 5).
  * @param vars - the raw `stack_frame_var` params arrays.
- * @param target - the top-level variable name to edit.
+ * @param target - the top-level variable name, or `node:<id>`.
  * @returns the object id, or null when missing or not an object.
  */
 export function findEditTarget(vars: DecodedVariant[][], target: string): bigint | null {
@@ -176,6 +179,10 @@ export function findEditTarget(vars: DecodedVariant[][], target: string): bigint
       if (value instanceof ObjectId && !(value instanceof RID)) return value.id
     }
   }
+  // T15: an explicit scene-tree node reference (`node:<id>`); the id is a
+  // string on the wire (JSON cannot carry bigints losslessly), digits-only.
+  const nodeMatch = /^node:(\d+)$/.exec(target)
+  if (nodeMatch !== null && nodeMatch[1] !== undefined) return BigInt(nodeMatch[1])
   return null
 }
 

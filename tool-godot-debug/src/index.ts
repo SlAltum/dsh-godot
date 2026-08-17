@@ -288,6 +288,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'are not. Each edit reports ok/failed. '
           + 'The scene tree (current node hierarchy, "scene tree" block under each stop) is snapshotted on every stop that has a '
           + 'stack frame; node ids are usable for future inspect linkage. '
+          + 'Tree NODE IDS and SCENE PATHS are directly usable: pass scene-tree node ids (the numbers in the tree lines) to expandNodes, '
+          + 'or scene paths (e.g. Main/Player, engine root excluded) to nodePaths — both expand on the first stop before the top-level '
+          + 'variables. Edits accept target "node:<id>" (any scene node id) or "path:<scene path>" (resolved against the stop\'s tree, '
+          + 'e.g. path:Main/Player). Paths are the stable cross-call channel: raw ids are per-run random in launch mode. '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
           + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
           + 'after detach.',
@@ -299,8 +303,9 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             + '(res:// path or absolute file path plus 1-based line), the tool launches the project headless with --remote-debug, '
             + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
             + 'bounded by config maxExpandedObjects/maxExpandedProps; nested objects inside property values are expanded '
-            + 'recursively up to config maxExpandDepth, deduplicated across levels), applies variable edits on the first stop while paused '
-            + '(edits: target = a top-level object variable name from the expansion, property = its property name or a NESTED PATH '
+            + 'recursively up to config maxExpandDepth, deduplicated across levels; explicit scene-tree node ids in expandNodes '
+            + 'and scene paths in nodePaths (e.g. Main/Player) expand first, deduplicated against the variables), applies variable edits on the first stop while paused '
+            + '(edits: target = a top-level object variable name from the expansion, node:<id> for any scene-tree node id, or path:<scene path> resolved against the stop\'s tree; property = its property name or a NESTED PATH '
             + '(arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent '
             + 'semantics; containers holding object references fail explicitly), value as a '
             + 'string, type int|float|string|bool, default string; only object properties and container members are editable, each edit is verified '
@@ -344,6 +349,16 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               type: 'boolean',
               description: 'attach only: pause the game immediately once connected (break) for a "what is the game doing now" probe stop.',
             },
+            expandNodes: {
+              type: 'array',
+              description: 'Scene-tree node ids (from the "scene tree" blocks, as strings) to expand on the first stop with a stack frame, BEFORE the top-level object variables (deduplicated against them). Node ids live in the same id space as object variables.',
+              items: { type: 'string' },
+            },
+            nodePaths: {
+              type: 'array',
+              description: 'Scene-node paths (e.g. Main/Player, engine root excluded) to expand on the first stop with a stack frame, resolved against that stop\'s scene tree — the stable cross-call form (raw ids are per-run random in launch). Requires scene-tree snapshots (maxTreeNodes > 0); unresolvable paths are skipped.',
+              items: { type: 'string' },
+            },
             edits: {
               type: 'array',
               description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (e.g. self, player) from the expansion; property = the property name or a nested path (arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent semantics; containers holding object references fail explicitly); value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties and container members are editable — scalar variables are not.',
@@ -351,7 +366,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  target: { type: 'string', required: true, description: 'Top-level variable name of an object (locals/members/globals).' },
+                  target: { type: 'string', required: true, description: 'Top-level variable name of an object (locals/members/globals), node:<id> for any scene-tree node id, or path:<scene path> (resolved against the stop\'s scene tree).' },
                   property: { type: 'string', required: true, description: 'Property name or nested path (arr[0], dict["k"], arr[0].x, arr[0][1]; Members/ prefix optional).' },
                   value: { type: 'string', required: true, description: 'New value as a raw string, parsed per type.' },
                   type: {
@@ -627,6 +642,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               maxExpandDepth: c.maxExpandDepth,
               maxEdits: c.maxEdits,
               maxTreeNodes: c.maxTreeNodes,
+              ...(input.expandNodes !== undefined ? { expandNodes: input.expandNodes } : {}),
+              ...(input.nodePaths !== undefined ? { nodePaths: input.nodePaths } : {}),
             })
             // The exit schema is an optional object without nulls; a null exit
             // (attach mode) and null exit fields are normalized away, as is a
