@@ -54,7 +54,7 @@ export const inject = ['tools', 'systemPrompt', 'subprocess']
 export const MAX_STOPS = 50
 
 /** One stop's position line in the replayable card meta. */
-type DebugMetaStop = { file: string; line: number; func: string; reason: string }
+type DebugMetaStop = { file: string; line: number; func: string; reason: string; threadId: number }
 
 /** The JSON-assignable card meta: the stop position lines plus truncation facts. */
 export type DebugMeta = {
@@ -89,6 +89,7 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
         line: frame?.line ?? 0,
         func: frame?.func ?? '',
         reason: stop.reason,
+        threadId: stop.threadId,
       }
     }),
     detached: value.detached,
@@ -145,7 +146,10 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
       // A `break` pause reports an empty reason with isUserBreakpoint=true
       // (pinned, T4.0); label it so the stop reads unambiguously.
       const reason = stop.reason === '' ? 'break' : stop.reason
-      lines.push(`#${i} ${where} [${reason}]`)
+      // Phase 10: a worker-thread pause (threadId !== 1) is marked so the
+      // model can tell which thread stopped (pinned T10.0: threadId 1 = main).
+      const thread = stop.threadId !== 1 ? ` @ thread ${stop.threadId}` : ''
+      lines.push(`#${i} ${where} [${reason}${thread}]`)
       // Phase 7: the scene tree of this stop (present when the stop had a
       // frame and scene trees are enabled; tree index = stop index).
       const tree = value.sceneTrees?.find(t => t.stopIndex === i)
@@ -210,7 +214,10 @@ export function debugViewFromMeta(meta: JsonValue | undefined): GenericResultVie
   const value = meta as DebugMeta
   if (typeof value.stopCount !== 'number' || !Array.isArray(value.stops)) return undefined
   const body = value.stops
-    .map(stop => `${stop.file === '' ? '<no frame>' : `${stop.file}:${stop.line} @ ${stop.func}`} [${stop.reason === '' ? 'break' : stop.reason}]`)
+    .map((stop) => {
+      const thread = stop.threadId !== 1 ? ` @ thread ${stop.threadId}` : ''
+      return `${stop.file === '' ? '<no frame>' : `${stop.file}:${stop.line} @ ${stop.func}`} [${stop.reason === '' ? 'break' : stop.reason}${thread}]`
+    })
     .join('\n')
   const head = value.stopCount === 0 ? `no stops (max ${value.maxStops})` : `${value.stopCount} stops (max ${value.maxStops})`
   const notes: string[] = []
@@ -369,6 +376,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                     properties: {
                       isUserBreakpoint: { type: 'boolean', required: true },
                       reason: { type: 'string', required: true },
+                      threadId: { type: 'number', required: true },
                       snapshot: {
                         type: 'object',
                         additionalProperties: false,

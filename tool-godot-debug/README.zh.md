@@ -100,7 +100,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿的展开对象（`<name> = Object<<id>> [<引擎类>]` + 缩进 `property = value` 行；嵌套对象以更深缩进与定位路径名呈现，如 `arr[0]`/`dict["k"]`，受 `maxExpandedObjects`/`maxExpandedProps`/`maxExpandDepth` 约束）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、每个有帧停顿的场景树（缩进 `name [class] (id)` 行 + 场景文件，受 `maxTreeNodes` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`（子线程暂停标注 `[reason @ thread N]`——线程 id 1 为主线程不标注，已 pin `.context/t10/facts.md`）、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿的展开对象（`<name> = Object<<id>> [<引擎类>]` + 缩进 `property = value` 行；嵌套对象以更深缩进与定位路径名呈现，如 `arr[0]`/`dict["k"]`，受 `maxExpandedObjects`/`maxExpandedProps`/`maxExpandDepth` 约束）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、每个有帧停顿的场景树（缩进 `name [class] (id)` 行 + 场景文件，受 `maxTreeNodes` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
 #### Token 影响
 
@@ -133,6 +133,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
 - **变量渲染保留有效数字**——数字最多保留 7 位有效数字渲染（整数直出、尾零去除；float32 线伪影如 `0.10000000149011612` 归一为 `0.1`）；超大/极小值用指数形式。源插件的 `toFixed(1)` UI 四舍五入（`0.123456` → `0.1`）已被取代。
+- **多线程暂停正确归属与寻址**——子线程（`Thread` 类）停顿标注 `[reason @ thread N]`（线程 id 1 = 主线程不标注）；该停顿的全部命令（栈/变量/场景树/展开/编辑/continue）用**暂停线程 id** 发送——协议的 threadId 字段选择命令作用线程，错误 id 以静默应答（已 pin，`.context/t10/facts.md`）。任意线程暂停时游戏整体暂停；协议不暴露按线程过滤断点。
 - **变量编辑仅限首个停顿的顶层标量属性**——`scene:set_object_property` 只在首个有帧的停顿执行，目标是顶层对象变量（标量变量没有对象 id，引擎也没有对应机制），只写标量值（`int`/`float`/`string`/`bool`）——嵌套/容器属性（数组/字典成员、源插件 `changes_parent` 路径）延后。引擎对 set **无协议级确认**（已 pin，`.context/t6/facts.md`），每条编辑经 re-inspect 对象并比对值来验证；失败的写入（属性不存在、只读属性、类型不匹配）在协议层静默，呈现为逐条 `failed` 结果并标记 `editsTruncated`。`int` 值按引擎式截断解析（`12.5` → `12`）；`string` 属性拒绝非字符串值。运行中的游戏也会接受写入，但工具只在暂停态应用编辑。
 - **对象展开仅限首个停顿、递归、去重**——`scene:inspect_object` 只在首个有帧的停顿对顶层对象值执行；当 `maxExpandDepth > 1`（默认 2）时，属性值内的 ObjectId（直接成员、数组元素 `arr[i]`、字典值 `dict["k"]`）以定位路径名递归展开，同一 id 同时出现在顶层与嵌套时只展开一次（顶层优先）。深度超过 `maxExpandDepth` 的对象保持 `Object<id>` 占位。无响应的对象被跳过并标记 `expansionTruncated`（非暂停态的游戏不响应——已 pin）。展开的类名为**引擎类**（`get_class()`，如 `class_name Player` 脚本显示为 `Node`），非脚本类名；脚本节点渲染其脚本路径。
 - **场景树仅呈现且按有帧停顿快照**——`scene:request_scene_tree` 在每个有帧的停顿执行；树渲染为缩进 `name [class] (id)` 行（脚本节点的类为其脚本路径，如 `res://main.gd`，已 pin `.context/t7/facts.md`），每停顿受 `maxTreeNodes` 约束。节点 id **不**联动展开/编辑（延后）；`break` 暂停上报仅根节点的树（引擎行为，非错误）。

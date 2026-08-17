@@ -20,7 +20,7 @@ import { relative, isAbsolute, sep } from 'node:path'
 import { verifyGodotVersion, pickFreePort } from '@deepseek-ai/dsh-lsp-godot'
 import type { SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
-import { DebugController, WaitTimeoutError, type GodotRuntimeError } from './controller.ts'
+import { DebugController, WaitTimeoutError, type GodotRuntimeError, type StopInfo } from './controller.ts'
 import { expandObjects, type ExpandedEntry } from './inspect.ts'
 import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
 import { parseSceneTree, renderSceneTree, type SceneTreeNode } from './scene-tree.ts'
@@ -48,6 +48,8 @@ const RENDER_OPTIONS: RenderOptions = {
 export interface DebugStop {
   isUserBreakpoint: boolean
   reason: string
+  /** The paused thread id (1 = main thread, T10.0). */
+  threadId: number
   snapshot: StopSnapshot
 }
 
@@ -492,7 +494,7 @@ async function collectStops(
   let sceneTreeTruncated = false
   const runStart = Date.now()
   for (let i = 0; i < options.maxStops; i++) {
-    let stop: { isUserBreakpoint: boolean; reason: string }
+    let stop: StopInfo
     try {
       stop = await controller.waitForStop(options.idleTimeoutMs, options.signal)
     } catch (error) {

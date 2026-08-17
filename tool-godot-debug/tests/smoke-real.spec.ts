@@ -28,6 +28,9 @@ const project = join(here, '..', '..', '.context', 't3', 'project')
 // The Phase 4 probe project: main.gd ticks every frame and hits line 11
 // every 20 ticks (dynamic-breakpoint target); already imported by run-t4.mjs.
 const attachProject = join(here, '..', '..', '.context', 't4', 'project')
+// The Phase 10 probe project: a worker thread hits line 18 every 20 worker
+// iterations (threaded breakpoint target); imported by run-t10.mjs.
+const threadsProject = join(here, '..', '..', '.context', 't10', 'project')
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
   setTimeout(resolve, ms)
 })
@@ -201,6 +204,50 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
     } finally {
       await ctx.fiber.dispose()
       game?.kill()
+      process.env.APPDATA = prevAppData
+      await rm(appdata, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  it('reports a worker-thread breakpoint stop with its thread id', async () => {
+    const appdata = await mkdtemp(join(tmpdir(), 'godot-debug-smoke-'))
+    const prevAppData = process.env.APPDATA
+    process.env.APPDATA = appdata
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(TimeoutPolicy)
+      await ctx.plugin(ToolGodotDebug, Config({
+        executable: process.env.GODOT_EXE as string,
+        connectWaitMs: 20_000,
+        idleTimeoutMs: 10_000,
+        graceMs: 5_000,
+        timeoutMs: 120_000,
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: 'smoke-real-threads' as never,
+        name: 'godot_debug',
+        arguments: {
+          path: threadsProject,
+          scene: 'res://main.tscn',
+          breakpoints: [{ file: 'res://main.gd', line: 18 }],
+          maxStops: 2,
+        },
+        agent: { session: { header: { cwd: threadsProject } } } as never,
+      })
+      expect(result.isError).toBe(false)
+      type ThreadedStop = { threadId: number; reason: string; snapshot: { frames: { file: string; line: number; func: string }[] } }
+      const value = result.value as { stops: ThreadedStop[] }
+      // The worker-thread stop: threadId !== 1, frame at the worker loop.
+      expect(value.stops.length).toBeGreaterThan(0)
+      const workerStop = value.stops.find(s => s.threadId !== 1)
+      expect(workerStop).toBeDefined()
+      expect(workerStop!.snapshot.frames[0]).toEqual({ file: 'res://main.gd', line: 18, func: '_worker_loop' })
+    } finally {
+      await ctx.fiber.dispose()
       process.env.APPDATA = prevAppData
       await rm(appdata, { recursive: true, force: true })
     }

@@ -57,6 +57,11 @@ const nestedBin = readFileSync(join(here, 'fixtures', 't8-nested.bin'))
 const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't8-nested.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 10 worker-thread recording: worker breakpoint pause (threadId 46).
+const workerBin = readFileSync(join(here, 'fixtures', 't10-worker.bin'))
+const workerManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't10-worker.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -418,6 +423,34 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       expect(text).toMatchSnapshot()
       const meta = result.meta as { expandedObjects: number }
       expect(meta.expandedObjects).toBe(5)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
+  }, 30_000)
+
+  it('marks a worker-thread pause in the model-visible output', async () => {
+    const game = new FakeGame(workerBin, workerManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        breakpoints: [{ file: 'res://main.gd', line: 18 }],
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as { stops: { threadId: number; reason: string }[] }
+      expect(value.stops[0]!.threadId).toBe(46)
+
+      // The stop line carries the thread marker; the head does not count it
+      // differently (1 stop).
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('res://main.gd:18 @ _worker_loop [Breakpoint @ thread 46]')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { stops: { threadId: number }[] }
+      expect(meta.stops[0]!.threadId).toBe(46)
     } finally {
       await ctx.fiber.dispose()
       await game.dispose()

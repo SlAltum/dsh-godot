@@ -1,0 +1,105 @@
+{
+  "source": "t10/worker-stop",
+  "frameCount": 14,
+  "totalBytes": 1664,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 464,
+      "len": 232
+    },
+    {
+      "seq": 4,
+      "cmd": "window:title",
+      "trigger": "connect",
+      "offset": 696,
+      "len": 84
+    },
+    {
+      "seq": 5,
+      "cmd": "debug_enter",
+      "trigger": "connect",
+      "offset": 780,
+      "len": 92
+    },
+    {
+      "seq": 6,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 872,
+      "len": 100
+    },
+    {
+      "seq": 7,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 972,
+      "len": 108
+    },
+    {
+      "seq": 8,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1080,
+      "len": 60
+    },
+    {
+      "seq": 9,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1140,
+      "len": 104
+    },
+    {
+      "seq": 10,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1244,
+      "len": 100
+    },
+    {
+      "seq": 11,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1344,
+      "len": 112
+    },
+    {
+      "seq": 12,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1456,
+      "len": 104
+    },
+    {
+      "seq": 13,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1560,
+      "len": 104
+    }
+  ]
+}

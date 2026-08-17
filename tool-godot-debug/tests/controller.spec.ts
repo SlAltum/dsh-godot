@@ -52,7 +52,7 @@ describe('DebugController', () => {
   it('detects a user breakpoint stop', async () => {
     const { controller: c } = await setup()
     const stop = await c.waitForStop(5_000)
-    expect(stop).toEqual({ isUserBreakpoint: true, reason: 'Breakpoint' })
+    expect(stop).toEqual({ isUserBreakpoint: true, reason: 'Breakpoint', threadId: 1 })
   })
 
   it('round-trips get_stack_dump and collects the snapshot frames', async () => {
@@ -73,7 +73,7 @@ describe('DebugController', () => {
     await c.waitForStop(5_000)
     c.send('continue')
     const second = await c.waitForStop(5_000)
-    expect(second).toEqual({ isUserBreakpoint: true, reason: 'Breakpoint' })
+    expect(second).toEqual({ isUserBreakpoint: true, reason: 'Breakpoint', threadId: 1 })
     c.send('continue')
     await c.waitForDebugExit(5_000)
   })

@@ -54,6 +54,13 @@ const nestedBin = readFileSync(join(here, 'fixtures', 't8-nested.bin'))
 const nestedManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't8-nested.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 10 worker-thread recording: a worker-thread breakpoint pause
+// (debug_enter threadId 46), then stack/vars fetched with the PAUSED thread
+// id (the fixed-product path, T10.0 fact 3).
+const workerBin = readFileSync(join(here, 'fixtures', 't10-worker.bin'))
+const workerManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't10-worker.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -617,5 +624,38 @@ describe('runDebug nested expansion', () => {
     expect(result.expandedObjects).toBe(3)
     const self = result.expansion!.entries.find(e => e.name === 'self')
     expect(self!.children).toBeUndefined()
+  })
+})
+
+/** The Phase 10 worker-thread path: paused thread id drives commands. */
+describe('runDebug worker thread', () => {
+  it('reports the worker thread id and fetches its stack with it', async () => {
+    const game = new FakeGame(workerBin, workerManifest.frames)
+    const options = baseOptions({ subprocess: new FakeSubprocess(), maxExpandedObjects: 0, maxTreeNodes: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    // The worker pause: threadId 46, stack from the worker loop line 18.
+    expect(result.stops).toHaveLength(1)
+    expect(result.stops[0]!.threadId).toBe(46)
+    expect(result.stops[0]!.reason).toBe('Breakpoint')
+    const frame = result.stops[0]!.snapshot.frames[0]
+    expect(frame).toEqual({ file: 'res://main.gd', line: 18, func: '_worker_loop' })
+    // Vars came back too (fetched with the paused thread id — the fixed path).
+    expect(result.stops[0]!.snapshot.scopes.members.length).toBeGreaterThan(0)
+    expect(result.stops[0]!.snapshot.scopes.members.some(v => v.name === 'worker_count')).toBe(true)
+  })
+
+  it('does not mark the main thread (threadId 1 renders without a marker)', async () => {
+    const game = new FakeGame(bin, manifest.frames) // t3 single-thread fixture
+    const options = baseOptions({ subprocess: new FakeSubprocess(), maxExpandedObjects: 0, maxTreeNodes: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.stops.every(s => s.threadId === 1)).toBe(true)
   })
 })

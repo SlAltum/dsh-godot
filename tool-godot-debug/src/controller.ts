@@ -29,10 +29,15 @@ export interface GodotRuntimeError {
   stack: { file: string; func: string; line: number }[]
 }
 
-/** A paused state (`debug_enter`): user breakpoint vs script error. */
+/** A paused state (`debug_enter`): user breakpoint vs script error, plus the
+ *  paused thread id (T10.0: `debug_enter`'s message-level threadId equals its
+ *  params[3]; commands must be sent with the PAUSED thread id — a wrong id is
+ *  answered with silence, pinned). */
 export interface StopInfo {
   isUserBreakpoint: boolean
   reason: string
+  /** The paused thread id (1 = main thread; other values = worker threads). */
+  threadId: number
 }
 
 /** The stack dump plus one frame's variable groups. */
@@ -95,6 +100,9 @@ export class DebugController {
   private protocolError: Error | undefined
 
   private threadIdValue: number | undefined
+  /** The paused thread id captured from the last `debug_enter`; commands sent
+   *  while paused must use it (T10.0 fact 3). */
+  private pausedThreadIdValue: number | undefined
   private outputLines: string[] = []
   private errorMessages: GodotRuntimeError[] = []
   private outputBytesValue = 0
@@ -115,6 +123,13 @@ export class DebugController {
   /** The game's thread id, captured from `set_pid` (needed for commands on Godot 4.2+). */
   get threadId(): number | undefined {
     return this.threadIdValue
+  }
+
+  /** The paused thread id from the last `debug_enter` (undefined until a
+   *  stop). Commands sent while paused must use this id — a wrong id is
+   *  answered with silence (T10.0 fact 3). */
+  get pausedThreadId(): number | undefined {
+    return this.pausedThreadIdValue
   }
 
   /** Collected game output lines (split per line, trailing NUL stripped). */
@@ -171,29 +186,38 @@ export class DebugController {
   }
 
   /**
-   * Wait for the game to pause (`debug_enter`) and report why.
+   * Wait for the game to pause (`debug_enter`) and report why, plus the
+   * paused thread id (pinned T10.0: the message-level threadId equals
+   * params[3]; the controller switches subsequent `send`s to it).
    * @param timeoutMs - budget before the wait fails.
    * @param signal - caller cancellation.
-   * @returns whether this was a user breakpoint and the reason string.
+   * @returns whether this was a user breakpoint, the reason string, and the
+   * paused thread id.
    */
   async waitForStop(timeoutMs: number, signal?: AbortSignal): Promise<StopInfo> {
     const msg = await this.waitFor(m => m[0] === 'debug_enter', timeoutMs, signal, 'debug_enter')
     const params = paramsOf(msg)
+    const threadId = typeof msg[1] === 'number' ? msg[1] : 1
+    this.pausedThreadIdValue = threadId
     return {
       isUserBreakpoint: params?.[0] === true,
       reason: typeof params?.[1] === 'string' ? params[1] : '',
+      threadId,
     }
   }
 
   /**
    * Send one command to the game (Godot 4.2+ frames carry the thread id).
+   * While a stop is active the PAUSED thread id is used (T10.0 fact 3: the
+   * threadId field selects the command's target thread — a wrong id is
+   * answered with silence); before the first stop the `set_pid` id is used.
    * @param cmd - the protocol command name.
    * @param params - the command's parameter array.
    * @throws GodotError when the thread id is not known yet (set_pid must
    * precede commands — T3.0 pinned the ordering).
    */
   send(cmd: string, params: unknown[] = []): void {
-    const threadId = this.threadIdValue
+    const threadId = this.pausedThreadIdValue ?? this.threadIdValue
     if (this.socket === undefined || this.socket.destroyed) {
       throw new GodotError(`controller: cannot send ${cmd}, game not connected`, 'GODOT_UNAVAILABLE')
     }

@@ -157,6 +157,24 @@ errors (1):
   platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
 `;
 
+exports[`REAL composition: tool → subprocess seam → controller → fake game > marks a worker-thread pause in the model-visible output 1`] = `
+"1 stops (max 10)
+#0 res://main.gd:18 @ _worker_loop [Breakpoint @ thread 46]
+  members:
+    self = Object<27028096474>
+    counter = 5
+    worker = Object<9223372063899649501>
+    worker_count = 0
+    worker_error = false
+output (3 lines):
+  Godot Engine v4.7.stable.mono.official.5b4e0cb0f - https://godotengine.org
+  main: starting
+  worker: starting
+errors (2):
+  platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null.
+  res://main.gd:23 warning: INTEGER_DIVISION"
+`;
+
 exports[`REAL composition: tool → subprocess seam → controller → fake game > renders nested expansion children into the model-visible output 1`] = `
 "1 stops (max 10)
 #0 res://main.gd:38 @ _process [Breakpoint]
