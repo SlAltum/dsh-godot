@@ -131,7 +131,8 @@ export class VariantEncoder {
       if (Number.isInteger(value) && (value > 2147483647 || value < -2147483648)) return 12 // 64-bit promotion
       return 8
     }
-    if (typeof value === 'bigint' || typeof value === 'boolean') return 8
+    if (typeof value === 'bigint') return 12 // INT64: type + 8-byte payload
+    if (typeof value === 'boolean') return 8
     if (typeof value === 'string') return 4 + this.sizeString(value)
     if (value === null) return 4
     if (Array.isArray(value)) {

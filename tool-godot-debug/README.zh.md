@@ -44,6 +44,8 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 | `connectWaitMs` | `20000` | spawn 后游戏连入的预算（冷启动 + 首次 import）。 |
 | `graceMs` | `5000` | 中止运行前的终止升级宽限；不能超过 `MAX_TIMER_DELAY_MS`。 |
 | `timeoutMs` | `60000` | 协作式工具调用预算，经 `exec.signal` 由工具调用超时策略强制执行。大项目首次 import 可能需要更大预算。 |
+| `maxExpandedObjects` | `10` | 首个有帧停顿上经 `scene:inspect_object` 展开的对象数上限；`0` = 禁用展开。 |
+| `maxExpandedProps` | `100` | 每个展开对象保留的属性行上限。 |
 
 ## 工具
 
@@ -95,7 +97,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿对象变量的展开属性（`<name> = Object<<id>> [<引擎类>]` + 缩进 `property = value` 行，受 `maxExpandedObjects`/`maxExpandedProps` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
 #### Token 影响
 
@@ -127,7 +129,8 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **`--breakpoints` 值无法转义逗号**——Godot 按 `,` 分割参数，含逗号的文件名无法经 CLI 断点定位（可用 `godot_debug` 的 `args` 传入并依赖动态停顿，或重命名文件）。
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
-- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）；对象展开（`scene:inspect_object`）与变量编辑延后。
+- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）；变量编辑延后。
+- **对象展开仅限首个停顿的顶层一级**——`scene:inspect_object` 只在首个有帧的停顿对顶层对象值执行（数组/字典成员保持 `Object<id>`）；属性内的嵌套对象渲染为 `Object<id>`，不递归。无响应的对象被跳过并标记 `expansionTruncated`（非暂停态的游戏不响应——已 pin）。展开的类名为**引擎类**（`get_class()`，如 `class_name Player` 脚本显示为 `Node`），非脚本类名。
 - **attach 需要显式端口与正确的启动顺序**——调用方必须预知端口，且游戏必须在工具调用之后启动：Godot 不重试失败的调试器连接（已 pin，`.context/t4/facts.md`）。`pauseOnAttach` 停顿提供「游戏此刻在做什么」探测。
 - **attach 命中依赖游戏再次执行到目标行**——动态断点不回退已执行代码；可配合 `pauseOnAttach` 或瞄准会再次运行的代码。
 - **attach 假设项目与运行中的游戏一致**——调试协议没有工作区握手；`path` 错误会产生永不命中的断点（运行报告 `stops: []`）。

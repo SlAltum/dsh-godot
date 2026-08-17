@@ -21,6 +21,7 @@ import { verifyGodotVersion, pickFreePort } from '@deepseek-ai/dsh-lsp-godot'
 import type { SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import { DebugController, WaitTimeoutError, type GodotRuntimeError } from './controller.ts'
+import { expandObjects, type ExpandedEntry } from './inspect.ts'
 import { GodotError } from './error.ts'
 import { renderSnapshot, type RenderOptions, type StopSnapshot } from './snapshot.ts'
 
@@ -58,6 +59,13 @@ export interface DebugRunResult {
   /** True when the game was not owned by the tool and keeps running after
    *  detach (attach mode); launch mode is always `false`. */
   detached: boolean
+  /** The Phase 5 variable expansion from the first frame-bearing stop;
+   *  `null` when no stop had a frame or expansion is disabled. */
+  expansion: { stopIndex: number; entries: ExpandedEntry[] } | null
+  /** Successful object expansions this run. */
+  expandedObjects: number
+  /** Any object skipped, property truncated, selection sliced, or budget spent. */
+  expansionTruncated: boolean
   outputTruncated: boolean
   /** Any stop whose variable snapshot was incomplete (protocol stall/disconnect). */
   varsTruncated: boolean
@@ -104,6 +112,11 @@ export interface DebugRunOptions {
   /** attach only: pause the game immediately once connected (`break`), for a
    *  "what is the game doing right now" probe stop. */
   pauseOnAttach?: boolean
+  /** Max objects expanded via `scene:inspect_object` on the first frame-bearing
+   *  stop (0 = disabled). */
+  maxExpandedObjects: number
+  /** Max property rows kept per expanded object. */
+  maxExpandedProps: number
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -224,7 +237,7 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
     })
 
     await waitForSetPid(controller, handle, options)
-    const { stops, varsTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated } = await collectStops(controller, options)
     const exit = await settleExit(handle, options.idleTimeoutMs)
 
     return {
@@ -233,6 +246,9 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
       errors: [...controller.errors],
       exit,
       detached: false,
+      expansion,
+      expandedObjects: expansion?.entries.length ?? 0,
+      expansionTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -312,7 +328,7 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
     }
     if (options.pauseOnAttach === true) controller.send('break')
 
-    const { stops, varsTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated } = await collectStops(controller, options)
 
     return {
       stops,
@@ -320,6 +336,9 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
       errors: [...controller.errors],
       exit: null,
       detached: true,
+      expansion,
+      expandedObjects: expansion?.entries.length ?? 0,
+      expansionTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -404,13 +423,24 @@ async function waitForSetPid(
   }
 }
 
-/** The stop → snapshot → continue loop, bounded by `maxStops`. */
+/** The stop → snapshot → continue loop, bounded by `maxStops`. On the FIRST
+ *  stop that has a frame, the Phase 5 variable expansion runs while still
+ *  paused (pinned: a running game answers with silence), before continue. */
 async function collectStops(
   controller: DebugController,
   options: DebugRunOptions,
-): Promise<{ stops: DebugStop[]; varsTruncated: boolean }> {
+): Promise<{
+  stops: DebugStop[]
+  varsTruncated: boolean
+  expansion: { stopIndex: number; entries: ExpandedEntry[] } | null
+  expansionTruncated: boolean
+}> {
   const stops: DebugStop[] = []
   let varsTruncated = false
+  let expanded = false
+  let expansion: { stopIndex: number; entries: ExpandedEntry[] } | null = null
+  let expansionTruncated = false
+  const runStart = Date.now()
   for (let i = 0; i < options.maxStops; i++) {
     let stop: { isUserBreakpoint: boolean; reason: string }
     try {
@@ -426,6 +456,35 @@ async function collectStops(
       controller.send('get_stack_frame_vars', [0])
       const collected = await controller.waitForSnapshot(options.idleTimeoutMs, options.signal)
       snapshot = renderSnapshot(collected.dump, collected.vars, RENDER_OPTIONS)
+      if (!expanded && snapshot.frames.length > 0 && options.maxExpandedObjects > 0) {
+        expanded = true
+        // Expansion budget: min(remaining run budget minus a settle margin,
+        // the worst-case object cap). Budget exhaustion skips the rest and
+        // keeps the partial result — only an external cancel aborts (pinned
+        // T5.2 review H2).
+        const remaining = options.timeoutMs - (Date.now() - runStart) - EXPANSION_SETTLE_MS
+        const budgetMs = Math.max(0, Math.min(remaining, options.maxExpandedObjects * options.idleTimeoutMs))
+        try {
+          const result = await expandObjects(collected.vars, controller, {
+            maxObjects: options.maxExpandedObjects,
+            maxProps: options.maxExpandedProps,
+            render: RENDER_OPTIONS,
+            idleTimeoutMs: options.idleTimeoutMs,
+            budgetMs,
+            signal: options.signal,
+          })
+          expansion = { stopIndex: i, entries: result.entries }
+          if (result.expansionTruncated) expansionTruncated = true
+        } catch (error) {
+          if (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE') {
+            // Disconnected mid-expansion: end the loop with the partial result.
+            expansionTruncated = true
+            stops.push({ ...stop, snapshot })
+            break
+          }
+          throw error
+        }
+      }
     } catch (error) {
       if (error instanceof WaitTimeoutError || (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE')) {
         snapshot = renderSnapshot([0], [], RENDER_OPTIONS) // partial stop: no variable data
@@ -438,8 +497,11 @@ async function collectStops(
     stops.push({ ...stop, snapshot })
     controller.send('continue')
   }
-  return { stops, varsTruncated }
+  return { stops, varsTruncated, expansion, expansionTruncated }
 }
+
+/** Margin kept after expansion so the run can settle within `timeoutMs`. */
+const EXPANSION_SETTLE_MS = 5_000
 
 /** Collect the exit facts: a short natural-exit window, then terminate. */
 async function settleExit(handle: SubprocessHandle, idleTimeoutMs: number): Promise<SubprocessOutcome> {

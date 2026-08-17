@@ -26,6 +26,13 @@ const attachBin = readFileSync(join(here, 'fixtures', 't4-attach.bin'))
 const attachManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't4-attach.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 5 expansion recording: breakpoint pause with object vars
+// (self/player ObjectId, r_id RID) and three serial scene:inspect_object
+// responses (24 props, 17 props, empty RID response).
+const inspectBin = readFileSync(join(here, 'fixtures', 't5-inspect.bin'))
+const inspectManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't5-inspect.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -55,6 +62,8 @@ function baseOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions 
     maxMessageBytes: 16_000_000,
     maxOutputBytes: 1_000_000,
     maxStderrBytes: 100_000,
+    maxExpandedObjects: 10,
+    maxExpandedProps: 100,
     signal: new AbortController().signal,
     subprocess: new FakeSubprocess(),
     ...overrides,
@@ -218,19 +227,20 @@ describe('runDebug', () => {
   })
 })
 
+/** Attach-mode options (shared by the attach and expansion suites): the
+ *  launch default `scene` is dropped — attach must not carry one. */
+function attachOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
+  const { scene: _scene, ...rest } = baseOptions()
+  return {
+    ...rest,
+    mode: 'attach',
+    port: 6007,
+    ...overrides,
+  }
+}
+
 /** The Phase 4 attach path: joins a caller-started game over a fixed port. */
 describe('runDebug attach mode', () => {
-  function attachOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
-    // baseOptions ships a launch-only `scene`; attach must not carry one.
-    const { scene: _scene, ...rest } = baseOptions()
-    return {
-      ...rest,
-      mode: 'attach',
-      port: 6007,
-      ...overrides,
-    }
-  }
-
   it('attaches, hits the dynamic breakpoint, and detaches with the game untouched', async () => {
     const game = new FakeGame(attachBin, attachManifest.frames)
     const sub = new FakeSubprocess()
@@ -352,5 +362,58 @@ describe('runDebug attach mode', () => {
     controller.abort()
     await expect(run).rejects.toMatchObject({ code: 'GODOT_ABORTED' })
     await game.dispose()
+  })
+})
+
+/** The Phase 5 expansion path: scene:inspect_object on the first frame stop. */
+describe('runDebug expansion', () => {
+  it('expands the object vars of the first frame-bearing stop', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.expansion).not.toBeNull()
+    expect(result.expandedObjects).toBe(2) // self + player; the RID var is excluded
+    const names = result.expansion!.entries.map(e => e.name)
+    expect(names).toEqual(['self', 'player'])
+    const self = result.expansion!.entries[0]!
+    expect(self.className).toBe('Node')
+    expect(self.rows.length).toBeGreaterThan(0)
+    // Members/ prefix stripped; property values rendered.
+    const counter = self.rows.find(r => r.name === 'counter')
+    expect(counter?.value).toBe('20')
+    expect(self.rows.some(r => r.name.startsWith('Node/'))).toBe(true)
+    expect(result.expansionTruncated).toBe(false)
+    expect(result.expansion!.stopIndex).toBe(0)
+  })
+
+  it('does not expand when maxExpandedObjects is 0', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub, maxExpandedObjects: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.expansion).toBeNull()
+    expect(result.expandedObjects).toBe(0)
+  })
+
+  it('expands objects in attach mode too (same stop-loop integration)', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const sub = new FakeSubprocess()
+    const options = attachOptions({ subprocess: sub, port: 6007, pauseOnAttach: true })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.detached).toBe(true)
+    expect(result.expandedObjects).toBe(2)
   })
 })

@@ -33,6 +33,11 @@ const attachBin = readFileSync(join(here, 'fixtures', 't4-attach.bin'))
 const attachManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't4-attach.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 5 expansion recording: object vars + serial inspect responses.
+const inspectBin = readFileSync(join(here, 'fixtures', 't5-inspect.bin'))
+const inspectManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't5-inspect.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -235,6 +240,37 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       const meta = result.meta as { detached: boolean; stopCount: number }
       expect(meta.detached).toBe(true)
       expect(meta.stopCount).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
+  }, 30_000)
+
+  it('expands objects into the model-visible output', async () => {
+    const game = new FakeGame(inspectBin, inspectManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        breakpoints: [{ file: 'res://main.gd', line: 25 }],
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as {
+        expandedObjects: number
+        expansion: { entries: { name: string; rows: { name: string; value: string }[] }[] }
+      }
+      expect(value.expandedObjects).toBe(2)
+      expect(value.expansion.entries[0]!.name).toBe('self')
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('expanded objects (2):')
+      expect(text).toContain('self = Object<27028096474> [Node]')
+      expect(text).toContain('counter = 20')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { expandedObjects: number }
+      expect(meta.expandedObjects).toBe(2)
     } finally {
       await ctx.fiber.dispose()
       await game.dispose()

@@ -1,0 +1,140 @@
+{
+  "source": "t5/inspect-stop",
+  "frameCount": 19,
+  "totalBytes": 5412,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "window:title",
+      "trigger": "connect",
+      "offset": 464,
+      "len": 80
+    },
+    {
+      "seq": 4,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 544,
+      "len": 84
+    },
+    {
+      "seq": 5,
+      "cmd": "debug_enter",
+      "trigger": "connect",
+      "offset": 628,
+      "len": 92
+    },
+    {
+      "seq": 6,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 720,
+      "len": 104
+    },
+    {
+      "seq": 7,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 824,
+      "len": 60
+    },
+    {
+      "seq": 8,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 884,
+      "len": 104
+    },
+    {
+      "seq": 9,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 988,
+      "len": 104
+    },
+    {
+      "seq": 10,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1092,
+      "len": 100
+    },
+    {
+      "seq": 11,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1192,
+      "len": 104
+    },
+    {
+      "seq": 12,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1296,
+      "len": 140
+    },
+    {
+      "seq": 13,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1436,
+      "len": 108
+    },
+    {
+      "seq": 14,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1544,
+      "len": 100
+    },
+    {
+      "seq": 15,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1644,
+      "len": 92
+    },
+    {
+      "seq": 16,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27028096474",
+      "offset": 1736,
+      "len": 2088
+    },
+    {
+      "seq": 17,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:27061650910",
+      "offset": 3824,
+      "len": 1532
+    },
+    {
+      "seq": 18,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:94489280512",
+      "offset": 5356,
+      "len": 56
+    }
+  ]
+}

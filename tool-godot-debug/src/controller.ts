@@ -230,6 +230,26 @@ export class DebugController {
   }
 
   /**
+   * Wait for any message matching a caller predicate (used by the inspect
+   * expansion, whose responses carry no request id — the predicate must
+   * compare the normalized response id with the requested one; pinned
+   * T5.0 facts).
+   * @param pred - the message predicate (params at index 2).
+   * @param timeoutMs - budget before the wait fails.
+   * @param signal - caller cancellation.
+   * @param label - the wait label for diagnostics.
+   * @returns the matching message.
+   */
+  async waitForMessage(
+    pred: (msg: DecodedVariant[]) => boolean,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    label = 'message',
+  ): Promise<DecodedVariant[]> {
+    return this.waitFor(pred, timeoutMs, signal, label)
+  }
+
+  /**
    * Wait for `debug_exit` (the game left the paused state after a continue).
    * @param timeoutMs - budget before the wait fails.
    * @param signal - caller cancellation.

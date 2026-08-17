@@ -44,6 +44,8 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `connectWaitMs` | `20000` | Budget for the game to connect after spawn (cold start + first import). |
 | `graceMs` | `5000` | Terminate-escalation grace before an aborted run settles; cannot exceed `MAX_TIMER_DELAY_MS`. |
 | `timeoutMs` | `60000` | Cooperative tool-call budget, enforced by the tool-call timeout policy through `exec.signal`. First-run project import may need a larger budget. |
+| `maxExpandedObjects` | `10` | Max objects expanded via `scene:inspect_object` on the first stop that has a frame; `0` disables expansion. |
+| `maxExpandedProps` | `100` | Max property rows kept per expanded object. |
 
 ## Tool
 
@@ -95,7 +97,7 @@ Prefix-stable while tool visibility and definitions are unchanged.
 
 #### What the model sees
 
-`godot_debug` returns a generic card: a `N stops at <file>:<line> (maxStops)` head, one `#i <file>:<line> @ <function> [reason]` line per stop, the first stop **that has a frame**'s full locals/members/globals (a `break` pause reports an empty engine stack and renders as `[break]`), and the output/error summary with truncation notes; attach results append `attached; game left running (not owned by the tool)`.
+`godot_debug` returns a generic card: a `N stops at <file>:<line> (maxStops)` head, one `#i <file>:<line> @ <function> [reason]` line per stop, the first stop **that has a frame**'s full locals/members/globals (a `break` pause reports an empty engine stack and renders as `[break]`), the expanded properties of that stop's object variables (`<name> = Object<<id>> [<engine class>]` + indented `property = value` rows, bounded by `maxExpandedObjects`/`maxExpandedProps`), and the output/error summary with truncation notes; attach results append `attached; game left running (not owned by the tool)`.
 
 #### Token effect
 
@@ -127,7 +129,8 @@ Append-only.
 - **`--breakpoints` values cannot escape commas** — Godot splits the argument on `,`, so a file name containing a comma cannot be targeted via CLI breakpoints (use `godot_debug`'s `args` to pass it and rely on dynamic stops instead, or rename the file).
 - **The game user-data dir must be writable** — Godot's game mode crashes (signal 11) when `user://` creation fails (e.g. sandboxed/container deployments); point the environment's `APPDATA` (Windows) at a writable dir or document the deployment requirement.
 - **First-run import latency** — the first headless run imports assets; the default 60 s budget may need raising via `timeoutMs` for large projects.
-- **Variable rendering follows the source plugin's display precision** — math types render via `stringify_value` with `toFixed(1)` rounding (`0.123456` → `0.1`); object expansion (`scene:inspect_object`) and variable editing are deferred.
+- **Variable rendering follows the source plugin's display precision** — math types render via `stringify_value` with `toFixed(1)` rounding (`0.123456` → `0.1`); variable editing is deferred.
+- **Object expansion is first-stop, top-level, one level** — `scene:inspect_object` runs on the first stop that has a frame and only for top-level object values (arrays/dictionaries members stay `Object<id>`); nested objects inside properties render as `Object<id>` without recursion. Expansion skips objects that do not answer and marks the report `expansionTruncated` (a non-paused game answers with silence — pinned). The expanded class name is the ENGINE class (`get_class()`, e.g. `Node` for a `class_name Player` script), not the script class.
 - **attach requires an explicit port and the right start order** — the port must be known to the caller, and the game must start AFTER the tool call: Godot does not retry a failed debugger connection (pinned, `.context/t4/facts.md`). A `pauseOnAttach` stop gives a "what is the game doing right now" probe.
 - **attach hits depend on the game re-reaching the line** — dynamic breakpoints do not rewind executed code; combine them with `pauseOnAttach` or target code that runs again.
 - **attach assumes the project matches the running game** — the debug protocol has no workspace handshake; a wrong `path` yields breakpoints that never match (the run reports `stops: []`).

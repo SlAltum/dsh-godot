@@ -75,6 +75,8 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
           }
         }[]
         output: string[]
+        expandedObjects: number
+        expansion: { entries: { name: string; className: string; rows: { name: string; value: string }[] }[] }
       }
       expect(value.stops).toHaveLength(2)
       expect(value.stops[0]!.reason).toBe('Breakpoint')
@@ -82,6 +84,15 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
       const members = Object.fromEntries(value.stops[0]!.snapshot.scopes.members.map(v => [v.name, v.value]))
       expect(members['counter']).toBe('1')
       expect(value.output.some(line => line.includes('counter=3'))).toBe(true)
+      // Phase 5: the first stop expands `self`. The response className is the
+      // ENGINE class (get_class(), "Node" even for the Player script class —
+      // pinned in `.context/t5/facts.md`), so assert on the engine class and
+      // the script member rows instead.
+      expect(value.expandedObjects).toBeGreaterThan(0)
+      const self = value.expansion.entries.find(e => e.name === 'self')
+      expect(self).toBeDefined()
+      expect(self!.className).toBe('Node')
+      expect(self!.rows.some(r => r.name === 'counter')).toBe(true)
     } finally {
       await ctx.fiber.dispose()
       process.env.APPDATA = prevAppData

@@ -161,6 +161,16 @@ describe('encode', () => {
     const encoded = encoder.encodeVariant(-7)
     expect(decoder.decodeVariant(encoded)).toBe(-7)
   })
+
+  it('round-trips bigints as INT64 (Phase 5: scene:inspect_object ids)', () => {
+    const id = 27028096474n
+    const encoded = encoder.encodeVariant(id)
+    expect(decoder.decodeVariant(encoded)).toBe(id)
+    // A full command frame carrying the bigint must not overflow its buffer
+    // (regression: sizeVariant sized bigints as 8 bytes, the write overflowed).
+    const frame = encoder.encodeMessage(['scene:inspect_object', 1, [id]])
+    expect(decoder.decodeMessage(frame.subarray(4))).toEqual(['scene:inspect_object', 1, [id]])
+  })
 })
 
 describe('decode edge cases', () => {

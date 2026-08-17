@@ -30,9 +30,11 @@ import type { DebugRunResult } from './tool.ts'
 export { Config, validateConfig } from './config.ts'
 export type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
 export { runDebug } from './tool.ts'
-export type { DebugBreakpoint, DebugRunOptions, DebugRunResult, DebugStop } from './tool.ts'
+export type { DebugBreakpoint, DebugRunMode, DebugRunOptions, DebugRunResult, DebugStop } from './tool.ts'
 export { renderSnapshot, renderValue } from './snapshot.ts'
 export type { RenderOptions, RenderScopes, RenderVar, SnapshotFrame, StopSnapshot } from './snapshot.ts'
+export { expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from './inspect.ts'
+export type { ExpandedEntry, ExpansionResult } from './inspect.ts'
 export { GodotError } from './error.ts'
 export type { GodotErrorCode } from './error.ts'
 
@@ -54,6 +56,8 @@ export type DebugMeta = {
   maxStops: number
   stops: DebugMetaStop[]
   detached: boolean
+  expandedObjects: number
+  expansionTruncated: boolean
   outputTruncated: boolean
   varsTruncated: boolean
 }
@@ -78,6 +82,8 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
       }
     }),
     detached: value.detached,
+    expandedObjects: value.expandedObjects,
+    expansionTruncated: value.expansionTruncated,
     outputTruncated: value.outputTruncated,
     varsTruncated: value.varsTruncated,
   }
@@ -118,6 +124,15 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
           lines.push(`  ${scopeName}:`)
           for (const v of vars) lines.push(`    ${v.name} = ${v.value}`)
         }
+        // Phase 5: the expanded objects of this same stop (expansion runs on
+        // the first frame-bearing stop, which is exactly fullIdx).
+        if (value.expansion !== null && value.expansion.entries.length > 0) {
+          lines.push(`  expanded objects (${value.expansion.entries.length}):`)
+          for (const entry of value.expansion.entries) {
+            lines.push(`    ${entry.name} = Object<${entry.id}> [${entry.className}]`)
+            for (const row of entry.rows) lines.push(`      ${row.name} = ${row.value}`)
+          }
+        }
       }
     }
   }
@@ -153,6 +168,8 @@ export function debugViewFromMeta(meta: JsonValue | undefined): GenericResultVie
   const head = value.stopCount === 0 ? `no stops (max ${value.maxStops})` : `${value.stopCount} stops (max ${value.maxStops})`
   const notes: string[] = []
   if (value.detached) notes.push('attached; game left running')
+  if (value.expandedObjects > 0) notes.push(`${value.expandedObjects} objects expanded`)
+  if (value.expansionTruncated) notes.push('some objects not expanded')
   if (value.outputTruncated) notes.push('output truncated')
   if (value.varsTruncated) notes.push('some variable snapshots incomplete')
   return {
@@ -194,7 +211,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
         text:
           'Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), '
           + 'the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues '
-          + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. '
+          + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables '
+          + 'are expanded in place on the first stop (properties under "expanded objects"). '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
           + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
           + 'after detach.',
@@ -204,7 +222,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           description:
             'Run a Godot project once under the debugger, or attach to a running game. launch (default): set breakpoints '
             + '(res:// path or absolute file path plus 1-based line), the tool launches the project headless with --remote-debug, '
-            + 'snapshots the stack and locals/members/globals at each stop, auto-continues up to maxStops, then reports the stops, '
+            + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
+            + 'bounded by config maxExpandedObjects/maxExpandedProps), auto-continues up to maxStops, then reports the stops, '
             + 'the game output, and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project '
             + 'imported once. attach: join a game the user already started with --remote-debug tcp://127.0.0.1:<port> (the port '
             + 'must be explicit and the game must start AFTER the call — Godot does not retry a failed connection); breakpoints '
@@ -387,6 +406,40 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                   },
                 },
                 detached: { type: 'boolean', required: true },
+                expansion: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    stopIndex: { type: 'number', required: true },
+                    entries: {
+                      type: 'array',
+                      required: true,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          name: { type: 'string', required: true },
+                          id: { type: 'string', required: true },
+                          className: { type: 'string', required: true },
+                          rows: {
+                            type: 'array',
+                            required: true,
+                            items: {
+                              type: 'object',
+                              additionalProperties: false,
+                              properties: {
+                                name: { type: 'string', required: true },
+                                value: { type: 'string', required: true },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                expandedObjects: { type: 'number', required: true },
+                expansionTruncated: { type: 'boolean', required: true },
                 outputTruncated: { type: 'boolean', required: true },
                 varsTruncated: { type: 'boolean', required: true },
               },
@@ -423,31 +476,23 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               ...(input.args !== undefined ? { args: input.args } : {}),
               ...(input.mode !== undefined ? { mode: input.mode } : {}),
               ...(input.pauseOnAttach !== undefined ? { pauseOnAttach: input.pauseOnAttach } : {}),
+              maxExpandedObjects: c.maxExpandedObjects,
+              maxExpandedProps: c.maxExpandedProps,
             })
             // The exit schema is an optional object without nulls; a null exit
-            // (attach mode) and null exit fields are normalized away. Both
-            // branches carry `detached` — attach always takes the null-exit
-            // branch, so the flag must not be lost there.
+            // (attach mode) and null exit fields are normalized away, as is a
+            // null expansion. One return shape carries both branches (the
+            // fields must not be lost on the attach null-exit path).
             const exit = result.exit === null ? undefined : {
               ...(result.exit.exitCode !== null ? { exitCode: result.exit.exitCode } : {}),
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
             }
-            return exit === undefined
-              ? {
-                stops: result.stops,
-                output: result.output,
-                errors: result.errors,
-                detached: result.detached,
-                outputTruncated: result.outputTruncated,
-                varsTruncated: result.varsTruncated,
-              }
-              : {
-                ...result,
-                exit,
-                detached: result.detached,
-                outputTruncated: result.outputTruncated,
-                varsTruncated: result.varsTruncated,
-              }
+            const { expansion: _expansion, exit: _exit, ...resultRest } = result
+            return {
+              ...resultRest,
+              ...(exit !== undefined ? { exit } : {}),
+              ...(result.expansion !== null ? { expansion: result.expansion } : {}),
+            }
           },
           presentCall: (args): GenericCallView => {
             const where = args.path !== undefined ? ` ${args.path}` : ' workspace'

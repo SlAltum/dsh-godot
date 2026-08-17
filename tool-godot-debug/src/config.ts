@@ -32,6 +32,11 @@ export interface GodotDebugConfig {
   graceMs?: number
   /** Cooperative tool-call budget on `godot_debug`, enforced through `exec.signal`. */
   timeoutMs?: number
+  /** Max objects expanded via `scene:inspect_object` on the first frame-bearing
+   *  stop (0 = expansion disabled). */
+  maxExpandedObjects?: number
+  /** Max property rows kept per expanded object. */
+  maxExpandedProps?: number
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -48,6 +53,8 @@ export const Config: z<GodotDebugConfig> = z.object({
   connectWaitMs: z.number().default(20_000),
   graceMs: z.number().default(5_000),
   timeoutMs: z.number().default(60_000),
+  maxExpandedObjects: z.number().default(10),
+  maxExpandedProps: z.number().default(100),
 })
 
 /**
@@ -67,6 +74,9 @@ export function validateConfig(config: GodotDebugConfig): void {
   assertTimer('connectWaitMs', resolved.connectWaitMs)
   assertTimer('graceMs', resolved.graceMs)
   assertPositiveInteger('timeoutMs', resolved.timeoutMs)
+  // 0 = expansion disabled (a documented sentinel, not an error).
+  assertNonNegativeInteger('maxExpandedObjects', resolved.maxExpandedObjects)
+  assertPositiveInteger('maxExpandedProps', resolved.maxExpandedProps)
 }
 
 /** Reject a value outside the TCP port range; `allowZero` permits the auto-pick sentinel. */
@@ -88,5 +98,12 @@ function assertTimer(name: string, value: number): void {
 function assertPositiveInteger(name: string, value: number): void {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`tool-godot-debug: ${name} must be a positive integer`)
+  }
+}
+
+/** Reject a negative or non-integer value (0 is a legal sentinel here). */
+function assertNonNegativeInteger(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`tool-godot-debug: ${name} must be a non-negative integer`)
   }
 }

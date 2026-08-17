@@ -1,11 +1,13 @@
 /**
  * A fake Godot game for controller tests: a TCP client that connects to the
- * controller's listening port and replays the T3.0 recorded byte stream. On
+ * controller's listening port and replays the recorded byte stream. On
  * connect it sends the `connect`-triggered frames; after each decoded command
  * it sends the frames whose manifest trigger matches that command (e.g.
- * `get_stack_dump` → the stack_dump frame). The replayed bytes are the
- * real-Godot recording, so the controller's decoding is validated against
- * ground truth, not against its own encoder.
+ * `get_stack_dump` → the stack_dump frame). `scene:inspect_object` responses
+ * are dispatched by the REQUESTED object id (manifest trigger `inspect:<id>`)
+ * so several serial expansions replay correctly (Phase 5, plan M5). The
+ * replayed bytes are the real-Godot recording, so the controller's decoding
+ * is validated against ground truth, not against its own encoder.
  */
 
 import { connect, createServer, type Socket } from 'node:net'
@@ -81,7 +83,8 @@ export class FakeGame {
         if (stash.length < 4 + len) break
         const payload = stash.subarray(4, 4 + len)
         stash = stash.subarray(4 + len)
-        this.replay(this.commandName(payload))
+        const { command, inspectId } = this.commandInfo(payload)
+        this.replay(inspectId !== null ? `inspect:${inspectId}` : command)
       }
     })
     socket.on('error', () => {})
@@ -91,10 +94,14 @@ export class FakeGame {
     this.socket?.destroy()
   }
 
-  private commandName(payload: Buffer): string {
+  private commandInfo(payload: Buffer): { command: string; inspectId: string | null } {
     const msg = this.decoder.decodeMessage(payload)
     if (typeof msg[0] !== 'string') throw new Error(`fake game: non-string command of type ${typeof msg[0]}`)
-    return msg[0]
+    let inspectId: string | null = null
+    if (msg[0] === 'scene:inspect_object' && Array.isArray(msg[2]) && typeof msg[2][0] === 'bigint') {
+      inspectId = msg[2][0].toString()
+    }
+    return { command: msg[0], inspectId }
   }
 
   private replay(trigger: string): void {
