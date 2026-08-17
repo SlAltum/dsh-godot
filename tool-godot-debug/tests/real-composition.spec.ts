@@ -45,6 +45,12 @@ const editBin = readFileSync(join(here, 'fixtures', 't6-edit.bin'))
 const editManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't6-edit.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 7 scene-tree recording: two frame-bearing stops, each with a
+// scene_tree response (per-request sequence dispatch).
+const treeBin = readFileSync(join(here, 'fixtures', 't7-tree.bin'))
+const treeManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't7-tree.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -321,6 +327,43 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       expect(text).toMatchSnapshot()
       const meta = result.meta as { editsApplied: number }
       expect(meta.editsApplied).toBe(4)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
+  }, 30_000)
+
+  it('snapshots scene trees into the model-visible output', async () => {
+    const game = new FakeGame(treeBin, treeManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        breakpoints: [{ file: 'res://main.gd', line: 32 }],
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as {
+        sceneTreeCount: number
+        sceneTreeTruncated: boolean
+        sceneTrees: { stopIndex: number; lines: string[] }[]
+      }
+      expect(value.sceneTreeCount).toBe(2)
+      expect(value.sceneTreeTruncated).toBe(false)
+      expect(value.sceneTrees[0]).toMatchObject({ stopIndex: 0 })
+      expect(value.sceneTrees[0]!.lines[0]).toBe('root [Window] (26323453389)')
+      expect(value.sceneTrees[0]!.lines.some(l => l.includes('Leaf中文'))).toBe(true)
+
+      // Model-visible render carries a "scene tree" block per frame stop.
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('scene tree (8 nodes):')
+      expect(text).toContain('  Main [res://main.gd] (26994542042) res://main.tscn')
+      expect(text).toContain('      Leaf中文 [Node2D] (27028096478)')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { sceneTreeCount: number }
+      expect(meta.sceneTreeCount).toBe(2)
     } finally {
       await ctx.fiber.dispose()
       await game.dispose()

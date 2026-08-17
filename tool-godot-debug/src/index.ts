@@ -37,6 +37,8 @@ export { expandObjects, normalizeId, parseInspectProps, selectExpandableIds } fr
 export type { ExpandedEntry, ExpansionResult } from './inspect.ts'
 export { applyEdits, findEditTarget, findPropValue, parseEditValue, valueEquals } from './edit.ts'
 export type { EditRequest, EditResult, EditValueType } from './edit.ts'
+export { parseSceneTree, renderSceneTree } from './scene-tree.ts'
+export type { SceneTreeNode, SceneTreeParse, SceneTreeRenderOptions } from './scene-tree.ts'
 export { GodotError } from './error.ts'
 export type { GodotErrorCode } from './error.ts'
 
@@ -62,6 +64,8 @@ export type DebugMeta = {
   expansionTruncated: boolean
   editsApplied: number
   editsTruncated: boolean
+  sceneTreeCount: number
+  sceneTreeTruncated: boolean
   outputTruncated: boolean
   varsTruncated: boolean
 }
@@ -90,6 +94,8 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
     expansionTruncated: value.expansionTruncated,
     editsApplied: value.editsApplied,
     editsTruncated: value.editsTruncated,
+    sceneTreeCount: value.sceneTreeCount,
+    sceneTreeTruncated: value.sceneTreeTruncated,
     outputTruncated: value.outputTruncated,
     varsTruncated: value.varsTruncated,
   }
@@ -120,6 +126,13 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
       // (pinned, T4.0); label it so the stop reads unambiguously.
       const reason = stop.reason === '' ? 'break' : stop.reason
       lines.push(`#${i} ${where} [${reason}]`)
+      // Phase 7: the scene tree of this stop (present when the stop had a
+      // frame and scene trees are enabled; tree index = stop index).
+      const tree = value.sceneTrees?.find(t => t.stopIndex === i)
+      if (tree !== undefined) {
+        lines.push(`  scene tree (${tree.lines.length} nodes):`)
+        for (const line of tree.lines) lines.push(`    ${line}`)
+      }
       if (i === fullIdx) {
         for (const [scopeName, vars] of [
           ['locals', stop.snapshot.scopes.locals],
@@ -187,6 +200,8 @@ export function debugViewFromMeta(meta: JsonValue | undefined): GenericResultVie
   if (value.expansionTruncated) notes.push('some objects not expanded')
   if (value.editsApplied > 0) notes.push(`${value.editsApplied} edits applied`)
   if (value.editsTruncated) notes.push('some edits failed')
+  if (value.sceneTreeCount > 0) notes.push(`${value.sceneTreeCount} scene trees`)
+  if (value.sceneTreeTruncated) notes.push('some scene trees truncated')
   if (value.outputTruncated) notes.push('output truncated')
   if (value.varsTruncated) notes.push('some variable snapshots incomplete')
   return {
@@ -234,6 +249,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
           + 'optional), value as a string, and type int|float|string|bool (default string). Only object properties are editable — '
           + 'scalar variables are not. Each edit reports ok/failed. '
+          + 'The scene tree (current node hierarchy, "scene tree" block under each stop) is snapshotted on every stop that has a '
+          + 'stack frame; node ids are usable for future inspect linkage. '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
           + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
           + 'after detach.',
@@ -247,7 +264,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             + 'bounded by config maxExpandedObjects/maxExpandedProps), applies variable edits on the first stop while paused '
             + '(edits: target = a top-level object variable name from the expansion, property = its property name, value as a '
             + 'string, type int|float|string|bool, default string; only object properties are editable, each edit is verified '
-            + 'against the engine and reports ok/failed), auto-continues up to maxStops, then reports the stops, the game output, '
+            + 'against the engine and reports ok/failed), snapshots the scene tree on every stop that has a stack frame '
+            + '(bounded by config maxTreeNodes), auto-continues up to maxStops, then reports the stops, the game output, '
             + 'and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project imported once. '
             + 'attach: join a game the user already started with --remote-debug tcp://127.0.0.1:<port> (the port '
             + 'must be explicit and the game must start AFTER the call — Godot does not retry a failed connection); breakpoints '
@@ -507,6 +525,19 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 },
                 editsApplied: { type: 'number', required: true },
                 editsTruncated: { type: 'boolean', required: true },
+                sceneTrees: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      stopIndex: { type: 'number', required: true },
+                      lines: { type: 'array', required: true, items: { type: 'string' } },
+                    },
+                  },
+                },
+                sceneTreeCount: { type: 'number', required: true },
+                sceneTreeTruncated: { type: 'boolean', required: true },
                 outputTruncated: { type: 'boolean', required: true },
                 varsTruncated: { type: 'boolean', required: true },
               },
@@ -547,22 +578,27 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               maxExpandedObjects: c.maxExpandedObjects,
               maxExpandedProps: c.maxExpandedProps,
               maxEdits: c.maxEdits,
+              maxTreeNodes: c.maxTreeNodes,
             })
             // The exit schema is an optional object without nulls; a null exit
             // (attach mode) and null exit fields are normalized away, as is a
-            // null expansion/edit carrier. One return shape carries both
-            // branches (the fields must not be lost on the attach null-exit
-            // path).
+            // null expansion/edit carrier and the scene-tree root (which
+            // carries bigint ids — only the rendered lines cross the JSON
+            // boundary). One return shape carries both branches (the fields
+            // must not be lost on the attach null-exit path).
             const exit = result.exit === null ? undefined : {
               ...(result.exit.exitCode !== null ? { exitCode: result.exit.exitCode } : {}),
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
             }
-            const { expansion: _expansion, edits: _edits, exit: _exit, ...resultRest } = result
+            const { expansion: _expansion, edits: _edits, sceneTrees: _sceneTrees, exit: _exit, ...resultRest } = result
             return {
               ...resultRest,
               ...(exit !== undefined ? { exit } : {}),
               ...(result.expansion !== null ? { expansion: result.expansion } : {}),
               ...(result.edits !== null ? { edits: result.edits } : {}),
+              ...(result.sceneTrees !== null
+                ? { sceneTrees: result.sceneTrees.map(t => ({ stopIndex: t.stopIndex, lines: t.lines })) }
+                : {}),
             }
           },
           presentCall: (args): GenericCallView => {

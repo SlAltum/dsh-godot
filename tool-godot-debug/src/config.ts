@@ -40,6 +40,9 @@ export interface GodotDebugConfig {
   /** Max `scene:set_object_property` edits applied on the first frame-bearing
    *  stop (0 = edits disabled). */
   maxEdits?: number
+  /** Max scene-tree nodes parsed/rendered per frame-bearing stop
+   *  (0 = scene-tree snapshots disabled). */
+  maxTreeNodes?: number
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -59,6 +62,7 @@ export const Config: z<GodotDebugConfig> = z.object({
   maxExpandedObjects: z.number().default(10),
   maxExpandedProps: z.number().default(100),
   maxEdits: z.number().default(10),
+  maxTreeNodes: z.number().default(200),
 })
 
 /**
@@ -83,6 +87,8 @@ export function validateConfig(config: GodotDebugConfig): void {
   assertPositiveInteger('maxExpandedProps', resolved.maxExpandedProps)
   // 0 = edits disabled (a documented sentinel, not an error).
   assertNonNegativeInteger('maxEdits', resolved.maxEdits)
+  // 0 = scene-tree snapshots disabled (a documented sentinel, not an error).
+  assertNonNegativeInteger('maxTreeNodes', resolved.maxTreeNodes)
 }
 
 /** Reject a value outside the TCP port range; `allowZero` permits the auto-pick sentinel. */

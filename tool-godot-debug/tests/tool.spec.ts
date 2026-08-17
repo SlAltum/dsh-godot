@@ -41,6 +41,13 @@ const editBin = readFileSync(join(here, 'fixtures', 't6-edit.bin'))
 const editManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't6-edit.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 7 scene-tree recording: two frame-bearing stops, each with a
+// scene_tree response (identical tree, per-request sequence), plus a
+// tree-node-id inspect.
+const treeBin = readFileSync(join(here, 'fixtures', 't7-tree.bin'))
+const treeManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't7-tree.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -73,6 +80,7 @@ function baseOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions 
     maxExpandedObjects: 10,
     maxExpandedProps: 100,
     maxEdits: 10,
+    maxTreeNodes: 200,
     signal: new AbortController().signal,
     subprocess: new FakeSubprocess(),
     ...overrides,
@@ -495,5 +503,60 @@ describe('runDebug edits', () => {
     expect(result.detached).toBe(true)
     expect(result.editsApplied).toBe(4)
     expect(result.editsTruncated).toBe(false)
+  })
+})
+
+/** The Phase 7 scene-tree path: scene:request_scene_tree per frame stop. */
+describe('runDebug scene trees', () => {
+  it('snapshots the scene tree on every frame-bearing stop', async () => {
+    const game = new FakeGame(treeBin, treeManifest.frames)
+    const options = baseOptions({ subprocess: new FakeSubprocess(), maxExpandedObjects: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.sceneTrees).not.toBeNull()
+    expect(result.sceneTreeCount).toBe(2) // both stops have a frame
+    expect(result.sceneTreeTruncated).toBe(false)
+    const [t0, t1] = result.sceneTrees!
+    expect(t0!.stopIndex).toBe(0)
+    expect(t1!.stopIndex).toBe(1)
+    // The tree root is the engine Window root; Main carries the script path.
+    expect(t0!.lines[0]).toBe('root [Window] (26323453389)')
+    expect(t0!.lines[1]).toBe('  Main [res://main.gd] (26994542042) res://main.tscn')
+    expect(t0!.lines.some(l => l.includes('Leaf中文'))).toBe(true)
+    expect(t1!.lines).toEqual(t0!.lines) // static scene: identical tree (T7.0 fact 5)
+    // The tree-node id was inspectable (fixture includes the tree-id inspect).
+    expect(result.expandedObjects).toBe(0) // expansion disabled in this run
+  })
+
+  it('does not snapshot trees when maxTreeNodes is 0', async () => {
+    const game = new FakeGame(treeBin, treeManifest.frames)
+    const options = baseOptions({ subprocess: new FakeSubprocess(), maxExpandedObjects: 0, maxTreeNodes: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.sceneTrees).toBeNull()
+    expect(result.sceneTreeCount).toBe(0)
+  })
+
+  it('snapshots trees in attach mode too (same stop-loop integration)', async () => {
+    const game = new FakeGame(treeBin, treeManifest.frames)
+    const options = attachOptions({
+      subprocess: new FakeSubprocess(),
+      port: 6007,
+      pauseOnAttach: true,
+      maxExpandedObjects: 0,
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.detached).toBe(true)
+    expect(result.sceneTreeCount).toBeGreaterThan(0)
   })
 })

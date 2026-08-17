@@ -176,3 +176,39 @@ output (6 lines):
 errors (1):
   platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
 `;
+
+exports[`REAL composition: tool → subprocess seam → controller → fake game > snapshots scene trees into the model-visible output 1`] = `
+"2 stops (max 10)
+#0 res://main.gd:32 @ _process [Breakpoint]
+  scene tree (8 nodes):
+    root [Window] (26323453389)
+      Main [res://main.gd] (26994542042) res://main.tscn
+        Branch [Node] (27011319261)
+          Leaf中文 [Node2D] (27028096478)
+            Sprite [Sprite2D] (27044873689)
+        Other [Node] (27061650907)
+          Child [Node] (27078428127)
+        Player [Node] (27095205344)
+  locals:
+    _delta = 0.08014
+  members:
+    self = Object<26994542042>
+    counter = 1
+    player = Object<27095205344>
+#1 res://main.gd:32 @ _process [Breakpoint]
+  scene tree (8 nodes):
+    root [Window] (26323453389)
+      Main [res://main.gd] (26994542042) res://main.tscn
+        Branch [Node] (27011319261)
+          Leaf中文 [Node2D] (27028096478)
+            Sprite [Sprite2D] (27044873689)
+        Other [Node] (27061650907)
+          Child [Node] (27078428127)
+        Player [Node] (27095205344)
+output (3 lines):
+  Godot Engine v4.7.stable.mono.official.5b4e0cb0f - https://godotengine.org
+  main: starting
+  main: starting
+errors (1):
+  platform/windows/os_windows.cpp:2582 error: Parameter "cert_store" is null."
+`;

@@ -8,7 +8,9 @@
  * triggers `inspect:<id>` for the first request of an id, `inspect:<id>:2`
  * for the second, ...) so several serial expansions and edit verifications
  * replay correctly (Phase 5 plan M5, Phase 6 plan D8 — the before/after-edit
- * response bytes differ). The replayed bytes are the real-Godot recording, so
+ * response bytes differ). `scene:scene_tree` responses are dispatched by
+ * REQUEST SEQUENCE too (`scene_tree` first, `scene_tree:2` second, ...,
+ * Phase 7 plan D6). The replayed bytes are the real-Godot recording, so
  * the controller's decoding is validated against ground truth, not against
  * its own encoder.
  */
@@ -28,6 +30,7 @@ export class FakeGame {
   private decoder = new VariantDecoder()
   private replayed = new Set<string>()
   private inspectCount = new Map<string, number>()
+  private treeCount = 0
 
   constructor(
     private bin: Buffer,
@@ -87,8 +90,8 @@ export class FakeGame {
         if (stash.length < 4 + len) break
         const payload = stash.subarray(4, 4 + len)
         stash = stash.subarray(4 + len)
-        const { command, inspectTrigger } = this.commandInfo(payload)
-        this.replay(inspectTrigger !== null ? inspectTrigger : command)
+        const { command, inspectTrigger, treeTrigger } = this.commandInfo(payload)
+        this.replay(treeTrigger !== null ? treeTrigger : inspectTrigger !== null ? inspectTrigger : command)
       }
     })
     socket.on('error', () => {})
@@ -98,10 +101,11 @@ export class FakeGame {
     this.socket?.destroy()
   }
 
-  private commandInfo(payload: Buffer): { command: string; inspectTrigger: string | null } {
+  private commandInfo(payload: Buffer): { command: string; inspectTrigger: string | null; treeTrigger: string | null } {
     const msg = this.decoder.decodeMessage(payload)
     if (typeof msg[0] !== 'string') throw new Error(`fake game: non-string command of type ${typeof msg[0]}`)
     let inspectTrigger: string | null = null
+    let treeTrigger: string | null = null
     if (msg[0] === 'scene:inspect_object' && Array.isArray(msg[2]) && typeof msg[2][0] === 'bigint') {
       // Per-id request sequence: `inspect:<id>` for the first request of an
       // id, `inspect:<id>:2` for the second, ... (Phase 6 plan D8 — the
@@ -111,7 +115,14 @@ export class FakeGame {
       this.inspectCount.set(id, seq)
       inspectTrigger = seq === 1 ? `inspect:${id}` : `inspect:${id}:${seq}`
     }
-    return { command: msg[0], inspectTrigger }
+    if (msg[0] === 'scene:request_scene_tree') {
+      // Per-request sequence: `scene_tree` first, `scene_tree:2` second, ...
+      // (Phase 7 plan D6 — the pipeline must not replay the same frame for
+      // every request).
+      this.treeCount++
+      treeTrigger = this.treeCount === 1 ? 'scene_tree' : `scene_tree:${this.treeCount}`
+    }
+    return { command: msg[0], inspectTrigger, treeTrigger }
   }
 
   private replay(trigger: string): void {

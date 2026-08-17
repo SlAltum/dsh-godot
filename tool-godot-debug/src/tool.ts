@@ -23,6 +23,7 @@ import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subpr
 import { DebugController, WaitTimeoutError, type GodotRuntimeError } from './controller.ts'
 import { expandObjects, type ExpandedEntry } from './inspect.ts'
 import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
+import { parseSceneTree, renderSceneTree, type SceneTreeNode } from './scene-tree.ts'
 import { GodotError } from './error.ts'
 import { renderSnapshot, type RenderOptions, type StopSnapshot } from './snapshot.ts'
 
@@ -74,6 +75,13 @@ export interface DebugRunResult {
   editsApplied: number
   /** Any edit failed to parse/resolve/verify, or the budget was spent. */
   editsTruncated: boolean
+  /** The Phase 7 scene-tree snapshots per frame-bearing stop; `null` when no
+   *  stop had a frame or scene trees are disabled. */
+  sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] | null
+  /** Successful scene-tree snapshots this run. */
+  sceneTreeCount: number
+  /** Any tree skipped, node-dropped, or budget spent. */
+  sceneTreeTruncated: boolean
   outputTruncated: boolean
   /** Any stop whose variable snapshot was incomplete (protocol stall/disconnect). */
   varsTruncated: boolean
@@ -129,6 +137,8 @@ export interface DebugRunOptions {
   edits?: EditRequest[]
   /** Max edits applied (0 = disabled). */
   maxEdits: number
+  /** Max scene-tree nodes parsed/rendered per frame-bearing stop (0 = disabled). */
+  maxTreeNodes: number
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -249,7 +259,8 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
     })
 
     await waitForSetPid(controller, handle, options)
-    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated, sceneTrees, sceneTreeTruncated } =
+      await collectStops(controller, options)
     const exit = await settleExit(handle, options.idleTimeoutMs)
 
     return {
@@ -264,6 +275,9 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
       edits,
       editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
       editsTruncated,
+      sceneTrees,
+      sceneTreeCount: sceneTrees?.length ?? 0,
+      sceneTreeTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -343,7 +357,8 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
     }
     if (options.pauseOnAttach === true) controller.send('break')
 
-    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated, sceneTrees, sceneTreeTruncated } =
+      await collectStops(controller, options)
 
     return {
       stops,
@@ -357,6 +372,9 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
       edits,
       editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
       editsTruncated,
+      sceneTrees,
+      sceneTreeCount: sceneTrees?.length ?? 0,
+      sceneTreeTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -441,10 +459,11 @@ async function waitForSetPid(
   }
 }
 
-/** The stop → snapshot → continue loop, bounded by `maxStops`. On the FIRST
- *  stop that has a frame, the Phase 5 variable expansion runs while still
- *  paused (pinned: a running game answers with silence), then the Phase 6
- *  variable edits apply and verify, before continue. */
+/** The stop → snapshot → continue loop, bounded by `maxStops`. On EVERY stop
+ *  that has a frame, the Phase 7 scene-tree snapshot runs while still paused
+ *  (a tree request answers even when running, T7.0 fact 3, but the pause is
+ *  the natural point); on the FIRST frame-bearing stop the Phase 5 variable
+ *  expansion and the Phase 6 variable edits also run, before continue. */
 async function collectStops(
   controller: DebugController,
   options: DebugRunOptions,
@@ -455,6 +474,8 @@ async function collectStops(
   expansionTruncated: boolean
   edits: { stopIndex: number; results: EditResult[] } | null
   editsTruncated: boolean
+  sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] | null
+  sceneTreeTruncated: boolean
 }> {
   const stops: DebugStop[] = []
   let varsTruncated = false
@@ -464,6 +485,8 @@ async function collectStops(
   let edited = false
   let edits: { stopIndex: number; results: EditResult[] } | null = null
   let editsTruncated = false
+  const sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] = []
+  let sceneTreeTruncated = false
   const runStart = Date.now()
   for (let i = 0; i < options.maxStops; i++) {
     let stop: { isUserBreakpoint: boolean; reason: string }
@@ -480,6 +503,46 @@ async function collectStops(
       controller.send('get_stack_frame_vars', [0])
       const collected = await controller.waitForSnapshot(options.idleTimeoutMs, options.signal)
       snapshot = renderSnapshot(collected.dump, collected.vars, RENDER_OPTIONS)
+      if (snapshot.frames.length > 0 && options.maxTreeNodes > 0) {
+        // Scene tree on every frame-bearing stop (T7.0 facts 4/5: each
+        // request answers in ~13 ms with the current tree; a static scene is
+        // identical across stops — the per-stop snapshot is the semantics).
+        // Tree budget: min(remaining run budget minus a settle margin, a
+        // per-node worst case). Budget exhaustion skips the tree and flags.
+        const remaining = options.timeoutMs - (Date.now() - runStart) - SCENE_TREE_SETTLE_MS
+        const budgetMs = Math.max(0, Math.min(remaining, options.maxTreeNodes * 50))
+        if (budgetMs <= 0) {
+          sceneTreeTruncated = true // budget spent: no tree this stop
+        } else {
+          const treeWaitMs = Math.min(options.idleTimeoutMs, budgetMs)
+          try {
+            controller.send('scene:request_scene_tree')
+            const resp = await controller.waitForMessage(
+              m => m[0] === 'scene:scene_tree',
+              treeWaitMs,
+              options.signal,
+              'scene:scene_tree',
+            )
+            const parsed = parseSceneTree(Array.isArray(resp[2]) ? resp[2] : undefined, options.maxTreeNodes)
+            if (parsed.root !== null) {
+              const { lines, truncated } = renderSceneTree(parsed.root, { maxNodes: options.maxTreeNodes, maxLineLength: 200 })
+              if (truncated || parsed.truncated) sceneTreeTruncated = true
+              sceneTrees.push({ stopIndex: i, root: parsed.root, lines })
+            } else if (parsed.truncated) {
+              sceneTreeTruncated = true
+            }
+          } catch (error) {
+            if (error instanceof GodotError && error.code === 'GODOT_ABORTED') throw error
+            if (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE') {
+              // Disconnected mid-tree: end the loop with the partial result.
+              sceneTreeTruncated = true
+              stops.push({ ...stop, snapshot })
+              break
+            }
+            sceneTreeTruncated = true // timeout or malformed: skip this stop's tree
+          }
+        }
+      }
       if (!expanded && snapshot.frames.length > 0 && options.maxExpandedObjects > 0) {
         expanded = true
         // Expansion budget: min(remaining run budget minus a settle margin,
@@ -547,7 +610,16 @@ async function collectStops(
     stops.push({ ...stop, snapshot })
     controller.send('continue')
   }
-  return { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated }
+  return {
+    stops,
+    varsTruncated,
+    expansion,
+    expansionTruncated,
+    edits,
+    editsTruncated,
+    sceneTrees: sceneTrees.length > 0 ? sceneTrees : null,
+    sceneTreeTruncated,
+  }
 }
 
 /** Margin kept after expansion so the run can settle within `timeoutMs`. */
@@ -555,6 +627,9 @@ const EXPANSION_SETTLE_MS = 5_000
 
 /** Margin kept after edits so the run can settle within `timeoutMs`. */
 const EDIT_SETTLE_MS = 5_000
+
+/** Margin kept after the scene-tree snapshot so the run can settle. */
+const SCENE_TREE_SETTLE_MS = 5_000
 
 /** Collect the exit facts: a short natural-exit window, then terminate. */
 async function settleExit(handle: SubprocessHandle, idleTimeoutMs: number): Promise<SubprocessOutcome> {

@@ -87,6 +87,9 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
         editsApplied: number
         editsTruncated: boolean
         edits: { results: { target: string; property: string; requested: unknown; type: string; ok: boolean; detail?: string }[] }
+        sceneTreeCount: number
+        sceneTreeTruncated: boolean
+        sceneTrees: { stopIndex: number; lines: string[] }[]
       }
       expect(value.stops).toHaveLength(2)
       expect(value.stops[0]!.reason).toBe('Breakpoint')
@@ -111,6 +114,15 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
       expect(value.editsApplied).toBe(1)
       expect(value.editsTruncated).toBe(false)
       expect(value.edits.results.every(r => r.ok)).toBe(true)
+      // Phase 7: scene trees on every frame-bearing stop, rooted at the
+      // engine Window with the Main scene node beneath it (script nodes
+      // carry their script path as the class, T7.0 fact 1).
+      expect(value.sceneTreeCount).toBeGreaterThan(0)
+      expect(value.sceneTreeTruncated).toBe(false)
+      const firstTree = value.sceneTrees[0]
+      expect(firstTree).toBeDefined()
+      expect(firstTree!.lines[0]).toMatch(/^root \[Window\] \(\d+\)$/)
+      expect(firstTree!.lines.some(l => /^  /.test(l))).toBe(true)
     } finally {
       await ctx.fiber.dispose()
       process.env.APPDATA = prevAppData

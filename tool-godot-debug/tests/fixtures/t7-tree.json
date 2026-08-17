@@ -1,0 +1,133 @@
+{
+  "source": "t7/tree-stop",
+  "frameCount": 18,
+  "totalBytes": 15548,
+  "frames": [
+    {
+      "seq": 0,
+      "cmd": "set_pid",
+      "trigger": "connect",
+      "offset": 0,
+      "len": 52
+    },
+    {
+      "seq": 1,
+      "cmd": "output",
+      "trigger": "connect",
+      "offset": 52,
+      "len": 144
+    },
+    {
+      "seq": 2,
+      "cmd": "error",
+      "trigger": "connect",
+      "offset": 196,
+      "len": 268
+    },
+    {
+      "seq": 3,
+      "cmd": "window:title",
+      "trigger": "connect",
+      "offset": 464,
+      "len": 80
+    },
+    {
+      "seq": 4,
+      "cmd": "debug_enter",
+      "trigger": "connect",
+      "offset": 544,
+      "len": 92
+    },
+    {
+      "seq": 5,
+      "cmd": "output",
+      "trigger": "get_stack_frame_vars",
+      "offset": 636,
+      "len": 84
+    },
+    {
+      "seq": 6,
+      "cmd": "stack_dump",
+      "trigger": "get_stack_dump",
+      "offset": 720,
+      "len": 104
+    },
+    {
+      "seq": 7,
+      "cmd": "stack_frame_vars",
+      "trigger": "get_stack_frame_vars",
+      "offset": 824,
+      "len": 60
+    },
+    {
+      "seq": 8,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 884,
+      "len": 104
+    },
+    {
+      "seq": 9,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 988,
+      "len": 104
+    },
+    {
+      "seq": 10,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1092,
+      "len": 100
+    },
+    {
+      "seq": 11,
+      "cmd": "stack_frame_var",
+      "trigger": "get_stack_frame_vars",
+      "offset": 1192,
+      "len": 108
+    },
+    {
+      "seq": 12,
+      "cmd": "scene:scene_tree",
+      "trigger": "scene_tree",
+      "offset": 1300,
+      "len": 600
+    },
+    {
+      "seq": 13,
+      "cmd": "scene:scene_tree",
+      "trigger": "scene_tree:2",
+      "offset": 1900,
+      "len": 600
+    },
+    {
+      "seq": 14,
+      "cmd": "scene:inspect_object",
+      "trigger": "inspect:26323453389",
+      "offset": 2500,
+      "len": 12308
+    },
+    {
+      "seq": 15,
+      "cmd": "debug_exit",
+      "trigger": "continue",
+      "offset": 14808,
+      "len": 48
+    },
+    {
+      "seq": 16,
+      "cmd": "debug_enter",
+      "trigger": "continue",
+      "offset": 14856,
+      "len": 92
+    },
+    {
+      "seq": 17,
+      "cmd": "scene:scene_tree",
+      "trigger": "scene_tree:3",
+      "offset": 14948,
+      "len": 600
+    }
+  ]
+}
