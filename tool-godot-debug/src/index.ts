@@ -35,6 +35,8 @@ export { renderSnapshot, renderValue } from './snapshot.ts'
 export type { RenderOptions, RenderScopes, RenderVar, SnapshotFrame, StopSnapshot } from './snapshot.ts'
 export { expandObjects, normalizeId, parseInspectProps, selectExpandableIds } from './inspect.ts'
 export type { ExpandedEntry, ExpansionResult } from './inspect.ts'
+export { applyEdits, findEditTarget, findPropValue, parseEditValue, valueEquals } from './edit.ts'
+export type { EditRequest, EditResult, EditValueType } from './edit.ts'
 export { GodotError } from './error.ts'
 export type { GodotErrorCode } from './error.ts'
 
@@ -58,6 +60,8 @@ export type DebugMeta = {
   detached: boolean
   expandedObjects: number
   expansionTruncated: boolean
+  editsApplied: number
+  editsTruncated: boolean
   outputTruncated: boolean
   varsTruncated: boolean
 }
@@ -84,6 +88,8 @@ export function debugMeta(value: DebugRunResult, maxStops: number): DebugMeta {
     detached: value.detached,
     expandedObjects: value.expandedObjects,
     expansionTruncated: value.expansionTruncated,
+    editsApplied: value.editsApplied,
+    editsTruncated: value.editsTruncated,
     outputTruncated: value.outputTruncated,
     varsTruncated: value.varsTruncated,
   }
@@ -126,11 +132,20 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
         }
         // Phase 5: the expanded objects of this same stop (expansion runs on
         // the first frame-bearing stop, which is exactly fullIdx).
-        if (value.expansion !== null && value.expansion.entries.length > 0) {
+        if (value.expansion != null && value.expansion.entries.length > 0) {
           lines.push(`  expanded objects (${value.expansion.entries.length}):`)
           for (const entry of value.expansion.entries) {
             lines.push(`    ${entry.name} = Object<${entry.id}> [${entry.className}]`)
             for (const row of entry.rows) lines.push(`      ${row.name} = ${row.value}`)
+          }
+        }
+        // Phase 6: the variable edits applied on this same stop, with the
+        // per-edit outcome (verified against the engine via re-inspect).
+        if (value.edits != null && value.edits.results.length > 0) {
+          lines.push(`  edits (${value.edits.results.length}):`)
+          for (const r of value.edits.results) {
+            const status = r.ok ? 'ok' : `failed: ${r.detail ?? 'unknown'}`
+            lines.push(`    ${r.target}.${r.property} = ${JSON.stringify(r.requested)} [${r.type}] ${status}`)
           }
         }
       }
@@ -170,6 +185,8 @@ export function debugViewFromMeta(meta: JsonValue | undefined): GenericResultVie
   if (value.detached) notes.push('attached; game left running')
   if (value.expandedObjects > 0) notes.push(`${value.expandedObjects} objects expanded`)
   if (value.expansionTruncated) notes.push('some objects not expanded')
+  if (value.editsApplied > 0) notes.push(`${value.editsApplied} edits applied`)
+  if (value.editsTruncated) notes.push('some edits failed')
   if (value.outputTruncated) notes.push('output truncated')
   if (value.varsTruncated) notes.push('some variable snapshots incomplete')
   return {
@@ -213,6 +230,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues '
           + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables '
           + 'are expanded in place on the first stop (properties under "expanded objects"). '
+          + 'Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give '
+          + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
+          + 'optional), value as a string, and type int|float|string|bool (default string). Only object properties are editable — '
+          + 'scalar variables are not. Each edit reports ok/failed. '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
           + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
           + 'after detach.',
@@ -223,9 +244,12 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             'Run a Godot project once under the debugger, or attach to a running game. launch (default): set breakpoints '
             + '(res:// path or absolute file path plus 1-based line), the tool launches the project headless with --remote-debug, '
             + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
-            + 'bounded by config maxExpandedObjects/maxExpandedProps), auto-continues up to maxStops, then reports the stops, '
-            + 'the game output, and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project '
-            + 'imported once. attach: join a game the user already started with --remote-debug tcp://127.0.0.1:<port> (the port '
+            + 'bounded by config maxExpandedObjects/maxExpandedProps), applies variable edits on the first stop while paused '
+            + '(edits: target = a top-level object variable name from the expansion, property = its property name, value as a '
+            + 'string, type int|float|string|bool, default string; only object properties are editable, each edit is verified '
+            + 'against the engine and reports ok/failed), auto-continues up to maxStops, then reports the stops, the game output, '
+            + 'and any engine errors; requires a godot executable (4.2+) configured or on PATH and a project imported once. '
+            + 'attach: join a game the user already started with --remote-debug tcp://127.0.0.1:<port> (the port '
             + 'must be explicit and the game must start AFTER the call — Godot does not retry a failed connection); breakpoints '
             + 'are sent dynamically, pauseOnAttach pauses immediately, and the game keeps running after detach.',
           parameters: {
@@ -261,6 +285,24 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             pauseOnAttach: {
               type: 'boolean',
               description: 'attach only: pause the game immediately once connected (break) for a "what is the game doing now" probe stop.',
+            },
+            edits: {
+              type: 'array',
+              description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (e.g. self, player) from the expansion; property = the property name; value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties are editable — scalar variables are not.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  target: { type: 'string', required: true, description: 'Top-level variable name of an object (locals/members/globals).' },
+                  property: { type: 'string', required: true, description: 'Property name on that object (Members/ prefix optional).' },
+                  value: { type: 'string', required: true, description: 'New value as a raw string, parsed per type.' },
+                  type: {
+                    type: 'string',
+                    description: 'How to parse value: int (truncating), float, string (default), bool (true/false/0/1).',
+                    enum: ['int', 'float', 'string', 'bool'],
+                  },
+                },
+              },
             },
             maxStops: {
               type: 'number',
@@ -440,6 +482,31 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 },
                 expandedObjects: { type: 'number', required: true },
                 expansionTruncated: { type: 'boolean', required: true },
+                edits: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    stopIndex: { type: 'number', required: true },
+                    results: {
+                      type: 'array',
+                      required: true,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          target: { type: 'string', required: true },
+                          property: { type: 'string', required: true },
+                          requested: { type: 'json', required: true },
+                          type: { type: 'string', required: true, enum: ['int', 'float', 'string', 'bool'] },
+                          ok: { type: 'boolean', required: true },
+                          detail: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+                editsApplied: { type: 'number', required: true },
+                editsTruncated: { type: 'boolean', required: true },
                 outputTruncated: { type: 'boolean', required: true },
                 varsTruncated: { type: 'boolean', required: true },
               },
@@ -476,22 +543,26 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               ...(input.args !== undefined ? { args: input.args } : {}),
               ...(input.mode !== undefined ? { mode: input.mode } : {}),
               ...(input.pauseOnAttach !== undefined ? { pauseOnAttach: input.pauseOnAttach } : {}),
+              ...(input.edits !== undefined ? { edits: input.edits } : {}),
               maxExpandedObjects: c.maxExpandedObjects,
               maxExpandedProps: c.maxExpandedProps,
+              maxEdits: c.maxEdits,
             })
             // The exit schema is an optional object without nulls; a null exit
             // (attach mode) and null exit fields are normalized away, as is a
-            // null expansion. One return shape carries both branches (the
-            // fields must not be lost on the attach null-exit path).
+            // null expansion/edit carrier. One return shape carries both
+            // branches (the fields must not be lost on the attach null-exit
+            // path).
             const exit = result.exit === null ? undefined : {
               ...(result.exit.exitCode !== null ? { exitCode: result.exit.exitCode } : {}),
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
             }
-            const { expansion: _expansion, exit: _exit, ...resultRest } = result
+            const { expansion: _expansion, edits: _edits, exit: _exit, ...resultRest } = result
             return {
               ...resultRest,
               ...(exit !== undefined ? { exit } : {}),
               ...(result.expansion !== null ? { expansion: result.expansion } : {}),
+              ...(result.edits !== null ? { edits: result.edits } : {}),
             }
           },
           presentCall: (args): GenericCallView => {

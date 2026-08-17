@@ -33,6 +33,14 @@ const inspectBin = readFileSync(join(here, 'fixtures', 't5-inspect.bin'))
 const inspectManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't5-inspect.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 6 edit recording: expansion (self/player), four typed edits with
+// per-edit re-inspect verification, then a second stop with re-expansion.
+// Same object id is inspected repeatedly; FakeGame dispatches by per-id
+// request sequence (plan D8).
+const editBin = readFileSync(join(here, 'fixtures', 't6-edit.bin'))
+const editManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't6-edit.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 
@@ -64,6 +72,7 @@ function baseOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions 
     maxStderrBytes: 100_000,
     maxExpandedObjects: 10,
     maxExpandedProps: 100,
+    maxEdits: 10,
     signal: new AbortController().signal,
     subprocess: new FakeSubprocess(),
     ...overrides,
@@ -415,5 +424,76 @@ describe('runDebug expansion', () => {
     await game.dispose()
     expect(result.detached).toBe(true)
     expect(result.expandedObjects).toBe(2)
+  })
+})
+
+/** The Phase 6 edit path: scene:set_object_property on the first frame stop. */
+describe('runDebug edits', () => {
+  /** Full pipeline options: expansion runs first (fixture order), then the
+   *  four typed edits verified by re-inspect. */
+  function editOptions(overrides: Partial<DebugRunOptions> = {}): DebugRunOptions {
+    return {
+      ...baseOptions({ subprocess: new FakeSubprocess() }),
+      edits: [
+        { target: 'self', property: 'counter', value: '42', type: 'int' },
+        { target: 'self', property: 'speed', value: '2.5', type: 'float' },
+        { target: 'self', property: 'label_text', value: 'changed', type: 'string' },
+        { target: 'self', property: 'flag', value: 'true', type: 'bool' },
+      ],
+      ...overrides,
+    }
+  }
+
+  it('applies the four typed edits on the first frame-bearing stop and verifies them', async () => {
+    const game = new FakeGame(editBin, editManifest.frames)
+    const options = editOptions()
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.edits).not.toBeNull()
+    expect(result.editsApplied).toBe(4)
+    expect(result.editsTruncated).toBe(false)
+    expect(result.edits!.stopIndex).toBe(0)
+    expect(result.edits!.results.map(r => r.ok)).toEqual([true, true, true, true])
+    expect(result.edits!.results[0]).toEqual({ target: 'self', property: 'counter', requested: 42, type: 'int', ok: true })
+    // Expansion still ran on the same stop, before the edits (fixture order).
+    expect(result.expandedObjects).toBe(2)
+    const self = result.expansion!.entries[0]!
+    expect(self.rows.find(r => r.name === 'counter')?.value).toBe('20') // pre-edit baseline
+  })
+
+  it('does not apply edits when maxEdits is 0', async () => {
+    const game = new FakeGame(editBin, editManifest.frames)
+    const options = editOptions({ maxEdits: 0 })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.edits).toBeNull()
+    expect(result.editsApplied).toBe(0)
+    // Expansion is independent and still runs.
+    expect(result.expandedObjects).toBe(2)
+  })
+
+  it('applies edits in attach mode too (same stop-loop integration)', async () => {
+    const game = new FakeGame(editBin, editManifest.frames)
+    const options = attachOptions({
+      subprocess: new FakeSubprocess(),
+      port: 6007,
+      pauseOnAttach: true,
+      edits: editOptions().edits,
+      maxEdits: 10,
+    })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    const result = await runDebug(options)
+    await game.dispose()
+    expect(result.detached).toBe(true)
+    expect(result.editsApplied).toBe(4)
+    expect(result.editsTruncated).toBe(false)
   })
 })

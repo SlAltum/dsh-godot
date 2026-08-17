@@ -4,10 +4,13 @@
  * connect it sends the `connect`-triggered frames; after each decoded command
  * it sends the frames whose manifest trigger matches that command (e.g.
  * `get_stack_dump` → the stack_dump frame). `scene:inspect_object` responses
- * are dispatched by the REQUESTED object id (manifest trigger `inspect:<id>`)
- * so several serial expansions replay correctly (Phase 5, plan M5). The
- * replayed bytes are the real-Godot recording, so the controller's decoding
- * is validated against ground truth, not against its own encoder.
+ * are dispatched by the REQUESTED object id AND request sequence (manifest
+ * triggers `inspect:<id>` for the first request of an id, `inspect:<id>:2`
+ * for the second, ...) so several serial expansions and edit verifications
+ * replay correctly (Phase 5 plan M5, Phase 6 plan D8 — the before/after-edit
+ * response bytes differ). The replayed bytes are the real-Godot recording, so
+ * the controller's decoding is validated against ground truth, not against
+ * its own encoder.
  */
 
 import { connect, createServer, type Socket } from 'node:net'
@@ -24,6 +27,7 @@ export class FakeGame {
   private socket: Socket | undefined
   private decoder = new VariantDecoder()
   private replayed = new Set<string>()
+  private inspectCount = new Map<string, number>()
 
   constructor(
     private bin: Buffer,
@@ -83,8 +87,8 @@ export class FakeGame {
         if (stash.length < 4 + len) break
         const payload = stash.subarray(4, 4 + len)
         stash = stash.subarray(4 + len)
-        const { command, inspectId } = this.commandInfo(payload)
-        this.replay(inspectId !== null ? `inspect:${inspectId}` : command)
+        const { command, inspectTrigger } = this.commandInfo(payload)
+        this.replay(inspectTrigger !== null ? inspectTrigger : command)
       }
     })
     socket.on('error', () => {})
@@ -94,14 +98,20 @@ export class FakeGame {
     this.socket?.destroy()
   }
 
-  private commandInfo(payload: Buffer): { command: string; inspectId: string | null } {
+  private commandInfo(payload: Buffer): { command: string; inspectTrigger: string | null } {
     const msg = this.decoder.decodeMessage(payload)
     if (typeof msg[0] !== 'string') throw new Error(`fake game: non-string command of type ${typeof msg[0]}`)
-    let inspectId: string | null = null
+    let inspectTrigger: string | null = null
     if (msg[0] === 'scene:inspect_object' && Array.isArray(msg[2]) && typeof msg[2][0] === 'bigint') {
-      inspectId = msg[2][0].toString()
+      // Per-id request sequence: `inspect:<id>` for the first request of an
+      // id, `inspect:<id>:2` for the second, ... (Phase 6 plan D8 — the
+      // before/after-edit response bytes differ, so the count matters).
+      const id = msg[2][0].toString()
+      const seq = (this.inspectCount.get(id) ?? 0) + 1
+      this.inspectCount.set(id, seq)
+      inspectTrigger = seq === 1 ? `inspect:${id}` : `inspect:${id}:${seq}`
     }
-    return { command: msg[0], inspectId }
+    return { command: msg[0], inspectTrigger }
   }
 
   private replay(trigger: string): void {

@@ -61,6 +61,13 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
             { file: 'res://player.gd', line: 10 },
             { file: 'res://player.gd', line: 19 },
           ],
+          // Phase 6: edit a script member of self on the first stop, while
+          // paused, and assert the engine accepts the write (verified via
+          // re-inspect). Only `counter` is edited — the other Player members
+          // are StringName/Vector2 (conversion semantics not pinned).
+          edits: [
+            { target: 'self', property: 'counter', value: '777', type: 'int' },
+          ],
           maxStops: 10,
         },
         agent: { session: { header: { cwd: project } } } as never,
@@ -77,13 +84,19 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
         output: string[]
         expandedObjects: number
         expansion: { entries: { name: string; className: string; rows: { name: string; value: string }[] }[] }
+        editsApplied: number
+        editsTruncated: boolean
+        edits: { results: { target: string; property: string; requested: unknown; type: string; ok: boolean; detail?: string }[] }
       }
       expect(value.stops).toHaveLength(2)
       expect(value.stops[0]!.reason).toBe('Breakpoint')
       expect(value.stops[0]!.snapshot.frames[0]).toEqual({ file: 'res://player.gd', line: 10, func: 'run' })
       const members = Object.fromEntries(value.stops[0]!.snapshot.scopes.members.map(v => [v.name, v.value]))
       expect(members['counter']).toBe('1')
-      expect(value.output.some(line => line.includes('counter=3'))).toBe(true)
+      // The edit applied at the pause (before line 10's += 2 ran): the
+      // subsequent print shows the edited value 777 + 2 = 779 — direct
+      // evidence the engine accepted the write.
+      expect(value.output.some(line => line.includes('counter=779'))).toBe(true)
       // Phase 5: the first stop expands `self`. The response className is the
       // ENGINE class (get_class(), "Node" even for the Player script class —
       // pinned in `.context/t5/facts.md`), so assert on the engine class and
@@ -93,6 +106,11 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
       expect(self).toBeDefined()
       expect(self!.className).toBe('Node')
       expect(self!.rows.some(r => r.name === 'counter')).toBe(true)
+      // Phase 6: the edit applied and verified against the engine (the t3
+      // project's self is a Player script instance with a counter member).
+      expect(value.editsApplied).toBe(1)
+      expect(value.editsTruncated).toBe(false)
+      expect(value.edits.results.every(r => r.ok)).toBe(true)
     } finally {
       await ctx.fiber.dispose()
       process.env.APPDATA = prevAppData

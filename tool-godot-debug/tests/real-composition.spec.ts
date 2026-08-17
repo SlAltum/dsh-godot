@@ -38,6 +38,13 @@ const inspectBin = readFileSync(join(here, 'fixtures', 't5-inspect.bin'))
 const inspectManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't5-inspect.json'), 'utf8')) as {
   frames: { cmd: string; trigger: string; offset: number; len: number }[]
 }
+// The Phase 6 edit recording: expansion (self/player), four typed edits with
+// per-edit re-inspect verification, then a second stop. Same object id is
+// inspected repeatedly; FakeGame dispatches by per-id request sequence.
+const editBin = readFileSync(join(here, 'fixtures', 't6-edit.bin'))
+const editManifest = JSON.parse(readFileSync(join(here, 'fixtures', 't6-edit.json'), 'utf8')) as {
+  frames: { cmd: string; trigger: string; offset: number; len: number }[]
+}
 
 let root: string
 let ws: string
@@ -271,6 +278,49 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       expect(text).toMatchSnapshot()
       const meta = result.meta as { expandedObjects: number }
       expect(meta.expandedObjects).toBe(2)
+    } finally {
+      await ctx.fiber.dispose()
+      await game.dispose()
+    }
+  }, 30_000)
+
+  it('applies variable edits into the model-visible output', async () => {
+    const game = new FakeGame(editBin, editManifest.frames)
+    const port = await game.connectPort()
+    const ctx = await mount(port)
+    try {
+      const run = callDebug(ctx, {
+        path: ws,
+        breakpoints: [{ file: 'res://main.gd', line: 33 }],
+        edits: [
+          { target: 'self', property: 'counter', value: '42', type: 'int' },
+          { target: 'self', property: 'speed', value: '2.5', type: 'float' },
+          { target: 'self', property: 'label_text', value: 'changed', type: 'string' },
+          { target: 'self', property: 'flag', value: 'true', type: 'bool' },
+        ],
+      })
+      await game.connect(port)
+      const result = await run
+      expect(result.isError).toBe(false)
+      const value = result.value as {
+        editsApplied: number
+        editsTruncated: boolean
+        edits: { results: { target: string; property: string; requested: unknown; type: string; ok: boolean }[] }
+      }
+      expect(value.editsApplied).toBe(4)
+      expect(value.editsTruncated).toBe(false)
+      expect(value.edits.results.every(r => r.ok)).toBe(true)
+      expect(value.edits.results[0]).toMatchObject({ target: 'self', property: 'counter', requested: 42, type: 'int' })
+
+      // Model-visible render carries the edits block with per-edit outcomes.
+      const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')
+      expect(text).toContain('edits (4):')
+      expect(text).toContain('self.counter = 42 [int] ok')
+      expect(text).toContain('self.speed = 2.5 [float] ok')
+      expect(text).toContain('self.flag = true [bool] ok')
+      expect(text).toMatchSnapshot()
+      const meta = result.meta as { editsApplied: number }
+      expect(meta.editsApplied).toBe(4)
     } finally {
       await ctx.fiber.dispose()
       await game.dispose()

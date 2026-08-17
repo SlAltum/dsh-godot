@@ -22,6 +22,7 @@ import type { SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import { DebugController, WaitTimeoutError, type GodotRuntimeError } from './controller.ts'
 import { expandObjects, type ExpandedEntry } from './inspect.ts'
+import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
 import { GodotError } from './error.ts'
 import { renderSnapshot, type RenderOptions, type StopSnapshot } from './snapshot.ts'
 
@@ -66,6 +67,13 @@ export interface DebugRunResult {
   expandedObjects: number
   /** Any object skipped, property truncated, selection sliced, or budget spent. */
   expansionTruncated: boolean
+  /** The Phase 6 variable edits applied on the first frame-bearing stop;
+   *  `null` when no stop had a frame or no edits were requested. */
+  edits: { stopIndex: number; results: EditResult[] } | null
+  /** Successful edits this run. */
+  editsApplied: number
+  /** Any edit failed to parse/resolve/verify, or the budget was spent. */
+  editsTruncated: boolean
   outputTruncated: boolean
   /** Any stop whose variable snapshot was incomplete (protocol stall/disconnect). */
   varsTruncated: boolean
@@ -117,6 +125,10 @@ export interface DebugRunOptions {
   maxExpandedObjects: number
   /** Max property rows kept per expanded object. */
   maxExpandedProps: number
+  /** Variable edits to apply on the first frame-bearing stop, while paused. */
+  edits?: EditRequest[]
+  /** Max edits applied (0 = disabled). */
+  maxEdits: number
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -237,7 +249,7 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
     })
 
     await waitForSetPid(controller, handle, options)
-    const { stops, varsTruncated, expansion, expansionTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated } = await collectStops(controller, options)
     const exit = await settleExit(handle, options.idleTimeoutMs)
 
     return {
@@ -249,6 +261,9 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
       expansion,
       expandedObjects: expansion?.entries.length ?? 0,
       expansionTruncated,
+      edits,
+      editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
+      editsTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -328,7 +343,7 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
     }
     if (options.pauseOnAttach === true) controller.send('break')
 
-    const { stops, varsTruncated, expansion, expansionTruncated } = await collectStops(controller, options)
+    const { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated } = await collectStops(controller, options)
 
     return {
       stops,
@@ -339,6 +354,9 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
       expansion,
       expandedObjects: expansion?.entries.length ?? 0,
       expansionTruncated,
+      edits,
+      editsApplied: edits?.results.filter(r => r.ok).length ?? 0,
+      editsTruncated,
       outputTruncated: controller.outputTruncated,
       varsTruncated,
     }
@@ -425,7 +443,8 @@ async function waitForSetPid(
 
 /** The stop → snapshot → continue loop, bounded by `maxStops`. On the FIRST
  *  stop that has a frame, the Phase 5 variable expansion runs while still
- *  paused (pinned: a running game answers with silence), before continue. */
+ *  paused (pinned: a running game answers with silence), then the Phase 6
+ *  variable edits apply and verify, before continue. */
 async function collectStops(
   controller: DebugController,
   options: DebugRunOptions,
@@ -434,12 +453,17 @@ async function collectStops(
   varsTruncated: boolean
   expansion: { stopIndex: number; entries: ExpandedEntry[] } | null
   expansionTruncated: boolean
+  edits: { stopIndex: number; results: EditResult[] } | null
+  editsTruncated: boolean
 }> {
   const stops: DebugStop[] = []
   let varsTruncated = false
   let expanded = false
   let expansion: { stopIndex: number; entries: ExpandedEntry[] } | null = null
   let expansionTruncated = false
+  let edited = false
+  let edits: { stopIndex: number; results: EditResult[] } | null = null
+  let editsTruncated = false
   const runStart = Date.now()
   for (let i = 0; i < options.maxStops; i++) {
     let stop: { isUserBreakpoint: boolean; reason: string }
@@ -485,6 +509,32 @@ async function collectStops(
           throw error
         }
       }
+      if (!edited && snapshot.frames.length > 0 && options.edits !== undefined && options.edits.length > 0 && options.maxEdits > 0) {
+        edited = true
+        // Edit budget: min(remaining run budget minus a settle margin, the
+        // worst-case edit cap). Budget exhaustion skips the rest and keeps
+        // the partial results (plan D6).
+        const remaining = options.timeoutMs - (Date.now() - runStart) - EDIT_SETTLE_MS
+        const budgetMs = Math.max(0, Math.min(remaining, options.maxEdits * options.idleTimeoutMs))
+        try {
+          const result = await applyEdits(options.edits, collected.vars, controller, {
+            maxEdits: options.maxEdits,
+            idleTimeoutMs: options.idleTimeoutMs,
+            budgetMs,
+            signal: options.signal,
+          })
+          edits = { stopIndex: i, results: result.results }
+          if (result.truncated) editsTruncated = true
+        } catch (error) {
+          if (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE') {
+            // Disconnected mid-edits: end the loop with the partial result.
+            editsTruncated = true
+            stops.push({ ...stop, snapshot })
+            break
+          }
+          throw error
+        }
+      }
     } catch (error) {
       if (error instanceof WaitTimeoutError || (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE')) {
         snapshot = renderSnapshot([0], [], RENDER_OPTIONS) // partial stop: no variable data
@@ -497,11 +547,14 @@ async function collectStops(
     stops.push({ ...stop, snapshot })
     controller.send('continue')
   }
-  return { stops, varsTruncated, expansion, expansionTruncated }
+  return { stops, varsTruncated, expansion, expansionTruncated, edits, editsTruncated }
 }
 
 /** Margin kept after expansion so the run can settle within `timeoutMs`. */
 const EXPANSION_SETTLE_MS = 5_000
+
+/** Margin kept after edits so the run can settle within `timeoutMs`. */
+const EDIT_SETTLE_MS = 5_000
 
 /** Collect the exit facts: a short natural-exit window, then terminate. */
 async function settleExit(handle: SubprocessHandle, idleTimeoutMs: number): Promise<SubprocessOutcome> {

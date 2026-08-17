@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-**`godot_debug` 工具**对 Godot 项目执行一次有界、脚本化的调试运行：模型设置断点（`res://` 路径或绝对文件路径 + 行号），工具以 `--remote-debug` headless 启动项目，在每次停顿时快照堆栈与 locals/members/globals，自动继续至 `maxStops`，最后返回结构化报告（含游戏输出与错误）——无需给被测代码加 print 即可探查运行时状态。第二种模式 `mode: "attach"` 连接用户已用 `--remote-debug tcp://127.0.0.1:<port>` 启动的游戏：断点改为连接后动态发送，detach 后游戏继续运行。
+**`godot_debug` 工具**对 Godot 项目执行一次有界、脚本化的调试运行：模型设置断点（`res://` 路径或绝对文件路径 + 行号），工具以 `--remote-debug` headless 启动项目，在每次停顿时快照堆栈与 locals/members/globals，自动继续至 `maxStops`，最后返回结构化报告（含游戏输出与错误）——无需给被测代码加 print 即可探查运行时状态。对象变量在首个停顿就地展开（属性见 `expanded objects`），模型还可在暂停态**编辑对象属性**（`edits`：设置顶层对象变量的属性，每次写入经引擎验证并报告 `ok`/`failed`）。第二种模式 `mode: "attach"` 连接用户已用 `--remote-debug tcp://127.0.0.1:<port>` 启动的游戏：断点改为连接后动态发送，detach 后游戏继续运行。
 
 与 tool-godot 工具族一致，该工具是 **spawn-backed 一次性调用**：`godot_debug` 从不暴露后台任务；调用只在运行结束、被协作式超时终止、被中止或失败后返回。包注入 `tools`、`systemPrompt` 与 `subprocess`——刻意不注入 `fs`；仅项目根校验与断点路径转换触碰文件系统（plain `node:fs`）。
 
@@ -46,12 +46,13 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 | `timeoutMs` | `60000` | 协作式工具调用预算，经 `exec.signal` 由工具调用超时策略强制执行。大项目首次 import 可能需要更大预算。 |
 | `maxExpandedObjects` | `10` | 首个有帧停顿上经 `scene:inspect_object` 展开的对象数上限；`0` = 禁用展开。 |
 | `maxExpandedProps` | `100` | 每个展开对象保留的属性行上限。 |
+| `maxEdits` | `10` | 首个有帧停顿上经 `scene:set_object_property` 应用的编辑数上限；`0` = 禁用编辑。 |
 
 ## 工具
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
-| `godot_debug` | `path?`、`mode?`（`launch` \| `attach`）、`port?`、`scene?`、`breakpoints?`（`[{file, line}]`）、`pauseOnAttach?`、`maxStops?`（默认 10，上限 50）、`args?`、`timeoutMs?` | 一次有界调试运行。`launch`（默认）：校验项目（断点在项目根外 → `GODOT_PARSE_ERROR`）、校验 `--version` ≥ 4.2、预选空闲端口、headless 启动游戏、等待 `set_pid`（threadId 就绪），然后循环：等待停顿（断点命中或脚本错误）、快照堆栈+变量、继续——直到 `maxStops`、游戏退出或预算耗尽。返回 `{ stops, output, errors, exit, outputTruncated?, varsTruncated? }`。`attach`：显式 `port` 必填（0/缺省 → `GODOT_PARSE_ERROR` 附启动指引；`scene`/`args` 被拒绝）、无版本门槛、不 spawn——动态发送断点后执行同样的停顿循环；detach 时 best-effort 断点移除 + continue，返回 `{ stops, output, errors, detached: true }`（无 `exit`）。 |
+| `godot_debug` | `path?`、`mode?`（`launch` \| `attach`）、`port?`、`scene?`、`breakpoints?`（`[{file, line}]`）、`pauseOnAttach?`、`edits?`（`[{target, property, value, type?}]`）、`maxStops?`（默认 10，上限 50）、`args?`、`timeoutMs?` | 一次有界调试运行。`launch`（默认）：校验项目（断点在项目根外 → `GODOT_PARSE_ERROR`）、校验 `--version` ≥ 4.2、预选空闲端口、headless 启动游戏、等待 `set_pid`（threadId 就绪），然后循环：等待停顿（断点命中或脚本错误）、快照堆栈+变量、在首个有帧停顿展开对象变量、应用 `edits`（每条经 re-inspect 验证）、继续——直到 `maxStops`、游戏退出或预算耗尽。返回 `{ stops, output, errors, exit, expansion?, edits?, outputTruncated?, varsTruncated? }`。`attach`：显式 `port` 必填（0/缺省 → `GODOT_PARSE_ERROR` 附启动指引；`scene`/`args` 被拒绝）、无版本门槛、不 spawn——动态发送断点后执行同样的停顿循环；detach 时 best-effort 断点移除 + continue，返回 `{ stops, output, errors, detached: true }`（无 `exit`）。 |
 
 ## 错误
 
@@ -68,7 +69,7 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 ##### Godot debug 引导（tool:godot-debug）
 
 ```markdown
-Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors.
+Use godot_debug to run a Godot scene under the debugger: set breakpoints (res:// path or absolute file path plus line), the tool launches the project headless, snapshots the stack and locals/members/globals at each stop, and auto-continues up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables are expanded in place on the first stop (properties under "expanded objects"). Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix optional), value as a string, and type int|float|string|bool (default string). Only object properties are editable — scalar variables are not. Each edit reports ok/failed.
 ```
 
 #### Token 影响
@@ -97,7 +98,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿对象变量的展开属性（`<name> = Object<<id>> [<引擎类>]` + 缩进 `property = value` 行，受 `maxExpandedObjects`/`maxExpandedProps` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
+`godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿对象变量的展开属性（`<name> = Object<<id>> [<引擎类>]` + 缩进 `property = value` 行，受 `maxExpandedObjects`/`maxExpandedProps` 约束）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
 #### Token 影响
 
@@ -129,7 +130,8 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **`--breakpoints` 值无法转义逗号**——Godot 按 `,` 分割参数，含逗号的文件名无法经 CLI 断点定位（可用 `godot_debug` 的 `args` 传入并依赖动态停顿，或重命名文件）。
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。
-- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）；变量编辑延后。
+- **变量渲染沿用源插件的显示精度**——math 类型经 `stringify_value` 呈现，`toFixed(1)` 四舍五入（`0.123456` → `0.1`）。
+- **变量编辑仅限首个停顿的顶层标量属性**——`scene:set_object_property` 只在首个有帧的停顿执行，目标是顶层对象变量（标量变量没有对象 id，引擎也没有对应机制），只写标量值（`int`/`float`/`string`/`bool`）——嵌套/容器属性（数组/字典成员、源插件 `changes_parent` 路径）延后。引擎对 set **无协议级确认**（已 pin，`.context/t6/facts.md`），每条编辑经 re-inspect 对象并比对值来验证；失败的写入（属性不存在、只读属性、类型不匹配）在协议层静默，呈现为逐条 `failed` 结果并标记 `editsTruncated`。`int` 值按引擎式截断解析（`12.5` → `12`）；`string` 属性拒绝非字符串值。运行中的游戏也会接受写入，但工具只在暂停态应用编辑。
 - **对象展开仅限首个停顿的顶层一级**——`scene:inspect_object` 只在首个有帧的停顿对顶层对象值执行（数组/字典成员保持 `Object<id>`）；属性内的嵌套对象渲染为 `Object<id>`，不递归。无响应的对象被跳过并标记 `expansionTruncated`（非暂停态的游戏不响应——已 pin）。展开的类名为**引擎类**（`get_class()`，如 `class_name Player` 脚本显示为 `Node`），非脚本类名。
 - **attach 需要显式端口与正确的启动顺序**——调用方必须预知端口，且游戏必须在工具调用之后启动：Godot 不重试失败的调试器连接（已 pin，`.context/t4/facts.md`）。`pauseOnAttach` 停顿提供「游戏此刻在做什么」探测。
 - **attach 命中依赖游戏再次执行到目标行**——动态断点不回退已执行代码；可配合 `pauseOnAttach` 或瞄准会再次运行的代码。

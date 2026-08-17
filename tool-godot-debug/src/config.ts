@@ -37,6 +37,9 @@ export interface GodotDebugConfig {
   maxExpandedObjects?: number
   /** Max property rows kept per expanded object. */
   maxExpandedProps?: number
+  /** Max `scene:set_object_property` edits applied on the first frame-bearing
+   *  stop (0 = edits disabled). */
+  maxEdits?: number
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -55,6 +58,7 @@ export const Config: z<GodotDebugConfig> = z.object({
   timeoutMs: z.number().default(60_000),
   maxExpandedObjects: z.number().default(10),
   maxExpandedProps: z.number().default(100),
+  maxEdits: z.number().default(10),
 })
 
 /**
@@ -77,6 +81,8 @@ export function validateConfig(config: GodotDebugConfig): void {
   // 0 = expansion disabled (a documented sentinel, not an error).
   assertNonNegativeInteger('maxExpandedObjects', resolved.maxExpandedObjects)
   assertPositiveInteger('maxExpandedProps', resolved.maxExpandedProps)
+  // 0 = edits disabled (a documented sentinel, not an error).
+  assertNonNegativeInteger('maxEdits', resolved.maxEdits)
 }
 
 /** Reject a value outside the TCP port range; `allowZero` permits the auto-pick sentinel. */
