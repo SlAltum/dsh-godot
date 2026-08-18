@@ -134,6 +134,33 @@ describe('runDebug', () => {
     expect(result.exit).toEqual({ exitCode: null, signal: 'SIGTERM' })
   })
 
+  it('passes --single-threaded-scene when requested (T22, source-plugin parity)', async () => {
+    const game = new FakeGame(bin, manifest.frames)
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub, singleThreadedScene: true })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    await runDebug(options)
+    await game.dispose()
+    const argv = sub.spawns[sub.spawns.length - 1]!.argv
+    expect(argv).toContain('--single-threaded-scene')
+    expect(argv[argv.indexOf('--remote-debug') + 1]).toMatch(/^tcp:\/\/127\.0\.0\.1:\d+$/)
+  })
+
+  it('omits --single-threaded-scene by default', async () => {
+    const game = new FakeGame(bin, manifest.frames)
+    const sub = new FakeSubprocess()
+    const options = baseOptions({ subprocess: sub })
+    options.onPort = async (port: number) => {
+      await game.connect(port)
+    }
+    await runDebug(options)
+    await game.dispose()
+    const argv = sub.spawns[sub.spawns.length - 1]!.argv
+    expect(argv).not.toContain('--single-threaded-scene')
+  })
+
   it('collects two breakpoint stops with rendered snapshots', async () => {
     const game = new FakeGame(bin, manifest.frames)
     const sub = new FakeSubprocess()
@@ -342,6 +369,9 @@ describe('runDebug attach mode', () => {
       code: 'GODOT_PARSE_ERROR',
     })
     await expect(runDebug(attachOptions({ args: ['--fixed-fps', '60'] }))).rejects.toMatchObject({
+      code: 'GODOT_PARSE_ERROR',
+    })
+    await expect(runDebug(attachOptions({ singleThreadedScene: true }))).rejects.toMatchObject({
       code: 'GODOT_PARSE_ERROR',
     })
   })

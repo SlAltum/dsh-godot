@@ -57,6 +57,16 @@ describe('parseEditValue', () => {
     expect(parseEditValue('int', '')).toBeNull() // empty input is not 0
   })
 
+  it('parses int beyond the int32 range as a bigint (int64 slots, T22)', () => {
+    expect(parseEditValue('int', '3000000000')).toBe(3000000000n)
+    expect(parseEditValue('int', '-3000000000')).toBe(-3000000000n)
+    expect(parseEditValue('int', '9223372036854775807')).toBe(9223372036854775807n) // int64 max, exact string parse
+    expect(parseEditValue('int', '1e12')).toBe(1000000000000n) // fallback: truncated number
+    expect(parseEditValue('int', '2147483647')).toBe(2147483647) // in-range stays a number
+    expect(parseEditValue('int', '-2147483648')).toBe(-2147483648)
+    expect(parseEditValue('int', '42')).toBe(42)
+  })
+
   it('parses float strictly', () => {
     expect(parseEditValue('float', '2.5')).toBe(2.5)
     expect(parseEditValue('float', '-0.25')).toBe(-0.25)
@@ -125,6 +135,18 @@ describe('valueEquals', () => {
     expect(valueEquals(12.4, 12.3)).toBe(false) // beyond tolerance
     expect(valueEquals('0.1', 0.1)).toBe(false) // string vs number
     expect(valueEquals(null, 0.1)).toBe(false) // null vs number
+  })
+
+  it('compares int64 values (64-bit slots echo as bigints, T22)', () => {
+    expect(valueEquals(3000000000n, 3000000000n)).toBe(true)
+    expect(valueEquals(3000000000n, 3000000001n)).toBe(false)
+    expect(valueEquals(-3000000000n, -3000000000n)).toBe(true)
+    expect(valueEquals(42n, 42n)).toBe(true)
+    expect(valueEquals(42n, 42)).toBe(true) // actual bigint vs number request
+    expect(valueEquals(42, 42n)).toBe(true) // actual number vs bigint request
+    expect(valueEquals(3000000000, 3000000000n)).toBe(true)
+    expect(valueEquals(null, 3000000000n)).toBe(false)
+    expect(valueEquals(3000000000n, 3000000000)).toBe(true) // number request with bigint actual, values equal
   })
 })
 

@@ -112,10 +112,14 @@ export interface GodotVariable {
  * exponential form (`1e+21`, `1e-7`).
  * @param value - the number to format.
  * @param maxSignificantDigits - the significant-digit cap (default 7).
+ * @param fullPrecision - bypass the digit cap and use JS's shortest
+ *  round-trip form (`String(value)`) — full float64 precision (T22 config
+ *  `fullPrecisionNumbers`); integers still render verbatim.
  * @returns the display string.
  */
-export function formatNumber(value: number, maxSignificantDigits = 7): string {
+export function formatNumber(value: number, maxSignificantDigits = 7, fullPrecision = false): string {
   if (Number.isInteger(value)) return String(value)
+  if (fullPrecision) return String(value)
   return String(Number.parseFloat(value.toPrecision(maxSignificantDigits)))
 }
 

@@ -157,6 +157,12 @@ export interface DebugRunOptions {
    *  excluded); requires `maxTreeNodes > 0`. Unresolvable paths are skipped
    *  like timed-out objects. */
   nodePaths?: string[]
+  /** launch only: pass `--single-threaded-scene` to the game (source-plugin
+   *  parity; the engine runs its scene on the main thread only). */
+  singleThreadedScene?: boolean
+  /** Render-override hooks (config-driven display knobs like
+   *  `fullPrecisionNumbers`, T22). */
+  renderOptions?: Partial<RenderOptions>
   /** Test hook: called with the bound port once the controller listens. */
   onPort?: (port: number) => Promise<void>
 }
@@ -270,6 +276,7 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
       '--headless',
       '--path', projectRoot,
       '--remote-debug', `tcp://127.0.0.1:${port}`,
+      ...(options.singleThreadedScene === true ? ['--single-threaded-scene'] : []),
       ...(breakpointArg !== '' ? ['--breakpoints', breakpointArg] : []),
       ...(options.scene !== undefined ? [options.scene] : []),
       ...(options.args !== undefined ? ['--', ...options.args] : []),
@@ -346,6 +353,9 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
   }
   if (options.args !== undefined) {
     throw new GodotError('godot_debug: args are not supported in attach mode (the game is already running)', 'GODOT_PARSE_ERROR')
+  }
+  if (options.singleThreadedScene === true) {
+    throw new GodotError('godot_debug: singleThreadedScene is not supported in attach mode (the game is already running)', 'GODOT_PARSE_ERROR')
   }
 
   const controller = new DebugController({
@@ -516,6 +526,9 @@ async function collectStops(
   const sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] = []
   let sceneTreeTruncated = false
   const runStart = Date.now()
+  // The stop-render bounds: package defaults overlaid with config-driven
+  // display knobs (e.g. fullPrecisionNumbers, T22).
+  const render = { ...RENDER_OPTIONS, ...(options.renderOptions ?? {}) }
   // The current stop's parsed tree (T15: nodePaths resolve against it).
   let stopTreeRoot: SceneTreeNode | null = null
   for (let i = 0; i < options.maxStops; i++) {    let stop: StopInfo
@@ -531,7 +544,7 @@ async function collectStops(
       controller.send('get_stack_dump')
       controller.send('get_stack_frame_vars', [0])
       const collected = await controller.waitForSnapshot(options.idleTimeoutMs, options.signal)
-      snapshot = renderSnapshot(collected.dump, collected.vars, RENDER_OPTIONS)
+      snapshot = renderSnapshot(collected.dump, collected.vars, render)
       if (snapshot.frames.length > 0 && options.maxTreeNodes > 0) {
         // Scene tree on every frame-bearing stop (T7.0 facts 4/5: each
         // request answers in ~13 ms with the current tree; a static scene is
@@ -599,7 +612,7 @@ async function collectStops(
             maxObjects: options.maxExpandedObjects,
             maxProps: options.maxExpandedProps,
             maxDepth: options.maxExpandDepth,
-            render: RENDER_OPTIONS,
+            render,
             idleTimeoutMs: options.idleTimeoutMs,
             budgetMs,
             signal: options.signal,
@@ -654,7 +667,7 @@ async function collectStops(
       }
     } catch (error) {
       if (error instanceof WaitTimeoutError || (error instanceof GodotError && error.code === 'GODOT_UNAVAILABLE')) {
-        snapshot = renderSnapshot([0], [], RENDER_OPTIONS) // partial stop: no variable data
+        snapshot = renderSnapshot([0], [], render) // partial stop: no variable data
         varsTruncated = true
         stops.push({ ...stop, snapshot })
         break

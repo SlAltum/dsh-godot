@@ -59,7 +59,7 @@ export interface EditResult {
   target: string
   property: string
   /** The parsed value sent (JSON-assignable: number | string | boolean). */
-  requested: number | string | boolean
+  requested: number | string | boolean | bigint
   type: EditValueType
   ok: boolean
   /** Why the edit failed, when `ok` is false (e.g. `value unchanged`, `property not found`). */
@@ -129,17 +129,28 @@ export function parseEditPath(property: string): EditPathSegment[] | null {
  * accepts `true`/`false`/`0`/`1` (source-plugin forms), `string` passes
  * through. Untyped container members apply NO coercion (T14.0 fact 4) — the
  * parse rules are the model-facing contract; the verify catches the
- * difference.
+ * difference. Engine int slots are 64-bit: an int beyond the int32 range
+ * parses to a BIGINT so the encoder's INT64 path carries it (a plain number
+ * would be written as INT32 and sign-wrap, e.g. 3000000000 → negative).
  * @param type - the declared value type (`'string'` when omitted).
  * @param raw - the raw string input.
  * @returns the parsed value, or null when unparseable.
  */
-export function parseEditValue(type: EditValueType | undefined, raw: string): number | string | boolean | null {
+export function parseEditValue(type: EditValueType | undefined, raw: string): number | string | boolean | bigint | null {
   switch (type ?? 'string') {
     case 'int': {
       if (raw.trim() === '') return null // empty input is not 0
       const n = Number(raw)
-      return Number.isFinite(n) ? Math.trunc(n) : null
+      if (!Number.isFinite(n)) return null
+      const t = Math.trunc(n)
+      if (t >= -0x8000_0000 && t <= 0x7fff_ffff) return t
+      // int64: prefer an exact string parse (Number loses precision above
+      // 2^53); fall back to the truncated number.
+      try {
+        return BigInt(raw.trim())
+      } catch {
+        return BigInt(t)
+      }
     }
     case 'float': {
       if (raw.trim() === '') return null
@@ -200,8 +211,16 @@ export function findEditTarget(vars: DecodedVariant[][], target: string): bigint
  * @param requested - the parsed request value.
  * @returns true when equal (within tolerance for numbers).
  */
-export function valueEquals(actual: unknown, requested: number | string | boolean): boolean {
+export function valueEquals(actual: unknown, requested: number | string | boolean | bigint): boolean {
+  if (typeof requested === 'bigint') {
+    // A 64-bit slot echoes as a bigint (INT|F64 decodes to bigint); a
+    // number fallback covers a within-range echo that came back as INT32.
+    return typeof actual === 'bigint'
+      ? actual === requested
+      : typeof actual === 'number' && BigInt(Math.trunc(actual)) === requested
+  }
   if (typeof requested === 'number') {
+    if (typeof actual === 'bigint') return actual === BigInt(Math.trunc(requested))
     return typeof actual === 'number' && Math.abs(actual - requested) <= Math.max(1, Math.abs(requested)) * 1e-6
   }
   if (typeof requested === 'string' && actual instanceof StringName) return actual.value === requested
@@ -620,7 +639,7 @@ export async function applyEdits(
 async function applyPropertyEdit(
   resolved: { id: bigint; name: string },
   edit: EditRequest,
-  parsed: number | string | boolean,
+  parsed: number | string | boolean | bigint,
   type: EditValueType,
   controller: DebugController,
   waitMs: number,
@@ -663,7 +682,7 @@ async function applyMemberEdit(
   resolved: { ownerId: bigint; label: string; container: unknown[] | Map<unknown, unknown>; memberPath: EditPathSegment[] },
   rebuilt: unknown[] | Map<unknown, unknown>,
   edit: EditRequest,
-  parsed: number | string | boolean,
+  parsed: number | string | boolean | bigint,
   type: EditValueType,
   controller: DebugController,
   waitMs: number,

@@ -211,7 +211,22 @@ export function structuredDebugView(value: StructuredDebugInput, maxStops: numbe
       }
       : {}),
     ...(value.edits !== undefined
-      ? { edits: { stopIndex: value.edits.stopIndex, truncated: value.editsTruncated, results: value.edits.results } }
+      ? {
+        edits: {
+          stopIndex: value.edits.stopIndex,
+          truncated: value.editsTruncated,
+          // JSON-safe: an int64 request parses to a bigint — stringify it
+          // here so the view stays lossless-JSON friendly (T22).
+          results: value.edits.results.map(r => ({
+            target: r.target,
+            property: r.property,
+            requested: typeof r.requested === 'bigint' ? r.requested.toString() : r.requested,
+            type: r.type,
+            ok: r.ok,
+            ...(r.detail !== undefined ? { detail: r.detail } : {}),
+          })),
+        },
+      }
       : {}),
     ...(value.exit !== undefined ? { exit: value.exit } : {}),
     outputTail: value.output.slice(0, OUTPUT_TAIL_MAX),

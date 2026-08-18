@@ -39,6 +39,8 @@ export interface RenderOptions {
   maxVarsPerScope: number
   /** Max characters of one rendered value; longer values get an ellipsis. */
   maxValueLength: number
+  /** Render numbers at full float64 precision (config `fullPrecisionNumbers`). */
+  fullPrecisionNumbers?: boolean
 }
 
 /** The rendered projection of one stop. */
@@ -129,8 +131,9 @@ export function renderValue(
   if (depth > options.maxDepth) return '…'
   let rendered = ''
   if (typeof value === 'number') {
-    // Phase 9: significant digits (7) instead of the old toFixed(5).
-    rendered = formatNumber(value)
+    // Phase 9: significant digits (7) instead of the old toFixed(5); config
+    // fullPrecisionNumbers opts into the JS shortest round-trip form (T22).
+    rendered = formatNumber(value, 7, options.fullPrecisionNumbers === true)
   } else if (typeof value === 'bigint' || typeof value === 'boolean') {
     rendered = String(value)
   } else if (typeof value === 'string') {
@@ -192,7 +195,7 @@ export function renderValue(
  */
 function renderPreview(value: unknown, depth: number, options: RenderOptions, resolveRepr?: (id: bigint) => string | undefined): string {
   if (depth > options.maxDepth) return '…'
-  if (typeof value === 'number') return formatNumber(value)
+  if (typeof value === 'number') return formatNumber(value, 7, options.fullPrecisionNumbers === true)
   if (typeof value === 'bigint' || typeof value === 'boolean') return String(value)
   if (typeof value === 'string') return `'${value}'`
   if (value === null || value === undefined) return 'null'

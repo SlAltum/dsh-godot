@@ -46,6 +46,9 @@ export interface GodotDebugConfig {
   /** Max scene-tree nodes parsed/rendered per frame-bearing stop
    *  (0 = scene-tree snapshots disabled). */
   maxTreeNodes?: number
+  /** Render numbers at FULL float64 precision (JS shortest round-trip form)
+   *  instead of the 7-significant-digit cap (Phase 9 default). */
+  fullPrecisionNumbers?: boolean
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -67,6 +70,7 @@ export const Config: z<GodotDebugConfig> = z.object({
   maxExpandDepth: z.number().default(2),
   maxEdits: z.number().default(10),
   maxTreeNodes: z.number().default(200),
+  fullPrecisionNumbers: z.boolean().default(false),
 })
 
 /**

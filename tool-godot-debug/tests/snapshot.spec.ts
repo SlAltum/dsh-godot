@@ -188,6 +188,15 @@ describe('formatNumber', () => {
     expect(formatNumber(1e21)).toBe('1e+21')
     expect(formatNumber(1e-7)).toBe('1e-7')
   })
+
+  it('renders at full float64 precision when asked (T22 config fullPrecisionNumbers)', () => {
+    // JS shortest round-trip form keeps every float64 digit; integers stay
+    // verbatim under both modes.
+    expect(formatNumber(0.1234567890123456, 7, true)).toBe('0.1234567890123456')
+    expect(formatNumber(0.10000000149011612, 7, true)).toBe('0.10000000149011612') // artifact NOT normalized
+    expect(formatNumber(42, 7, true)).toBe('42')
+    expect(formatNumber(0.1, 7, true)).toBe('0.1')
+  })
 })
 
 /** Phase 9: math types render with significant digits (was toFixed(1)). */

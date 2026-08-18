@@ -200,7 +200,8 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
           lines.push(`  edits (${value.edits.results.length}):`)
           for (const r of value.edits.results) {
             const status = r.ok ? 'ok' : `failed: ${r.detail ?? 'unknown'}`
-            lines.push(`    ${r.target}.${r.property} = ${JSON.stringify(r.requested)} [${r.type}] ${status}`)
+            const shown = typeof r.requested === 'bigint' ? r.requested.toString() : JSON.stringify(r.requested)
+            lines.push(`    ${r.target}.${r.property} = ${shown} [${r.type}] ${status}`)
           }
         }
       }
@@ -402,6 +403,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               type: 'array',
               description: 'Extra argv passed to the game after -- (e.g. --fixed-fps 60). launch only.',
               items: { type: 'string' },
+            },
+            singleThreadedScene: {
+              type: 'boolean',
+              description: 'launch only: pass --single-threaded-scene to the game (engine runs its scene on the main thread only; source-plugin parity).',
             },
           },
           timeoutMs: resolved.timeoutMs,
@@ -671,6 +676,8 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               maxTreeNodes: c.maxTreeNodes,
               ...(input.expandNodes !== undefined ? { expandNodes: input.expandNodes } : {}),
               ...(input.nodePaths !== undefined ? { nodePaths: input.nodePaths } : {}),
+              ...(input.singleThreadedScene !== undefined ? { singleThreadedScene: input.singleThreadedScene } : {}),
+              renderOptions: { fullPrecisionNumbers: c.fullPrecisionNumbers },
             })
             // The exit schema is an optional object without nulls; a null exit
             // (attach mode) and null exit fields are normalized away, as is a
@@ -706,7 +713,23 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               ...resultRest,
               ...(exit !== undefined ? { exit } : {}),
               ...(expansion !== undefined ? { expansion } : {}),
-              ...(result.edits !== null ? { edits: result.edits } : {}),
+              ...(result.edits !== null
+                ? {
+                  edits: {
+                    stopIndex: result.edits.stopIndex,
+                    // JSON-safe: an int64 request parses to a bigint —
+                    // stringify it before it crosses the tool-result boundary.
+                    results: result.edits.results.map(r => ({
+                      target: r.target,
+                      property: r.property,
+                      requested: typeof r.requested === 'bigint' ? r.requested.toString() : r.requested,
+                      type: r.type,
+                      ok: r.ok,
+                      ...(r.detail !== undefined ? { detail: r.detail } : {}),
+                    })),
+                  },
+                }
+                : {}),
               ...(result.sceneTrees !== null
                 ? { sceneTrees: result.sceneTrees.map(t => ({ stopIndex: t.stopIndex, lines: t.lines })) }
                 : {}),
@@ -889,7 +912,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                       results: result.edits.results.map(r => ({
                         target: r.target,
                         property: r.property,
-                        requested: r.requested,
+                        requested: typeof r.requested === 'bigint' ? r.requested.toString() : r.requested,
                         type: r.type,
                         ok: r.ok,
                         ...(r.detail !== undefined ? { detail: r.detail } : {}),
