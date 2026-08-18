@@ -135,7 +135,7 @@ Append-only.
 
 - **godot is a host install** — no binary ships with the package; a missing executable fails calls at call time (`GODOT_UNAVAILABLE`), never at load time.
 - **Headless debug requires a project that was imported once** — game mode does not auto-import, and a missing `.godot` global-class cache raises a Parser Error stop instead of running; run `godot --headless --editor --path <root> --import --quit` first, or expect the first run to report it.
-- **Breakpoints need a debug-capable binary** — exported release builds may not deliver stops; standard builds do.
+- **Breakpoints need a debug-capable binary** — exported games keep working breakpoints only when exported with the DEBUG template: the debug template retains the full remote debugger (breakpoints deliver stops), while the RELEASE template retains only the connection layer — the game still dials and answers `set_pid`, but the GDScript breakpoint engine is compiled out and stops never arrive (deterministic, pinned `.context/t12/facts.md`, Godot 4.5.1). Standard builds behave like the debug template.
 - **`--breakpoints` values cannot escape commas** — Godot splits the argument on `,`, so a file name containing a comma cannot be targeted via CLI breakpoints (use `godot_debug`'s `args` to pass it and rely on dynamic stops instead, or rename the file).
 - **The game user-data dir must be writable** — Godot's game mode crashes (signal 11) when `user://` creation fails (e.g. sandboxed/container deployments); point the environment's `APPDATA` (Windows) at a writable dir or document the deployment requirement.
 - **First-run import latency** — the first headless run imports assets; the default 60 s budget may need raising via `timeoutMs` for large projects.

@@ -135,7 +135,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 - **godot 是宿主安装**——包内不随附二进制；缺少可执行文件在调用时失败（`GODOT_UNAVAILABLE`），绝不在加载时。
 - **headless 调试要求项目至少 import 过一次**——游戏模式不自动 import，缺少 `.godot` 全局类缓存会触发 Parser Error 停顿而非正常运行；先执行 `godot --headless --editor --path <root> --import --quit`，或接受首次运行报告该问题。
-- **断点需要可调试构建**——导出的 release 构建可能不产生停顿；标准构建可以。
+- **断点需要可调试构建**——导出游戏只有用 DEBUG 模板导出时才保留可用断点：debug 模板保留完整远程调试器（断点可命中），release 模板只保留连接层——游戏照常拨号并应答 set_pid，但 GDScript 断点引擎被编译排除，停顿永不出现（确定性行为，已 pin `.context/t12/facts.md`，Godot 4.5.1）。标准构建与 debug 模板行为一致。
 - **`--breakpoints` 值无法转义逗号**——Godot 按 `,` 分割参数，含逗号的文件名无法经 CLI 断点定位（可用 `godot_debug` 的 `args` 传入并依赖动态停顿，或重命名文件）。
 - **游戏 user 数据目录必须可写**——`user://` 创建失败时 Godot 游戏模式崩溃（信号 11，如沙箱/容器部署）；将环境的 `APPDATA`（Windows）指向可写目录或记录部署要求。
 - **首次运行 import 延迟**——首个 headless 运行会导入资源；大项目默认 60s 预算可能需要通过 `timeoutMs` 调高。

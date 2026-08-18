@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot-debug/README.md
-README.md: d4c5497ca0f78eae7440eef4af60640ca74133d7
-README.zh.md: 4ad6a506e8bdb8fc9734f10608a02cb77f880226
+README.md: ffddd9918d26d470d5ac2e81c64af07fa664687b
+README.zh.md: c2f9b29582174ecf565e63dd6cb71411212e07fd
