@@ -11,6 +11,11 @@
  * client 面 = applyClient）；或按部署环境的插件机制引入本文件。
  * 使用说明见同目录 ui-plugin-godot.md。
  *
+ * 类图标（T20-opt）：场景树与展开条目按引擎类名显示 Godot 官方图标，
+ * 内联在下方 GODOT_ICONS 区块（docs/godot-icons/*.svg 经 gen-icons.mjs
+ * 生成，fill/stroke 已替换为 currentColor 适配主题）。扩展图标类 =
+ * 把 SVG 放进 docs/godot-icons/ 后运行 `node gen-icons.mjs`，不手写。
+ *
  * 实现说明（修改本文件前请阅读）：
  *   - 本文件运行在浏览器端，是纯 JavaScript：不能使用 import 和 JSX，
  *     React 与 styles 由运行环境注入，界面用 React.createElement 构建。
@@ -22,12 +27,156 @@
  *   - 界面文案为中文；调试报告正文由工具生成、面向助手阅读，保持原样。
  */
 
-/** host 面：无 host 行为（godot 设置命名空间归 tool-godot 所有）。 */
+/**
+ * host 面：T21 交互式调试会话的 RPC 桥接。真实会话服务来自静态包
+ * tool-godot-debug（`ctx.get('godot.debugSession')`）；服务缺失时回退
+ * in-sandbox 假会话（演示/无该包的部署，审查 LOW-5）。四个方法经
+ * harness.handle 暴露给 client 面板：session/start、session/stop、
+ * session/poll、session/command（JSON-safe，包私有）。
+ */
 export function applyHost() {
   return {
     name: 'ui-plugin-godot',
-    inject: [],
-    apply() {},
+    inject: ['timer'],
+    apply(ctx) {
+      const real = ctx.get('godot.debugSession')
+      const fake = createFakeSessionService(ctx)
+      // 按会话 id 前缀路由：`demo-`（假会话）走 fake，其余走真实服务
+      // （演示工具与真实会话可共存；无真实服务的部署全部回退 fake）。
+      const isDemo = (id) => typeof id === 'string' && id.startsWith('demo-')
+      const pick = (id) => (real !== null && typeof real === 'object' && !isDemo(id) ? real : fake)
+      // 生命周期：harness.handle 的 disposer 必须挂在 effect 的清理函数上
+      // （停止插件时才注销）——立即执行会当场注销 handler（实测教训）。
+      ctx.effect(() => {
+        const disposers = [
+          harness.handle('session/start', (args) => pick(undefined).start({ port: args.port, projectRoot: args.projectRoot ?? '' })),
+          harness.handle('session/stop', (args) => pick(args.sessionId).stop(args.sessionId)),
+          harness.handle('session/poll', (args) => pick(args.sessionId).poll(args.sessionId)),
+          harness.handle('session/command', (args) => pick(args.sessionId).command(args.sessionId, args.request)),
+        ]
+        return () => {
+          for (const dispose of disposers) dispose()
+        }
+      }, 'ui-plugin-godot: session rpc')
+    },
+  }
+}
+
+/** 一个演示用的暂停快照（真实会话由静态包生成 DebugView；假会话复用同构形状）。 */
+const FAKE_PAUSE_VIEW = {
+  version: 1,
+  stopCount: 1,
+  maxStops: 1,
+  detached: false,
+  stops: [{
+    index: 0,
+    reason: '',
+    isUserBreakpoint: true,
+    threadId: 1,
+    frames: [{ file: 'res://main.gd', line: 12, func: '_ready' }],
+    varsLines: ['  locals:', '    counter = 1', '    player = Object<2206439182461>'],
+    scopeTruncated: { locals: false, members: false, globals: false },
+    sceneTree: { lines: ['root [Window] (1)', '  Main [Node2D] (7)', '    Player [CharacterBody2D] (8)'] },
+  }],
+  outputTail: ['counter=1'],
+  errors: [],
+  expandedObjects: 0,
+  expansionTruncated: false,
+  editsApplied: 0,
+  editsTruncated: false,
+  sceneTreeCount: 1,
+  sceneTreeTruncated: false,
+  outputTruncated: false,
+  varsTruncated: false,
+  viewTruncated: false,
+}
+
+/**
+ * In-sandbox 假会话服务：与静态包 `godot.debugSession` 同构的内存实现，
+ * 用于无 tool-godot-debug 的部署演示面板交互（连接 2s → running；
+ * pause/断点 800ms 后模拟停顿；continue/step/next 立即恢复运行）。
+ */
+function createFakeSessionService(ctx) {
+  let current = null
+  let connectTimer = null
+  let pauseTimer = null
+  const snapshot = () => {
+    if (current === null) return { error: 'unknown-session' }
+    const { sessionId, state, version, port, reason, breakpoints, outputTail, pause } = current
+    const out = { sessionId, state, version, port, breakpoints, outputTail }
+    if (reason !== undefined) out.reason = reason
+    if (state === 'paused' && pause !== undefined) out.pause = pause
+    return out
+  }
+  return {
+    start({ port, projectRoot }) {
+      if (current !== null && current.state !== 'detached') return { error: 'session-active' }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'port-invalid' }
+      const sessionId = 'demo-' + Math.random().toString(36).slice(2, 10)
+      current = { sessionId, state: 'connecting', version: 1, port, breakpoints: [], outputTail: ['demo session: connect to :' + port + ' with --remote-debug'] }
+      if (connectTimer !== null) ctx.timeout(() => {}, 0)
+      connectTimer = ctx.timeout(() => {
+        if (current !== null && current.state === 'connecting') {
+          current.state = 'running'
+          current.version++
+        }
+      }, 2000)
+      return { sessionId, port, state: 'connecting' }
+    },
+    stop(sessionId) {
+      if (current === null || current.sessionId !== sessionId) return { ok: false }
+      current.state = 'detached'
+      current.reason = 'stop'
+      current.version++
+      return { ok: true }
+    },
+    /** 清理当前会话（demo 工具 start 前调用：浏览器刷新只重载 client，
+     *  host 面的假会话实例残留——必须幂等清场，审查/实测教训）。 */
+    clear() {
+      if (current !== null) {
+        current.state = 'detached'
+        current.reason = 'stop'
+        current.version++
+      }
+    },
+    poll(sessionId) {
+      return snapshot()
+    },
+    async command(sessionId, request) {
+      if (current === null || current.sessionId !== sessionId) return { error: 'unknown-session' }
+      if (request.kind === 'pause') {
+        schedulePause()
+        return { ok: true }
+      }
+      if (request.kind === 'breakpoint') {
+        const idx = current.breakpoints.findIndex(b => b.file === request.file && b.line === request.line)
+        if (request.enabled && idx === -1) current.breakpoints.push({ file: request.file, line: request.line })
+        if (!request.enabled && idx !== -1) current.breakpoints.splice(idx, 1)
+        current.version++
+        if (request.enabled) schedulePause()
+        return { ok: true }
+      }
+      if (request.kind === 'continue' || request.kind === 'step' || request.kind === 'next') {
+        current.state = 'running'
+        current.version++
+        return { ok: true }
+      }
+      if (request.kind === 'edits') {
+        return { ok: true, edits: { results: request.edits.map(() => ({ target: 'demo', property: 'x', requested: 1, type: 'int', ok: true })), truncated: false } }
+      }
+      return { ok: false, error: 'parse', detail: 'unknown command kind' }
+    },
+  }
+  function schedulePause() {
+    if (pauseTimer !== null) return
+    pauseTimer = ctx.timeout(() => {
+      pauseTimer = null
+      if (current !== null && current.state !== 'detached') {
+        current.state = 'paused'
+        current.pause = FAKE_PAUSE_VIEW
+        current.version++
+      }
+    }, 800)
   }
 }
 
@@ -78,6 +227,15 @@ export function applyClient() {
 .godot-frame{margin-top:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}
 .godot-frame-link{color:var(--dsw-alias-brand-primary);text-decoration:underline;cursor:pointer}
 .godot-frame-link:hover{text-decoration:none}
+.godot-session-status{font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-primary);margin-top:6px}
+.godot-session-status-detached{color:var(--dsw-alias-state-error-primary)}
+.godot-session-where{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);font-size:12px;margin-left:6px}
+.godot-session-controls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.godot-session-stop{color:var(--dsw-alias-state-error-primary)}
+.godot-session-bp{display:flex;align-items:center;gap:8px;margin-top:4px;font:var(--dsw-font-xxs-12);color:var(--dsw-alias-label-secondary)}
+.godot-session-bp-text{font-family:var(--ds-font-family-code)}
+.godot-session-bp-add{display:flex;gap:6px;margin-top:6px;align-items:center}
+.godot-session-bp-add .godot-control{padding:2px 6px}
 .godot-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;color:var(--dsw-alias-label-secondary)}
 .godot-icon svg{display:block;width:16px;height:16px}
 .godot-tree-line{display:flex;align-items:center;gap:6px;min-width:0;font-family:var(--ds-font-family-code);font-size:12px;line-height:19px;color:var(--dsw-alias-label-primary);white-space:nowrap}
@@ -554,12 +712,144 @@ export function applyClient() {
     )
   }
 
+  /**
+   * T21 交互式会话面板：状态行 + 控制按钮 + 断点管理 + 停顿详情（复用
+   * renderStructuredStops 呈现与类图标）。快照由 apply 层 interval 轮询
+   * host.call('session/poll') 写入 sessionStore，组件订阅渲染。
+   */
+  function SessionPanel(props) {
+    const { sessionId, owner } = props
+    const [snap, setSnap] = React.useState(null)
+    React.useEffect(() => sessionStore.subscribe(() => setSnap(sessionStore.snapshot)), [])
+    React.useEffect(() => {
+      sessionStore.setSession(sessionId)
+      sessionStore.snapshot = null
+      sessionStore.notify()
+    }, [sessionId])
+    const s = snap !== null && typeof snap === 'object' ? snap : {}
+    const state = typeof s.state === 'string' ? s.state : 'connecting'
+    const reason = typeof s.reason === 'string' ? s.reason : ''
+    const paused = state === 'paused'
+    const connecting = state === 'connecting'
+    const running = state === 'running'
+    const detached = state === 'detached'
+    const pauseView = paused && s.pause !== null && typeof s.pause === 'object' ? s.pause : null
+    const bps = Array.isArray(s.breakpoints) ? s.breakpoints : []
+    const [bpFile, setBpFile] = React.useState('')
+    const [bpLine, setBpLine] = React.useState('')
+    const send = (request) => { void host.call('session/command', { sessionId, request }).catch(() => {}) }
+    const stop = () => { void host.call('session/stop', { sessionId }).catch(() => {}) }
+    const stateLabel = detached
+      ? '已断开（' + reason + '）'
+      : paused ? '已暂停' : running ? '运行中' : '连接中…'
+    const where = paused && pauseView !== null && pauseView.stops !== undefined && pauseView.stops[0] !== undefined
+      && pauseView.stops[0].frames !== undefined && pauseView.stops[0].frames[0] !== undefined
+      ? pauseView.stops[0].frames[0].file + ':' + pauseView.stops[0].frames[0].line
+      : ''
+    const children = [
+      React.createElement('div', {
+        key: 'status',
+        className: 'godot-session-status' + (detached ? ' godot-session-status-detached' : ''),
+      },
+      stateLabel,
+      where !== '' ? React.createElement('span', { className: 'godot-session-where' }, '@ ' + where) : null),
+      React.createElement('div', { key: 'controls', className: 'godot-session-controls' },
+        React.createElement('button', { type: 'button', className: 'godot-btn', disabled: connecting || detached, onClick: () => send({ kind: 'pause' }) }, '暂停'),
+        React.createElement('button', { type: 'button', className: 'godot-btn', disabled: !paused, onClick: () => send({ kind: 'continue' }) }, '继续'),
+        React.createElement('button', { type: 'button', className: 'godot-btn', disabled: !paused, onClick: () => send({ kind: 'step' }) }, '单步进入'),
+        React.createElement('button', { type: 'button', className: 'godot-btn', disabled: !paused, onClick: () => send({ kind: 'next' }) }, '单步跳过'),
+        React.createElement('button', { type: 'button', className: 'godot-btn godot-session-stop', disabled: detached, onClick: stop }, '停止')),
+    ]
+    children.push(React.createElement('div', { key: 'bps-head', className: 'godot-sub' }, '断点 (' + bps.length + ')'))
+    for (const bp of bps) {
+      children.push(React.createElement('div', { key: 'bp-' + bp.file + ':' + bp.line, className: 'godot-session-bp' },
+        React.createElement('span', { className: 'godot-session-bp-text' }, bp.file + ':' + bp.line),
+        React.createElement('button', {
+          type: 'button', className: 'godot-reset', disabled: detached,
+          onClick: () => send({ kind: 'breakpoint', file: bp.file, line: bp.line, enabled: false }),
+        }, '移除')))
+    }
+    children.push(React.createElement('div', { key: 'bp-add', className: 'godot-session-bp-add' },
+      React.createElement('input', {
+        className: 'godot-control', placeholder: 'res://main.gd', value: bpFile,
+        onChange: (e) => setBpFile(e.target.value), style: { width: 160 },
+      }),
+      React.createElement('input', {
+        className: 'godot-control', placeholder: '行号', value: bpLine, inputMode: 'numeric',
+        onChange: (e) => setBpLine(e.target.value), style: { width: 64 },
+      }),
+      React.createElement('button', {
+        type: 'button', className: 'godot-btn',
+        disabled: detached || bpFile.trim() === '' || !/^\d+$/.test(bpLine.trim()),
+        onClick: () => {
+          send({ kind: 'breakpoint', file: bpFile.trim(), line: Number(bpLine.trim()), enabled: true })
+          setBpFile('')
+          setBpLine('')
+        },
+      }, '添加')))
+    if (pauseView !== null) {
+      children.push(React.createElement('div', { key: 'pause-head', className: 'godot-sub' }, '停顿详情'))
+      children.push(...renderStructuredStops(pauseView, 'ok', owner, {}))
+    }
+    return React.createElement('div', { className: 'godot-session' }, children)
+  }
+
+  /** godot_debug_session 工具卡：会话面板（sessionId 来自调用结果的 meta）。 */
+  function GodotSessionCard(owner) {
+    const block = owner.block
+    const done = block !== null && typeof block === 'object' && typeof block.kind === 'string'
+    const meta = done && block.meta !== null && typeof block.meta === 'object' ? block.meta : {}
+    const sessionId = typeof meta.sessionId === 'string' ? meta.sessionId : undefined
+    const rowChildren = [
+      React.createElement('span', { key: 'dot', className: 'godot-dot' }),
+      React.createElement('span', { key: 'name', className: 'godot-tool-name' }, owner.toolName || 'godot_debug_session'),
+      React.createElement('span', { key: 'summary', className: 'godot-tool-summary' }, '调试会话' + (sessionId !== undefined ? ' · ' + sessionId.slice(0, 8) : '')),
+    ]
+    const row = React.createElement('div', { className: 'godot-row' }, rowChildren)
+    if (!done || sessionId === undefined) {
+      return React.createElement('div', { className: 'godot-tool' },
+        row,
+        React.createElement('div', { className: 'godot-session-status' }, '会话启动中…'))
+    }
+    return React.createElement('div', { className: 'godot-tool' },
+      row,
+      React.createElement(SessionPanel, { sessionId, owner }))
+  }
+
   return {
     name: 'ui-plugin-godot.client',
-    inject: ['slots', 'settingsScope'],
+    inject: ['slots', 'settingsScope', 'timer'],
     apply(ctx) {
       styles.insert(css)
       const scope = ctx.settingsScope.bind({ namespace: 'godot' })
+      // ---- T21: 会话快照轮询（apply 层；client 闭包无原生定时器，审查 HIGH-3） ----
+      const sessionStore = {
+        sessionId: undefined,
+        snapshot: null,
+        listeners: new Set(),
+        setSession(id) {
+          this.sessionId = id
+        },
+        subscribe(listener) {
+          this.listeners.add(listener)
+          return () => this.listeners.delete(listener)
+        },
+        notify() {
+          for (const listener of this.listeners) listener()
+        },
+      }
+      ctx.interval(() => {
+        const id = sessionStore.sessionId
+        if (id === undefined) return
+        void host.call('session/poll', { sessionId: id })
+          .then((snap) => {
+            if (snap !== null && typeof snap === 'object' && 'state' in snap) {
+              sessionStore.snapshot = snap
+              sessionStore.notify()
+            }
+          })
+          .catch(() => { /* stale-run / plugin-not-running: 静默，下次轮询恢复（审查 MEDIUM-4） */ })
+      }, 500)
       // 1. godot settings card. id satisfies list runtimes (deployed bundle,
       //    renders every card), key satisfies keyed runtimes (current source,
       //    dispatched by settings namespace).
@@ -582,6 +872,17 @@ export function applyClient() {
           )
         } catch (error) {
           console.warn('ui-plugin-godot: tool card registration failed', error)
+        }
+      })
+      // 3. godot_debug_session card — the interactive session panel (T21).
+      ctx.slots.inject('tool.call.toolview', () => {
+        try {
+          ctx.slots.register(
+            { name: 'tool.call.toolview', key: 'godot_debug_session' },
+            (owner) => React.createElement(GodotSessionCard, owner),
+          )
+        } catch (error) {
+          console.warn('ui-plugin-godot: session card registration failed', error)
         }
       })
     },

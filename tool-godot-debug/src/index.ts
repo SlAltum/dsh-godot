@@ -29,6 +29,14 @@ import type { StructuredDebugInput } from './debug-view.ts'
 import type { ExpandedEntry } from './inspect.ts'
 import { runDebug } from './tool.ts'
 import type { DebugRunResult } from './tool.ts'
+import { GodotError } from './error.ts'
+import type { EditRequest } from './edit.ts'
+import { createDebugSessionService } from './session-service.ts'
+import type { DebugSessionService } from './session-service.ts'
+import type { SessionCommandRequest } from './session.ts'
+
+/** T21: interactive-session idle timeout (constant; configurable later). */
+const SESSION_IDLE_TIMEOUT_MS = 10 * 60 * 1000
 
 export { Config, validateConfig } from './config.ts'
 export type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
@@ -36,6 +44,10 @@ export { runDebug } from './tool.ts'
 export type { DebugBreakpoint, DebugRunMode, DebugRunOptions, DebugRunResult, DebugStop } from './tool.ts'
 export { structuredDebugView, VIEW_MAX_BYTES } from './debug-view.ts'
 export type { DebugView, DebugViewStop, StructuredDebugInput } from './debug-view.ts'
+export { createDebugSessionService } from './session-service.ts'
+export type { DebugSessionService } from './session-service.ts'
+export { DebugSession } from './session.ts'
+export type { DetachReason, SessionCommandRequest, SessionCommandResult, SessionSnapshot, SessionState } from './session.ts'
 export { renderSnapshot, renderValue } from './snapshot.ts'
 export type { RenderOptions, RenderScopes, RenderVar, SnapshotFrame, StopSnapshot } from './snapshot.ts'
 export { formatNumber } from './variants.ts'
@@ -711,6 +723,194 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
         return () => {
           disposeTool()
         }      })(),
+      // T21: the interactive session service (long-lived attach sessions),
+      // bridged to `harness.handle` RPC by the dynamic plugin's host half.
+      // Session idle timeout is a constant 10 min (configurable later).
+      (() => {
+        const service = createDebugSessionService({
+          maxMessageBytes: resolved.maxMessageBytes,
+          maxOutputBytes: resolved.maxOutputBytes,
+          maxTreeNodes: resolved.maxTreeNodes,
+          idleTimeoutMs: SESSION_IDLE_TIMEOUT_MS,
+        })
+        return ctx.provide('godot.debugSession', service)
+      })(),
+      (() => {
+        const tool = defineTool({
+          name: 'godot_debug_session',
+          description:
+            'Start and control a LONG-LIVED interactive debug session (T21): attach to a game the user already started with '
+            + '--remote-debug tcp://127.0.0.1:<port>, then pause/continue/step and manage breakpoints across calls while the '
+            + 'session stays alive in the background (one session at a time; the game keeps running after the session stops). '
+            + 'action=start returns the sessionId and a connecting state immediately (the game may connect later, within the '
+            + 'idle window); action=command sends one control command (pause/continue/step/next/breakpoint/edits); '
+            + 'action=stop detaches (best-effort breakpoint removal + continue). The Web panel controls the same session '
+            + 'through the session id. NOTE: a port previously used by a one-shot godot_debug attach will never reconnect '
+            + '(Godot does not retry a failed connection) — start the game fresh on this port.',
+          parameters: {
+            action: {
+              type: 'string',
+              enum: ['start', 'stop', 'command'],
+              description: 'start (default) creates the session; command sends one control; stop detaches.',
+            },
+            port: {
+              type: 'number',
+              description: 'The attach port (1-65535); required for action=start.',
+            },
+            sessionId: {
+              type: 'string',
+              description: 'The session id from a prior start; required for command/stop.',
+            },
+            command: {
+              type: 'string',
+              enum: ['pause', 'continue', 'step', 'next'],
+              description: 'The control command for action=command (pause/continue/step into/step over).',
+            },
+            breakpoint: {
+              type: 'json',
+              description: 'Breakpoint change for action=command: {file, line, enabled} (file as res:// or a project path).',
+            },
+            edits: {
+              type: 'json',
+              description: 'Variable edits for action=command while paused: [{target, property, value, type}] (same semantics as godot_debug edits).',
+            },
+          },
+          output: {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                sessionId: { type: 'string', required: true },
+                state: { type: 'string', required: true },
+                port: { type: 'number', required: true },
+                breakpoints: { type: 'json' },
+                commandResult: { type: 'json' },
+              },
+            },
+            render(_args, value) {
+              const v = value as { state: string; sessionId: string; port: number; breakpoints?: unknown; commandResult?: unknown }
+              const head = v.state === 'detached' ? 'debug session detached' : `debug session ${v.state} (session ${v.sessionId}, :${v.port})`
+              const lines = [head]
+              if (Array.isArray(v.breakpoints) && v.breakpoints.length > 0) {
+                lines.push(`breakpoints (${v.breakpoints.length}):`)
+                for (const bp of v.breakpoints as { file: string; line: number }[]) lines.push(`  ${bp.file}:${bp.line}`)
+              }
+              if (v.commandResult !== undefined) lines.push(`command result: ${JSON.stringify(v.commandResult)}`)
+              return [{ type: 'text', text: lines.join('\n') }]
+            },
+            presentationMeta: (_args, value) => {
+              const v = value as { sessionId?: string; state?: string; port?: number }
+              return {
+                ...(v.sessionId !== undefined ? { sessionId: v.sessionId } : {}),
+                ...(v.state !== undefined ? { state: v.state } : {}),
+                ...(v.port !== undefined ? { port: v.port } : {}),
+              }
+            },
+          },
+          async execute(args, exec) {
+            const service = ctx.get('godot.debugSession') as DebugSessionService | undefined
+            if (service === undefined) {
+              throw new GodotError(
+                'godot_debug_session: the interactive session service is not mounted (tool-godot-debug required)',
+                'GODOT_UNAVAILABLE',
+              )
+            }
+            const action = args.action ?? 'start'
+            if (action === 'start') {
+              const port = args.port
+              if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+                throw new GodotError(
+                  'godot_debug_session: start requires an explicit port 1-65535 (start the game with --remote-debug tcp://127.0.0.1:<port>; Godot does not retry a failed connection)',
+                  'GODOT_PARSE_ERROR',
+                )
+              }
+              const started = service.start({ port, projectRoot: exec.agent?.session.header.cwd ?? process.cwd() })
+              if ('error' in started) {
+                if (started.error === 'session-active') {
+                  throw new GodotError('godot_debug_session: another session is already active (one debugger per game)', 'GODOT_PARSE_ERROR')
+                }
+                throw new GodotError(`godot_debug_session: invalid port ${port}`, 'GODOT_PARSE_ERROR')
+              }
+              return { sessionId: started.sessionId, state: started.state, port: started.port }
+            }
+            const sessionId = args.sessionId
+            if (typeof sessionId !== 'string' || sessionId === '') {
+              throw new GodotError('godot_debug_session: sessionId is required for command/stop', 'GODOT_PARSE_ERROR')
+            }
+            if (action === 'stop') {
+              const stopped = service.stop(sessionId)
+              if (!stopped.ok) {
+                throw new GodotError(`godot_debug_session: unknown or already-detached session ${sessionId}`, 'GODOT_PARSE_ERROR')
+              }
+              const snap = service.poll(sessionId)
+              return {
+                sessionId,
+                state: 'detached',
+                port: 'port' in snap ? snap.port : 0,
+              }
+            }
+            // action === 'command'
+            let request: SessionCommandRequest | undefined
+            if (args.command !== undefined) {
+              request = { kind: args.command }
+            } else if (args.breakpoint !== undefined) {
+              const bp = args.breakpoint
+              if (bp !== null && typeof bp === 'object' && !Array.isArray(bp)) {
+                const record = bp as { file?: unknown; line?: unknown; enabled?: unknown }
+                request = {
+                  kind: 'breakpoint',
+                  file: typeof record.file === 'string' ? record.file : '',
+                  line: typeof record.line === 'number' ? record.line : 0,
+                  enabled: record.enabled === true,
+                }
+              }
+            } else if (args.edits !== undefined) {
+              request = { kind: 'edits', edits: args.edits as unknown as EditRequest[] }
+            }
+            if (request === undefined) {
+              throw new GodotError('godot_debug_session: command requires one of command/breakpoint/edits', 'GODOT_PARSE_ERROR')
+            }
+            const result = await service.command(sessionId, request)
+            if (!('ok' in result)) {
+              throw new GodotError(`godot_debug_session: unknown session ${sessionId}`, 'GODOT_PARSE_ERROR')
+            }
+            if (!result.ok) {
+              throw new GodotError(`godot_debug_session: ${result.error}${result.detail !== undefined ? `: ${result.detail}` : ''}`, 'GODOT_PARSE_ERROR')
+            }
+            const snap = service.poll(sessionId)
+            return {
+              sessionId,
+              state: 'state' in snap ? snap.state : 'unknown',
+              port: 'port' in snap ? snap.port : 0,
+              ...(result.edits !== undefined
+                ? {
+                  commandResult: {
+                    edits: {
+                      results: result.edits.results.map(r => ({
+                        target: r.target,
+                        property: r.property,
+                        requested: r.requested,
+                        type: r.type,
+                        ok: r.ok,
+                        ...(r.detail !== undefined ? { detail: r.detail } : {}),
+                      })),
+                      truncated: result.edits.truncated,
+                    },
+                  },
+                }
+                : {}),
+            }
+          },
+          presentCall: (args): GenericCallView => {
+            const verb = args.action === 'stop' ? 'Stop debug session' : args.action === 'command' ? 'Debug session command' : 'Start debug session'
+            return { card: 'generic', title: verb }
+          },
+        })
+        const disposeTool = ctx.tools.register(tool)
+        return () => {
+          disposeTool()
+        }
+      })(),
     ]
     return () => {
       for (const dispose of disposers) dispose()

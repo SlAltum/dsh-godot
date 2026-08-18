@@ -37,8 +37,9 @@ export interface DebugBreakpoint {
  *  caller-started game that connects INTO the bound port. */
 export type DebugRunMode = 'launch' | 'attach'
 
-/** The bounds applied while rendering every stop snapshot. */
-const RENDER_OPTIONS: RenderOptions = {
+/** The bounds applied while rendering every stop snapshot (shared with the
+ *  interactive session, T21). */
+export const RENDER_OPTIONS: RenderOptions = {
   maxDepth: 3,
   maxVarsPerScope: 200,
   maxValueLength: 200,
@@ -174,12 +175,13 @@ function stderrTail(handle: SubprocessHandle): string {
   return handle.collected.stderr?.readFrom(0).text ?? ''
 }
 
-/** Convert a breakpoint file to the `res://` form the protocol expects.
+/** Convert a breakpoint file to the `res://` form the protocol expects
+ *  (shared with the interactive session, T21).
  *  Guards: `res://` escapes (`/../` in either slash direction) and — for
  *  absolute input on Windows — cross-drive paths, where `path.relative`
  *  returns an absolute path instead of a `..`-prefixed one and would
  *  silently produce a breakpoint that never matches. */
-function toResPath(file: string, projectRoot: string): string {
+export function toResPath(file: string, projectRoot: string): string {
   if (file.startsWith('res://')) {
     if (file.replace(/\\/g, '/').includes('/../')) {
       throw new GodotError(`godot_debug: breakpoint ${file} escapes the project`, 'GODOT_PARSE_ERROR')

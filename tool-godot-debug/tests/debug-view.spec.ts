@@ -11,7 +11,7 @@ import { structuredDebugView, VIEW_MAX_BYTES } from '../src/debug-view.ts'
 import type { StructuredDebugInput } from '../src/debug-view.ts'
 import type { GodotRuntimeError } from '../src/controller.ts'
 import type { ExpandedEntry } from '../src/inspect.ts'
-import type { RenderScopes, SnapshotFrame, StopSnapshot } from '../src/snapshot.ts'
+import type { RenderScopes, SnapshotFrame } from '../src/snapshot.ts'
 import type { DebugStop } from '../src/tool.ts'
 
 /** One fixture stop with optional frames/scopes. */
