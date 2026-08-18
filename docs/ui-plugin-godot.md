@@ -1,26 +1,56 @@
-# Godot UI 插件（动态 Cordis 插件部署示例）
+# Godot 界面插件
 
-Godot 的 UI 能力以**动态 Cordis 插件**形式提供，零侵入 dsh 本体（`ui-settings-plugins` 等 client 包不含任何 godot 代码）。
+Godot 的界面功能以动态 Cordis 插件（dynamic Cordis plugin）形式提供。DSH 本体不包含任何 Godot 界面代码，需要时加载本插件即可。
 
-## 能力
+## 功能
 
-| UI | Slot | 说明 |
-|---|---|---|
-| godot 设置卡片 | `settings.plugin.item`（id `godot`） | 编辑 `godot` 设置命名空间的 `executable` / `gdformatExecutable`，保存即对下一次工具调用生效（宿主每次 execute 重读设置） |
-| `godot_debug` 工具卡 | `tool.call.toolview`（key `godot_debug`） | godot_debug 调用的专属展示（未注册时走 generic 工具卡） |
+本插件向 Web 界面添加两块内容。
 
-## 加载
+### Godot 设置卡片
 
-- **会话内**：`cordis_define` 定义（host 面 = `applyHost`，client 面 = `applyClient`），`cordis_run` 激活。
-- **部署**：按部署环境的插件加载方式引入本文件（动态插件机制）。
+出现在「设置 → Plugins」页面，提供四个配置项。
 
-## 能力边界（cordis-client-runner）
+| 配置项 | 说明 |
+|---|---|
+| Godot 编辑器路径 | Godot 程序在本机的位置，例如 `D:\软件\Godot\Godot_v4.7.exe`，也可以填已加入系统 PATH 的命令名。留空时使用默认命令 `godot`。 |
+| gdformat 工具路径 | 可选。gdformat 是专门给 GDScript 代码排版的命令行工具，需单独安装。未安装时，可把「代码格式化方式」切换为内置。 |
+| 代码格式化方式 | 整理代码排版时使用哪种工具：gdformat（效果更好，需安装）或内置格式化器（无需安装任何东西）。 |
+| 单次操作超时 | 助手执行每个 Godot 相关操作最多等待多久，单位毫秒，默认 60000（60 秒）。 |
 
-- Client 面纯 JS：无 JSX/TS/import——`React` 闭包符号、CSS 经 `styles.insert`、主题色用 `var(--dsw-*)`。
-- 必须声明 `inject`：`slots`（UI 座位入口）+ `settingsScope`/`connection`/`remote`（设置卡片读写）。
-- 注册包在 `ctx.slots.inject(key, () => ctx.slots.register(...))` 内（slot 随声明条目生命周期存在）。
-- 本仓库开发环境 GUI 页面无应答时无法端到端验证 UI，需在有响应的部署中加载确认。
+修改后点击「保存」，助手执行的下一次操作即使用新配置。
+
+### 调试工具卡
+
+会话中出现 `godot_debug` 调用时，本插件把默认的通用工具卡替换为专属卡片。卡片内容包括：
+
+- 摘要行：启动还是附加、目标场景或端口、断点数量；
+- 结果首行：例如 `2 stops (max 10)`；
+- 调试报告：可展开查看完整的停顿栈帧、变量、场景树等信息。
+
+调用失败时卡片标红，并自动展开报告。
+
+## 加载方式
+
+两种方式任选其一。
+
+**会话内临时加载**：请助手用 `cordis_define` 定义本插件（host 面取 `applyHost`，client 面取 `applyClient`），再用 `cordis_run` 激活。会话结束后插件自动消失。
+
+**部署加载**：按部署环境的插件加载方式引入本文件（`ui-plugin-godot.js`）。
+
+## 常见问题
+
+**设置页面看不到 Godot 卡片。**
+设置卡片依赖宿主安装 tool-godot 包（由它注册 `godot` 设置项）。确认宿主组合包含该包后，重新打开设置页面。
+
+**卡片显示「此宿主未提供 godot 命名空间」。**
+含义同上：当前宿主没有加载 Godot 工具包，卡片无法读写配置。
+
+**调试报告为什么是英文？**
+报告由调试工具直接生成，内容面向助手阅读，界面层不做翻译。
 
 ## 历史
 
-2026-08-27：从 dsh 本体 `ui-settings-plugins` 移除 godot 卡片（发布破坏修复——未跟踪卡片文件不进发布包而引用改动会进，导致安装失败），UI 改为本动态插件形态。
+- 2026-08-27：首个版本。DSH 本体移除 Godot 界面代码（修复发布破坏问题），界面功能改由本插件提供。
+- 2026-08-27 v2.1：修正设置卡片的注册方式，兼容新旧两版界面框架。
+- 2026-08-27 v2.2：界面文案改为中文。
+- 2026-08-27 v2.3：修订文案，面向普通用户并规范术语。

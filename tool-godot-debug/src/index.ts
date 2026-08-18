@@ -24,6 +24,8 @@ import type { GenericCallView, GenericResultView, JsonValue, ToolResult } from '
 import { resolve } from 'node:path'
 import { validateConfig } from './config.ts'
 import type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
+import { structuredDebugView } from './debug-view.ts'
+import type { StructuredDebugInput } from './debug-view.ts'
 import type { ExpandedEntry } from './inspect.ts'
 import { runDebug } from './tool.ts'
 import type { DebugRunResult } from './tool.ts'
@@ -32,6 +34,8 @@ export { Config, validateConfig } from './config.ts'
 export type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
 export { runDebug } from './tool.ts'
 export type { DebugBreakpoint, DebugRunMode, DebugRunOptions, DebugRunResult, DebugStop } from './tool.ts'
+export { structuredDebugView, VIEW_MAX_BYTES } from './debug-view.ts'
+export type { DebugView, DebugViewStop, StructuredDebugInput } from './debug-view.ts'
 export { renderSnapshot, renderValue } from './snapshot.ts'
 export type { RenderOptions, RenderScopes, RenderVar, SnapshotFrame, StopSnapshot } from './snapshot.ts'
 export { formatNumber } from './variants.ts'
@@ -605,7 +609,18 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               },
             },
             render: (args, value) => [{ type: 'text', text: renderDebugOutput(value as unknown as DebugRunResult, args.maxStops ?? 10) }],
-            presentationMeta: (args, value) => debugMeta(value as unknown as DebugRunResult, args.maxStops ?? 10),
+            // T20: the replayed meta keeps the compact DebugMeta fields (backward
+            // compatible) and gains the structured `view` (JSON-safe, byte-bounded)
+            // for the dynamic tool card. maxStops is clamped to MAX_STOPS exactly
+            // like execute, so the head line and the view agree with the run.
+            presentationMeta: (args, value) => {
+              const maxStops = Math.min(args.maxStops ?? 10, MAX_STOPS)
+              const result = value as unknown as DebugRunResult
+              return {
+                ...debugMeta(result, maxStops),
+                view: structuredDebugView(result as unknown as StructuredDebugInput, maxStops),
+              }
+            },
           },
           async execute(args, exec) {
             const c = resolved

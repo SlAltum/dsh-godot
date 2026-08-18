@@ -102,6 +102,10 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 `godot_debug` 返回 generic 卡：`N stops at <file>:<line> (maxStops)` 头部、每个停顿一行 `#i <file>:<line> @ <function> [reason]`（子线程暂停标注 `[reason @ thread N]`——线程 id 1 为主线程不标注，已 pin `.context/t10/facts.md`）、**首个有帧的停顿**的完整 locals/members/globals（`break` 暂停的引擎栈为空，渲染为 `[break]`）、该停顿的展开对象（`<name> = <repr> [<引擎类>]`——声明 `__repr__` 成员时显示其值，否则 `Object<<id>>`；属性行带引擎分组前缀如 `Node/process_mode`；嵌套对象以更深缩进与定位路径名呈现，如 `arr[0]`/`dict["k"]`——StringName 字典键用 `&'x'` 形态（`dict["&'snkey'"]`），受 `maxExpandedObjects`/`maxExpandedProps`/`maxExpandDepth` 约束；StringName 渲染 `&'x'`，数组预览其值如 `(2) [(11, 12), (21, 22)]`，预览内 `__repr__` 名同样解析）、该停顿应用的编辑（`<target>.<property> = <value> [<type>] ok|failed: <detail>`，受 `maxEdits` 约束，每条经 re-inspect 与引擎验证）、每个有帧停顿的场景树（缩进 `name [class] (id)` 行 + 场景文件，受 `maxTreeNodes` 约束）、输出/错误摘要与截断标记；attach 结果末尾附 `attached; game left running (not owned by the tool)`。
 
+#### 浏览器看到的内容（结构化卡片视图，T20）
+
+工具的 `presentationMeta` 携带可回放卡片视图：紧凑的 `DebugMeta`（停顿位置 + 计数）外加带版本、JSON-safe 的 `view`——逐停顿帧列表、首个有帧停顿的渲染变量行、展开树、编辑结果、逐停顿场景树与有界输出/错误尾部。随附动态 UI 插件（`docs/ui-plugin-godot.js`）将其渲染为可折叠的逐停顿分区与摘要 chips 行；view 缺失或损坏时卡片回退整段文本报告。视图与文本保持体积对等：变量行只渲染在首个有帧停顿，256 KiB 序列化预算先裁变量行、再裁场景树行，并置 `viewTruncated` 标记。
+
 #### Token 影响
 
 由 `maxStops` × 每停顿渲染上限（深度 3、每作用域 200 变量）与 `maxOutputBytes` 约束。
