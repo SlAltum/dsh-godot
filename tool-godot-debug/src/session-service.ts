@@ -13,7 +13,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { DebugSession, type SessionCommandRequest, type SessionCommandResult, type SessionSnapshot } from './session.ts'
+import { pickFreePort, type SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
+import { DebugSession, type SessionCommandRequest, type SessionCommandResult, type SessionSnapshot, type DebugSessionLaunch } from './session.ts'
 
 /** Service-wide defaults and bounds (the resolved config feeds the caps). */
 export interface DebugSessionServiceOptions {
@@ -26,13 +27,34 @@ export interface DebugSessionServiceOptions {
   connectWaitMs?: number
   /** Idle-timer cadence (tests use a short one; default 30 s). */
   idleCheckIntervalMs?: number
+  /** The spawn seam; REQUIRED for launch-mode sessions (T21.8). */
+  subprocess?: SubprocessLike
+  /** Terminate-escalation grace for a spawned game (launch mode). */
+  graceMs?: number
+}
+
+/** One `start` request: attach (default) joins a caller-started game on an
+ *  explicit port; launch (T21.8) spawns the game itself — the port is
+ *  auto-picked, the version is gated, and the session owns the process. */
+export interface DebugSessionStartOptions {
+  mode?: 'attach' | 'launch'
+  /** attach: required 1-65535; launch: ignored (auto-picked). */
+  port?: number
+  projectRoot: string
+  /** launch: required (the executable to spawn). */
+  executable?: string
+  executableArgs?: string[]
+  scene?: string
+  args?: string[]
+  singleThreadedScene?: boolean
 }
 
 /** The service surface the dynamic host half bridges. */
 export interface DebugSessionService {
-  start(options: { port: number; projectRoot: string }):
-    | { sessionId: string; port: number; state: 'connecting' }
-    | { error: 'port-invalid' | 'session-active' }
+  start(options: DebugSessionStartOptions): Promise<
+    | { sessionId: string; port: number; state: 'connecting'; mode: 'attach' | 'launch' }
+    | { error: 'port-invalid' | 'session-active' | 'launch-invalid' }
+  >
   stop(sessionId: string): { ok: boolean }
   poll(sessionId: string): SessionSnapshot | { error: 'unknown-session' }
   command(sessionId: string, request: SessionCommandRequest):
@@ -52,9 +74,42 @@ export function createDebugSessionService(options: DebugSessionServiceOptions): 
   }
 
   const service: DebugSessionService = {
-    start({ port, projectRoot }) {
-      if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'port-invalid' }
+    async start({ mode, port, projectRoot, executable, executableArgs, scene, args, singleThreadedScene }) {
       if (current !== undefined && !current.detached) return { error: 'session-active' }
+      if (mode === 'launch') {
+        // T21.8: the session spawns the game — the port is pre-picked here,
+        // the version gate and process ownership live in DebugSession.
+        if (typeof executable !== 'string' || executable === '') return { error: 'launch-invalid' }
+        if (options.subprocess === undefined) return { error: 'launch-invalid' }
+        const picked = await pickFreePort()
+        const session = new DebugSession(
+          randomUUID(),
+          picked,
+          projectRoot,
+          {
+            maxMessageBytes: options.maxMessageBytes,
+            maxOutputBytes: options.maxOutputBytes,
+            maxTreeNodes: options.maxTreeNodes,
+          },
+          options.idleTimeoutMs,
+          options.connectWaitMs ?? options.idleTimeoutMs,
+          options.idleCheckIntervalMs,
+          {
+            executable,
+            ...(executableArgs !== undefined ? { executableArgs } : {}),
+            ...(scene !== undefined ? { scene } : {}),
+            ...(args !== undefined ? { args } : {}),
+            ...(singleThreadedScene !== undefined ? { singleThreadedScene } : {}),
+          } satisfies DebugSessionLaunch,
+          options.subprocess,
+          options.graceMs,
+        )
+        current = session
+        void session.connect()
+        return { sessionId: session.sessionId, port: session.port, state: 'connecting', mode: 'launch' }
+      }
+      // attach (default): an explicit port the caller's game dials.
+      if (!Number.isInteger(port) || port === undefined || port < 1 || port > 65535) return { error: 'port-invalid' }
       const session = new DebugSession(
         randomUUID(),
         port,
@@ -70,7 +125,7 @@ export function createDebugSessionService(options: DebugSessionServiceOptions): 
       )
       current = session
       void session.connect()
-      return { sessionId: session.sessionId, port: session.port, state: 'connecting' }
+      return { sessionId: session.sessionId, port: session.port, state: 'connecting', mode: 'attach' }
     },
 
     stop(sessionId) {
@@ -91,7 +146,6 @@ export function createDebugSessionService(options: DebugSessionServiceOptions): 
       if (session === undefined) return { error: 'unknown-session' }
       return session.command(request)
     },
-    // TEMP-DIAG
   }
   return service
 }

@@ -253,7 +253,7 @@ async function launchRun(options: DebugRunOptions, projectRoot: string): Promise
 
   // Version gate (spawn mode needs Godot 4.2+, protocol threadId facts).
   const executable = await options.subprocess.resolveExecutable(options.executable, undefined, options.signal)
-  const versionLine = await probeVersion(options, executable)
+  const versionLine = await probeVersion(executable, options.executableArgs, options.graceMs, options.signal, options.subprocess)
   const gate = verifyGodotVersion(versionLine, versionLine.trim().charAt(0))
   if (!gate.ok) {
     throw new GodotError(`godot_debug: requires Godot 4.2+ (4.x); the configured executable reports ${gate.version}`, 'GODOT_UNAVAILABLE')
@@ -444,22 +444,29 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
   }
 }
 
-/** Run `godot --version` through the seam (with the deployment wrapper argv). */
-async function probeVersion(options: DebugRunOptions, executable: string): Promise<string> {
-  const handle = options.subprocess.spawn({
-    argv: [executable, ...options.executableArgs, '--version'],
+/** Run `godot --version` through the seam (with the deployment wrapper argv).
+ *  Shared with the interactive session's launch mode (T21.8). */
+export async function probeVersion(
+  executable: string,
+  executableArgs: readonly string[],
+  graceMs: number,
+  signal: AbortSignal,
+  subprocess: SubprocessLike,
+): Promise<string> {
+  const handle = subprocess.spawn({
+    argv: [executable, ...executableArgs, '--version'],
     cwd: process.cwd(),
     stdio: {
       stdin: 'ignore',
       stdout: { maxBytes: 4096 },
       stderr: { maxBytes: 4096 },
     },
-    graceMs: options.graceMs,
-    signal: options.signal,
+    graceMs,
+    signal,
   })
   const outcome = await handle.done
   if (outcome.exitCode !== 0) {
-    throw new GodotError(`godot_debug: godot --version failed (code ${outcome.exitCode}): ${stderrTail(handle)}`, 'GODOT_UNAVAILABLE')
+    throw new GodotError(`godot --version failed (code ${outcome.exitCode}): ${stderrTail(handle)}`, 'GODOT_UNAVAILABLE')
   }
   return handle.collected.stdout?.readFrom(0).text ?? ''
 }

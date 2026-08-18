@@ -10,6 +10,7 @@ import { createServer } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDebugSessionService, type DebugSessionService, type DebugSessionServiceOptions } from '../src/session-service.ts'
 import { ScriptedGame } from './fixtures/scripted-game.ts'
+import { FakeSubprocess } from './fixtures/fake-subprocess.ts'
 
 const PROJECT_ROOT = 'C:\\game'
 
@@ -138,7 +139,7 @@ describe('debug session service', () => {
 
   async function startSession(service: DebugSessionService, overrides: { port?: number; projectRoot?: string } = {}): Promise<string> {
     const port = overrides.port ?? await freePort()
-    const started = service.start({ port, projectRoot: overrides.projectRoot ?? PROJECT_ROOT })
+    const started = await service.start({ port, projectRoot: overrides.projectRoot ?? PROJECT_ROOT })
     expect(started).toMatchObject({ state: 'connecting', port })
     const sessionId = (started as { sessionId: string }).sessionId
     liveSessions.push({ service, sessionId })
@@ -328,14 +329,14 @@ describe('debug session service', () => {
     const service = makeService()
     const game = pauseAwareGame()
     await boot(service, game)
-    const second = service.start({ port: await freePort(), projectRoot: PROJECT_ROOT })
+    const second = await service.start({ port: await freePort(), projectRoot: PROJECT_ROOT })
     expect(second).toEqual({ error: 'session-active' })
   })
 
-  it('validates the port range', () => {
+  it('validates the port range', async () => {
     const service = makeService()
-    expect(service.start({ port: 0, projectRoot: PROJECT_ROOT })).toEqual({ error: 'port-invalid' })
-    expect(service.start({ port: 70_000, projectRoot: PROJECT_ROOT })).toEqual({ error: 'port-invalid' })
+    expect(await service.start({ port: 0, projectRoot: PROJECT_ROOT })).toEqual({ error: 'port-invalid' })
+    expect(await service.start({ port: 70_000, projectRoot: PROJECT_ROOT })).toEqual({ error: 'port-invalid' })
   })
 
   it('answers unknown sessions on poll/command', () => {
@@ -388,5 +389,99 @@ describe('debug session service', () => {
     expect(lines).toContain('root [Window] (1)')
     expect(lines).toContain('  Main [Node2D] (7)')
     expect(lines).toContain('  Player [CharacterBody2D] (8)')
+  })
+
+  // ---- T21.8: launch-mode sessions (the session spawns the game) ----
+
+  it('launch mode: version-gates, spawns the game, and terminates it on stop', async () => {
+    const sub = new FakeSubprocess()
+    const service = makeService({ subprocess: sub })
+    const started = await service.start({ mode: 'launch', executable: 'godot', projectRoot: PROJECT_ROOT })
+    expect(started).toMatchObject({ state: 'connecting', mode: 'launch' })
+    const sessionId = (started as { sessionId: string }).sessionId
+    liveSessions.push({ service, sessionId })
+    // Two spawns: the version probe (resolved immediately) then the game.
+    await waitFor(() => sub.spawns.length >= 2, 'game spawn')
+    const gameSpawn = sub.spawns[1]!
+    expect(gameSpawn.argv[0]).toBe('godot')
+    expect(gameSpawn.argv).toContain('--headless')
+    expect(gameSpawn.argv).toContain('--path')
+    expect(gameSpawn.argv).toContain('--remote-debug')
+    expect(gameSpawn.argv[gameSpawn.argv.indexOf('--remote-debug') + 1]).toMatch(/^tcp:\/\/127\.0\.0\.1:\d+$/)
+
+    // The game connects into the pre-picked port and the session runs.
+    const game = pauseAwareGame()
+    games.push(game)
+    const port = (service.poll(sessionId) as { port: number }).port
+    await game.connectTo(port)
+    game.setPid()
+    await waitFor(() => stateOf(service, sessionId) === 'running', 'running')
+    game.debugEnter(true, '')
+    await waitFor(() => stateOf(service, sessionId) === 'paused', 'paused')
+
+    // stop detaches AND terminates the spawned process tree (launch owns it).
+    expect(service.stop(sessionId)).toEqual({ ok: true })
+    await waitFor(() => stateOf(service, sessionId) === 'detached', 'detached')
+    expect((service.poll(sessionId) as { reason: string }).reason).toBe('stop')
+    expect(gameSpawn.handle.terminated).toBe(true)
+  })
+
+  it('launch mode: passes scene/args/singleThreadedScene through to the game argv', async () => {
+    const sub = new FakeSubprocess()
+    const service = makeService({ subprocess: sub })
+    const started = await service.start({
+      mode: 'launch',
+      executable: 'godot',
+      projectRoot: PROJECT_ROOT,
+      scene: 'res://main.tscn',
+      args: ['--fixed-fps', '60'],
+      singleThreadedScene: true,
+    })
+    expect('error' in started).toBe(false)
+    const sessionId = (started as { sessionId: string }).sessionId
+    liveSessions.push({ service, sessionId })
+    await waitFor(() => sub.spawns.length >= 2, 'game spawn')
+    const argv = sub.spawns[1]!.argv
+    expect(argv).toContain('res://main.tscn')
+    expect(argv).toContain('--single-threaded-scene')
+    expect(argv[argv.indexOf('--') + 1]).toBe('--fixed-fps')
+    service.stop(sessionId)
+  })
+
+  it('launch mode: fails fast with stderr when the game exits before connecting', async () => {
+    const sub = new FakeSubprocess()
+    const service = makeService({ subprocess: sub })
+    const started = await service.start({ mode: 'launch', executable: 'godot', projectRoot: PROJECT_ROOT })
+    expect('error' in started).toBe(false)
+    const sessionId = (started as { sessionId: string }).sessionId
+    liveSessions.push({ service, sessionId })
+    await waitFor(() => sub.spawns.length >= 2, 'game spawn')
+    sub.spawns[1]!.handle.exitNow({ exitCode: 1, signal: null })
+    await waitFor(() => stateOf(service, sessionId) === 'detached', 'detached')
+    const snap = service.poll(sessionId) as { reason: string; errorDetail: string }
+    expect(snap.reason).toBe('error')
+    expect(snap.errorDetail).toMatch(/exited before connecting/)
+  })
+
+  it('launch mode: rejects a sub-4.2 version with a readable detach', async () => {
+    const sub = new FakeSubprocess()
+    sub.versionLine = '3.5.3.stable.official'
+    const service = makeService({ subprocess: sub })
+    const started = await service.start({ mode: 'launch', executable: 'godot', projectRoot: PROJECT_ROOT })
+    expect('error' in started).toBe(false)
+    const sessionId = (started as { sessionId: string }).sessionId
+    liveSessions.push({ service, sessionId })
+    await waitFor(() => stateOf(service, sessionId) === 'detached', 'detached')
+    const snap = service.poll(sessionId) as { reason: string; errorDetail: string }
+    expect(snap.reason).toBe('error')
+    expect(snap.errorDetail).toMatch(/requires Godot 4\.2/)
+  })
+
+  it('launch mode: validates the executable and the subprocess seam', async () => {
+    const noSeam = makeService()
+    expect(await noSeam.start({ mode: 'launch', executable: 'godot', projectRoot: PROJECT_ROOT })).toEqual({ error: 'launch-invalid' })
+    const withSeam = makeService({ subprocess: new FakeSubprocess() })
+    expect(await withSeam.start({ mode: 'launch', projectRoot: PROJECT_ROOT })).toEqual({ error: 'launch-invalid' })
+    expect(await withSeam.start({ mode: 'launch', executable: '', projectRoot: PROJECT_ROOT })).toEqual({ error: 'launch-invalid' })
   })
 })

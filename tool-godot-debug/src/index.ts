@@ -746,15 +746,18 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
         return () => {
           disposeTool()
         }      })(),
-      // T21: the interactive session service (long-lived attach sessions),
-      // bridged to `harness.handle` RPC by the dynamic plugin's host half.
-      // Session idle timeout is a constant 10 min (configurable later).
+      // T21: the interactive session service (long-lived sessions, attach by
+      // default, launch since T21.8), bridged to `harness.handle` RPC by the
+      // dynamic plugin's host half. Session idle timeout is a constant
+      // 10 min (configurable later).
       (() => {
         const service = createDebugSessionService({
           maxMessageBytes: resolved.maxMessageBytes,
           maxOutputBytes: resolved.maxOutputBytes,
           maxTreeNodes: resolved.maxTreeNodes,
           idleTimeoutMs: SESSION_IDLE_TIMEOUT_MS,
+          subprocess: ctx.subprocess,
+          graceMs: resolved.graceMs,
         })
         return ctx.provide('godot.debugSession', service)
       })(),
@@ -762,9 +765,10 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
         const tool = defineTool({
           name: 'godot_debug_session',
           description:
-            'Start and control a LONG-LIVED interactive debug session (T21): attach to a game the user already started with '
-            + '--remote-debug tcp://127.0.0.1:<port>, then pause/continue/step and manage breakpoints across calls while the '
-            + 'session stays alive in the background (one session at a time; the game keeps running after the session stops). '
+            'Start and control a LONG-LIVED interactive debug session (T21): attach (default) joins a game the user already '
+            + 'started with --remote-debug tcp://127.0.0.1:<port>; mode=launch spawns the game itself (version-gated 4.2+, the '
+            + 'session owns the process and terminates it on stop, T21.8). Then pause/continue/step and manage breakpoints '
+            + 'across calls while the session stays alive in the background (one session at a time). '
             + 'action=start returns the sessionId and a connecting state immediately (the game may connect later, within the '
             + 'idle window); action=command sends one control command (pause/continue/step/next/breakpoint/edits); '
             + 'action=stop detaches (best-effort breakpoint removal + continue). The Web panel controls the same session '
@@ -776,9 +780,35 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               enum: ['start', 'stop', 'command'],
               description: 'start (default) creates the session; command sends one control; stop detaches.',
             },
+            mode: {
+              type: 'string',
+              enum: ['attach', 'launch'],
+              description: 'attach (default) joins a caller-started game on port; launch (T21.8) spawns the game (version-gated; the session terminates it on stop).',
+            },
             port: {
               type: 'number',
-              description: 'The attach port (1-65535); required for action=start.',
+              description: 'The attach port (1-65535); required for action=start in attach mode.',
+            },
+            executable: {
+              type: 'string',
+              description: 'launch only: the godot executable to spawn (defaults to the configured executable).',
+            },
+            projectRoot: {
+              type: 'string',
+              description: 'The project root (defaults to the working directory); breakpoint res:// paths resolve against it.',
+            },
+            scene: {
+              type: 'string',
+              description: 'launch only: scene to run (res:// path); omitted = the project main scene.',
+            },
+            args: {
+              type: 'array',
+              description: 'launch only: extra argv passed to the game after --.',
+              items: { type: 'string' },
+            },
+            singleThreadedScene: {
+              type: 'boolean',
+              description: 'launch only: pass --single-threaded-scene to the game.',
             },
             sessionId: {
               type: 'string',
@@ -822,11 +852,12 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
               return [{ type: 'text', text: lines.join('\n') }]
             },
             presentationMeta: (_args, value) => {
-              const v = value as { sessionId?: string; state?: string; port?: number }
+              const v = value as { sessionId?: string; state?: string; port?: number; mode?: string }
               return {
                 ...(v.sessionId !== undefined ? { sessionId: v.sessionId } : {}),
                 ...(v.state !== undefined ? { state: v.state } : {}),
                 ...(v.port !== undefined ? { port: v.port } : {}),
+                ...(v.mode !== undefined ? { mode: v.mode } : {}),
               }
             },
           },
@@ -840,21 +871,56 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             }
             const action = args.action ?? 'start'
             if (action === 'start') {
+              const cwd = exec.agent?.session.header.cwd ?? process.cwd()
+              const mode = args.mode ?? 'attach'
+              if (mode === 'launch') {
+                // T21.8: the session spawns the game — version-gated 4.2+,
+                // auto-picked port, process owned (terminated on stop).
+                const started = await service.start({
+                  mode: 'launch',
+                  executable: args.executable ?? resolved.executable,
+                  projectRoot: args.projectRoot ?? cwd,
+                  ...(args.scene !== undefined ? { scene: args.scene } : {}),
+                  ...(args.args !== undefined ? { args: args.args } : {}),
+                  ...(args.singleThreadedScene !== undefined ? { singleThreadedScene: args.singleThreadedScene } : {}),
+                })
+                if ('error' in started) {
+                  if (started.error === 'session-active') {
+                    throw new GodotError('godot_debug_session: another session is already active (one debugger per game)', 'GODOT_PARSE_ERROR')
+                  }
+                  throw new GodotError(
+                    `godot_debug_session: launch requires a godot executable and a subprocess runtime (${started.error})`,
+                    'GODOT_PARSE_ERROR',
+                  )
+                }
+                return { sessionId: started.sessionId, state: started.state, port: started.port, mode: 'launch' }
+              }
+              // attach (default): an explicit port the caller's game dials.
               const port = args.port
               if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
                 throw new GodotError(
-                  'godot_debug_session: start requires an explicit port 1-65535 (start the game with --remote-debug tcp://127.0.0.1:<port>; Godot does not retry a failed connection)',
+                  'godot_debug_session: attach start requires an explicit port 1-65535 (start the game with --remote-debug tcp://127.0.0.1:<port>; Godot does not retry a failed connection)',
                   'GODOT_PARSE_ERROR',
                 )
               }
-              const started = service.start({ port, projectRoot: exec.agent?.session.header.cwd ?? process.cwd() })
+              if (args.scene !== undefined || args.args !== undefined || args.singleThreadedScene === true) {
+                throw new GodotError(
+                  'godot_debug_session: scene/args/singleThreadedScene are launch-only (use mode=launch to spawn the game)',
+                  'GODOT_PARSE_ERROR',
+                )
+              }
+              const started = await service.start({
+                mode: 'attach',
+                port,
+                projectRoot: args.projectRoot ?? cwd,
+              })
               if ('error' in started) {
                 if (started.error === 'session-active') {
                   throw new GodotError('godot_debug_session: another session is already active (one debugger per game)', 'GODOT_PARSE_ERROR')
                 }
                 throw new GodotError(`godot_debug_session: invalid port ${port}`, 'GODOT_PARSE_ERROR')
               }
-              return { sessionId: started.sessionId, state: started.state, port: started.port }
+              return { sessionId: started.sessionId, state: started.state, port: started.port, mode: 'attach' }
             }
             const sessionId = args.sessionId
             if (typeof sessionId !== 'string' || sessionId === '') {

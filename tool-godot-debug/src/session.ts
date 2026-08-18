@@ -40,11 +40,25 @@ import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
 import { renderSnapshot } from './snapshot.ts'
 import { parseSceneTree, renderSceneTree } from './scene-tree.ts'
 import { GodotError } from './error.ts'
-import { RENDER_OPTIONS, toResPath, type DebugBreakpoint, type DebugStop } from './tool.ts'
+import { RENDER_OPTIONS, toResPath, probeVersion, type DebugBreakpoint, type DebugStop } from './tool.ts'
+import { verifyGodotVersion, type SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
+import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import type { DecodedVariant } from './variant-decoder.ts'
 
 /** One stop's variable data kept for the edits command (T6 reuse). */
 type PausedVars = DecodedVariant[][]
+
+/** The launch-mode spawn options (T21.8): the session owns the game — it
+ *  spawns it, gates the version, and terminates the process tree on detach. */
+export interface DebugSessionLaunch {
+  executable: string
+  executableArgs?: string[]
+  /** Scene to run; omitted = the project's main scene. */
+  scene?: string
+  /** Extra argv passed to the game after `--`. */
+  args?: string[]
+  singleThreadedScene?: boolean
+}
 
 /** The session's externally visible state. */
 export type SessionState = 'connecting' | 'running' | 'paused' | 'detached'
@@ -137,6 +151,11 @@ export class DebugSession {
    * @param idleTimeoutMs - inactivity (commands only) before a timeout detach.
    * @param connectWaitMs - the session-level connection window.
    * @param idleCheckIntervalMs - idle-timer cadence (tests use a short one).
+   * @param launch - when present the session SPAWNS the game (T21.8): the
+   *  port is pre-picked by the service, the version is gated 4.2+, and detach
+   *  terminates the process tree. Absent = attach (the caller's game).
+   * @param subprocess - the spawn seam; required with `launch`.
+   * @param graceMs - terminate-escalation grace for the spawned game.
    */
   constructor(
     readonly sessionId: string,
@@ -146,6 +165,9 @@ export class DebugSession {
     private readonly idleTimeoutMs: number,
     private readonly connectWaitMs: number,
     idleCheckIntervalMs = IDLE_CHECK_MS,
+    private readonly launch?: DebugSessionLaunch,
+    private readonly subprocess?: SubprocessLike,
+    private readonly graceMs = 5_000,
   ) {
     this.controller = new DebugController({
       maxMessageBytes: bounds.maxMessageBytes,
@@ -163,15 +185,38 @@ export class DebugSession {
     return this.detachedValue
   }
 
+  /** The spawned game handle in launch mode (undefined in attach). */
+  private gameHandle: SubprocessHandle | undefined
+
   /** Bind and wait for the game (background). The connection window is
    *  session-level (review H6): the tool call returns immediately, the idle
-   *  timer is the ultimate bound. */
+   *  timer is the ultimate bound. Launch mode (T21.8) gates the version,
+   *  spawns the game against the bound port, and races the process exit
+   *  against `set_pid` so a game that dies at startup fails fast with its
+   *  stderr. */
   async connect(): Promise<void> {
     if (this.connectStarted) return
     this.connectStarted = true
     try {
       await this.controller.listen(this.port)
-      await this.controller.waitForSetPid(this.connectWaitMs, this.abort.signal)
+      if (this.launch !== undefined && this.subprocess !== undefined) {
+        await this.spawnGame()
+      }
+      const waitSetPid = this.controller.waitForSetPid(this.connectWaitMs, this.abort.signal)
+      if (this.gameHandle !== undefined) {
+        const handle = this.gameHandle
+        const exitRace = handle.done.then((facts) => {
+          const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+          throw new GodotError(
+            `godot_debug_session: the game exited before connecting (code ${facts.exitCode}${facts.signal !== null ? ', signal ' + facts.signal : ''})`
+            + (stderr !== '' ? ': ' + stderr.slice(0, 400) : ''),
+            'GODOT_UNAVAILABLE',
+          )
+        })
+        await Promise.race([waitSetPid, exitRace])
+      } else {
+        await waitSetPid
+      }
       if (this.detachedValue) return
       this.stateValue = 'running'
       this.versionValue++
@@ -181,6 +226,43 @@ export class DebugSession {
       this.errorDetailValue = error instanceof Error ? error.message : String(error)
       this.detach('error')
     }
+  }
+
+  /** Launch mode (T21.8): version gate (4.2+, protocol threadId facts) then
+   *  spawn the headless game with `--remote-debug` against our bound port. */
+  private async spawnGame(): Promise<void> {
+    const launch = this.launch as DebugSessionLaunch
+    const subprocess = this.subprocess as SubprocessLike
+    const executable = await subprocess.resolveExecutable(launch.executable, undefined, this.abort.signal)
+    const versionLine = await probeVersion(executable, launch.executableArgs ?? [], this.graceMs, this.abort.signal, subprocess)
+    const gate = verifyGodotVersion(versionLine, versionLine.trim().charAt(0))
+    if (!gate.ok) {
+      throw new GodotError(
+        `godot_debug_session: requires Godot 4.2+ (4.x); the configured executable reports ${gate.version}`,
+        'GODOT_UNAVAILABLE',
+      )
+    }
+    const argv = [
+      executable,
+      ...(launch.executableArgs ?? []),
+      '--headless',
+      '--path', this.projectRoot,
+      '--remote-debug', `tcp://127.0.0.1:${this.port}`,
+      ...(launch.singleThreadedScene === true ? ['--single-threaded-scene'] : []),
+      ...(launch.scene !== undefined ? [launch.scene] : []),
+      ...(launch.args !== undefined ? ['--', ...launch.args] : []),
+    ]
+    this.gameHandle = subprocess.spawn({
+      argv,
+      cwd: this.projectRoot,
+      stdio: {
+        stdin: 'ignore',
+        stdout: { maxBytes: 64 * 1024 },
+        stderr: { maxBytes: 1024 * 1024 },
+      },
+      graceMs: this.graceMs,
+      signal: this.abort.signal,
+    })
   }
 
   /** The pause loop: wait for a stop, snapshot it, wait again. Never
@@ -370,7 +452,9 @@ export class DebugSession {
   }
 
   /** Detach: idempotent T4 teardown (best-effort breakpoint removal +
-   *  continue), then abort the pause loop and dispose the controller. */
+   *  continue), then abort the pause loop and dispose the controller. In
+   *  launch mode (T21.8) the session OWNS the game — the process tree is
+   *  terminated too; an attached game is left running. */
   detach(reason: DetachReason): void {
     if (this.detachedValue) return
     this.detachedValue = true
@@ -390,6 +474,13 @@ export class DebugSession {
       this.controller.send('continue')
     } catch {
       // best-effort
+    }
+    if (this.gameHandle !== undefined) {
+      try {
+        this.gameHandle.terminate()
+      } catch {
+        // best-effort: the game may already be gone
+      }
     }
     this.abort.abort()
     void this.controller.dispose()

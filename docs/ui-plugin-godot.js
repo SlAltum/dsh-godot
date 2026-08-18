@@ -49,7 +49,16 @@ export function applyHost() {
       // （停止插件时才注销）——立即执行会当场注销 handler（实测教训）。
       ctx.effect(() => {
         const disposers = [
-          harness.handle('session/start', (args) => pick(undefined).start({ port: args.port, projectRoot: args.projectRoot ?? '' })),
+          // T21.8: start passes launch-mode options through (attach default).
+          harness.handle('session/start', (args) => pick(undefined).start({
+            mode: args.mode ?? 'attach',
+            port: args.port,
+            projectRoot: args.projectRoot ?? '',
+            ...(args.executable !== undefined ? { executable: args.executable } : {}),
+            ...(args.scene !== undefined ? { scene: args.scene } : {}),
+            ...(args.args !== undefined ? { args: args.args } : {}),
+            ...(args.singleThreadedScene !== undefined ? { singleThreadedScene: args.singleThreadedScene } : {}),
+          })),
           harness.handle('session/stop', (args) => pick(args.sessionId).stop(args.sessionId)),
           harness.handle('session/poll', (args) => pick(args.sessionId).poll(args.sessionId)),
           harness.handle('session/command', (args) => pick(args.sessionId).command(args.sessionId, args.request)),
@@ -109,11 +118,12 @@ function createFakeSessionService(ctx) {
     return out
   }
   return {
-    start({ port, projectRoot }) {
+    start({ port, projectRoot, mode }) {
       if (current !== null && current.state !== 'detached') return { error: 'session-active' }
-      if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'port-invalid' }
+      // launch (T21.8) has no explicit port — the demo picks a stand-in.
+      if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) return { error: 'port-invalid' }
       const sessionId = 'demo-' + Math.random().toString(36).slice(2, 10)
-      current = { sessionId, state: 'connecting', version: 1, port, breakpoints: [], outputTail: ['demo session: connect to :' + port + ' with --remote-debug'] }
+      current = { sessionId, state: 'connecting', version: 1, port: port ?? 6005, mode: mode ?? 'attach', breakpoints: [], outputTail: ['demo session: connect to :' + (port ?? 6005) + ' with --remote-debug'] }
       if (connectTimer !== null) ctx.timeout(() => {}, 0)
       connectTimer = ctx.timeout(() => {
         if (current !== null && current.state === 'connecting') {
