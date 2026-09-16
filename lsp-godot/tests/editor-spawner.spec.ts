@@ -15,7 +15,7 @@ import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 function fakeHandle(overrides: Partial<SubprocessHandle> = {}): SubprocessHandle & { terminated: boolean } {
   let resolveDone: (value: { exitCode: number | null; signal: NodeJS.Signals | null }) => void = () => {}
   const handle: SubprocessHandle & { terminated: boolean } = {
-    pid: 4242,
+    control: undefined,
     stdin: undefined,
     stdout: undefined,
     stderr: undefined,

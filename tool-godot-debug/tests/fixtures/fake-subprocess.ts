@@ -41,7 +41,7 @@ export class FakeHandle implements SubprocessHandle {
   readonly done: Promise<SpawnedFacts> = new Promise((resolve) => {
     this.resolveDone = resolve
   })
-  readonly pid = 4242
+  readonly control = undefined
   readonly stdin = undefined
   readonly stdout = undefined
   readonly stderr = undefined

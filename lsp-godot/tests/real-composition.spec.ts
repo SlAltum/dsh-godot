@@ -109,7 +109,7 @@ describe('createConnectDeps spawn pipeline over a fake subprocess', () => {
   /** A fake handle whose collected stdout yields the given text; `pending` keeps done unsettled (a long-lived editor). */
   function handleWithOutput(stdoutText: string, pending = false): SubprocessHandle {
     return {
-      pid: 1,
+      control: undefined,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
@@ -163,7 +163,7 @@ describe('createConnectDeps spawn pipeline over a fake subprocess', () => {
 
   it('falls back to an empty version when the probe has no stdout', async () => {
     const noOutputHandle: SubprocessHandle = {
-      pid: 1,
+      control: undefined,
       stdin: undefined,
       stdout: undefined,
       stderr: undefined,
