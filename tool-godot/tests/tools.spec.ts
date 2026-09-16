@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
@@ -31,7 +31,7 @@ let callCounter = 0
 function call(name: string, args: unknown, agentObj?: object) {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: CallId(`it-${++callCounter}`),
+    callId: ToolCallId(`it-${++callCounter}`),
     name,
     arguments: args,
     ...(agentObj ? { agent: agentObj as never } : {}),
@@ -200,7 +200,7 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
       const context = await boot({ executable: 'no-such-binary-xyz-123' })
       const result = await context.tools.execute({
         signal: testToolSignal,
-        callId: CallId('it-godot-unavailable'),
+        callId: ToolCallId('it-godot-unavailable'),
         name: 'godot_validate',
         arguments: {},
         agent: agent() as never,
@@ -213,7 +213,7 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
       const controller = new AbortController()
       controller.abort()
       const result = await ctx.tools.execute({
-        callId: CallId('it-preaborted'),
+        callId: ToolCallId('it-preaborted'),
         name: 'godot_validate',
         arguments: {},
         signal: controller.signal,

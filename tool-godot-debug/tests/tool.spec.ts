@@ -662,7 +662,7 @@ describe('runDebug edits', () => {
       subprocess: new FakeSubprocess(),
       port: 6007,
       pauseOnAttach: true,
-      edits: editOptions().edits,
+      edits: editOptions().edits!,
       maxEdits: 10,
     })
     options.onPort = async (port: number) => {

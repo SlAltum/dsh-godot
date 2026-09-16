@@ -216,7 +216,7 @@ describe('parseEditPath', () => {
 
 describe('findMapEntry', () => {
   it('matches string, StringName and numeric keys by display form', () => {
-    const map = new Map([
+    const map = new Map<string | StringName | number, string | number>([
       ['hp', 100],
       [new StringName('named'), 'v'],
       [5, 'five'],
@@ -435,6 +435,7 @@ describe('applyEdits', () => {
     await expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 3,
       render: { maxDepth: 3, maxVarsPerScope: 200, maxValueLength: 200 },
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,
@@ -484,6 +485,7 @@ describe('applyEdits', () => {
     await expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 3,
       render: { maxDepth: 3, maxVarsPerScope: 200, maxValueLength: 200 },
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,
@@ -523,6 +525,7 @@ describe('applyEdits', () => {
     await expandObjects(objectVars(), controller, {
       maxObjects: 10,
       maxProps: 100,
+      maxDepth: 3,
       render: { maxDepth: 3, maxVarsPerScope: 200, maxValueLength: 200 },
       idleTimeoutMs: 2_000,
       budgetMs: 10_000,

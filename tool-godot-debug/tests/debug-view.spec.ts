@@ -16,7 +16,7 @@ import type { DebugStop } from '../src/tool.ts'
 
 /** One fixture stop with optional frames/scopes. */
 function stop(
-  index: number,
+  _index: number,
   frames: SnapshotFrame[],
   scopes?: RenderScopes,
   threadId = 1,
@@ -57,8 +57,16 @@ function nestedEntry(name: string, id: string): ExpandedEntry {
   }
 }
 
-/** The canonical fixture input: two frame-bearing stops + every carrier. */
-function input(overrides: Partial<StructuredDebugInput> = {}): StructuredDebugInput {
+type InputOverrides = Partial<Omit<StructuredDebugInput, 'sceneTrees' | 'expansion' | 'edits' | 'exit'>> & {
+  sceneTrees?: StructuredDebugInput['sceneTrees'] | undefined
+  expansion?: StructuredDebugInput['expansion'] | undefined
+  edits?: StructuredDebugInput['edits'] | undefined
+  exit?: StructuredDebugInput['exit'] | undefined
+}
+
+/** The canonical fixture input: two frame-bearing stops + every carrier.
+ *  An override of `undefined` omits the carrier (absent, not empty). */
+function input(overrides: InputOverrides = {}): StructuredDebugInput {
   const base: StructuredDebugInput = {
     stops: [
       stop(0, [FRAME_MAIN], scopesWith([{ name: 'counter', value: '779' }]), 1, ''),
@@ -83,7 +91,13 @@ function input(overrides: Partial<StructuredDebugInput> = {}): StructuredDebugIn
     outputTruncated: false,
     varsTruncated: false,
   }
-  return { ...base, ...overrides }
+  const merged = { ...base, ...overrides } as {
+    [K in keyof StructuredDebugInput]?: StructuredDebugInput[K] | undefined
+  }
+  for (const key of ['sceneTrees', 'expansion', 'edits', 'exit'] as const) {
+    if (key in overrides && overrides[key] === undefined) delete merged[key]
+  }
+  return merged as StructuredDebugInput
 }
 
 describe('structuredDebugView', () => {
@@ -94,13 +108,13 @@ describe('structuredDebugView', () => {
     expect(view.stopCount).toBe(2)
     expect(view.detached).toBe(false)
     // Full detail on stop 0 (first with frames): scope lines + truncation flags.
-    expect(view.stops[0].varsLines).toEqual(['  locals:', '    counter = 779'])
-    expect(view.stops[0].scopeTruncated).toEqual({ locals: false, members: false, globals: false })
-    expect(view.stops[0].sceneTree).toEqual({ lines: ['root [Window]', '  Main [Node2D] (7)'] })
+    expect(view.stops[0]!.varsLines).toEqual(['  locals:', '    counter = 779'])
+    expect(view.stops[0]!.scopeTruncated).toEqual({ locals: false, members: false, globals: false })
+    expect(view.stops[0]!.sceneTree).toEqual({ lines: ['root [Window]', '  Main [Node2D] (7)'] })
     // Stop 1: frames only, no scope lines (size parity).
-    expect(view.stops[1].varsLines).toBeUndefined()
-    expect(view.stops[1].frames).toEqual([{ file: 'res://player.gd', line: 8, func: '_physics_process' }])
-    expect(view.stops[1].sceneTree).toEqual({ lines: ['root [Window]'] })
+    expect(view.stops[1]!.varsLines).toBeUndefined()
+    expect(view.stops[1]!.frames).toEqual([{ file: 'res://player.gd', line: 8, func: '_physics_process' }])
+    expect(view.stops[1]!.sceneTree).toEqual({ lines: ['root [Window]'] })
     // Structured carriers keep their stop linkage.
     expect(view.expansion).toEqual({
       stopIndex: 0, expandedObjects: 2, truncated: false,
@@ -124,9 +138,9 @@ describe('structuredDebugView', () => {
         stop(1, [FRAME_MAIN], scopesWith([{ name: 'counter', value: '1' }])),
       ],
     }), 10)
-    expect(view.stops[0].varsLines).toBeUndefined()
-    expect(view.stops[0].frames).toEqual([])
-    expect(view.stops[1].varsLines).toEqual(['  locals:', '    counter = 1'])
+    expect(view.stops[0]!.varsLines).toBeUndefined()
+    expect(view.stops[0]!.frames).toEqual([])
+    expect(view.stops[1]!.varsLines).toEqual(['  locals:', '    counter = 1'])
   })
 
   it('falls back to stop 0 when no stop has a frame (detail stop = text parity)', () => {
@@ -137,11 +151,10 @@ describe('structuredDebugView', () => {
       edits: undefined,
       exit: undefined,
     }), 10)
-    expect(view.stops[0].varsLines).toEqual(['  locals:', '    x = 1'])
+    expect(view.stops[0]!.varsLines).toEqual(['  locals:', '    x = 1'])
     expect(view.expansion).toBeUndefined()
     expect(view.edits).toBeUndefined()
     expect(view.exit).toBeUndefined()
-    expect(view.sceneTrees).toBeUndefined()
   })
 
   it('omits absent carriers entirely and passes every truncation flag through', () => {
@@ -157,7 +170,6 @@ describe('structuredDebugView', () => {
     expect(view.detached).toBe(true)
     expect(view.expansion).toBeUndefined()
     expect(view.edits).toBeUndefined()
-    expect(view.sceneTrees).toBeUndefined()
     expect(view.exit).toBeUndefined()
     expect(view.expansionTruncated).toBe(true)
     expect(view.editsTruncated).toBe(true)
@@ -177,9 +189,9 @@ describe('structuredDebugView', () => {
     const errors = Array.from({ length: 20 }, (_, i) => runtimeError('res://main.gd', i, `err ${i}`))
     const view = structuredDebugView(input({ stops: [], output: many, errors, sceneTrees: undefined }), 10)
     expect(view.outputTail).toHaveLength(20)
-    expect(view.outputTail[19]).toBe('line 19')
+    expect(view.outputTail[19]!).toBe('line 19')
     expect(view.errors).toHaveLength(5)
-    expect(view.errors[4]).toBe('res://main.gd:4 error: err 4')
+    expect(view.errors[4]!).toBe('res://main.gd:4 error: err 4')
   })
 
   it('cuts the scope lines first when the serialized view exceeds the byte budget', () => {
@@ -190,10 +202,10 @@ describe('structuredDebugView', () => {
       sceneTrees: undefined,
     }), 10)
     expect(view.viewTruncated).toBe(true)
-    expect(view.stops[0].varsLines).toBeUndefined()
-    expect(view.stops[0].scopeTruncated).toBeUndefined()
+    expect(view.stops[0]!.varsLines).toBeUndefined()
+    expect(view.stops[0]!.scopeTruncated).toBeUndefined()
     // Frames survive the first cut.
-    expect(view.stops[0].frames).toEqual([{ file: 'res://main.gd', line: 12, func: '_ready' }])
+    expect(view.stops[0]!.frames).toEqual([{ file: 'res://main.gd', line: 12, func: '_ready' }])
   })
 
   it('cuts the scene-tree lines as the second stage when still over budget', () => {
@@ -207,15 +219,15 @@ describe('structuredDebugView', () => {
       sceneTreeCount: 1,
     }), 10)
     expect(view.viewTruncated).toBe(true)
-    expect(view.stops[0].varsLines).toBeUndefined()
-    expect(view.stops[0].sceneTree).toBeUndefined()
+    expect(view.stops[0]!.varsLines).toBeUndefined()
+    expect(view.stops[0]!.sceneTree).toBeUndefined()
     expect(view.sceneTreeCount).toBe(1)
   })
 
   it('keeps the detail when the view fits under the budget (no false truncation)', () => {
     const view = structuredDebugView(input(), 10)
     expect(view.viewTruncated).toBe(false)
-    expect(view.stops[0].varsLines).toEqual(['  locals:', '    counter = 779'])
+    expect(view.stops[0]!.varsLines).toEqual(['  locals:', '    counter = 779'])
     expect(JSON.stringify(view).length).toBeLessThan(VIEW_MAX_BYTES)
   })
 })

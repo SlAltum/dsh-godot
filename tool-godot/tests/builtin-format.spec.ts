@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
@@ -41,7 +41,7 @@ afterEach(async () => {
 function callFormat(file: string) {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: CallId(`builtin-${++callCounter}`),
+    callId: ToolCallId(`builtin-${++callCounter}`),
     name: 'godot_format',
     arguments: { file },
     agent: { session: { header: { id: 'session-builtin', cwd: dir } } } as never,

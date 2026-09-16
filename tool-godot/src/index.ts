@@ -25,7 +25,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveExecutable } from './godot-core.ts'
@@ -69,7 +68,7 @@ export const name = 'tool-godot'
  * config, owned here so the client card and the settings service agree on
  * the spelling.
  */
-export const GODOT_SETTINGS_NAMESPACE = settingsNamespace('godot')
+export const GODOT_SETTINGS_NAMESPACE = 'godot'
 
 /** Services required by the godot tool suite. */
 export const inject = ['tools', 'systemPrompt', 'subprocess']

@@ -10,7 +10,8 @@
  * @module @deepseek-ai/dsh-tool-godot/presentation
  */
 
-import type { DiffResultView, GenericResultView, JsonValue } from '@deepseek-ai/dsh-tools'
+import type { DiffResultView, GenericResultView } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { GodotIssue, ValidateResult } from './validate.ts'
 import type { FormatResult } from './format.ts'
 

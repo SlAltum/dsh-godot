@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -63,7 +63,7 @@ let callCounter = 0
 function validate(ctx: Context, dir: string) {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: CallId(`settings-${++callCounter}`),
+    callId: ToolCallId(`settings-${++callCounter}`),
     name: 'godot_validate',
     arguments: { path: dir },
     agent: { session: { header: { id: 'session-settings', cwd: dir } } } as never,

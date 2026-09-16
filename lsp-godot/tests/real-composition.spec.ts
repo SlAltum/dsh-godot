@@ -23,7 +23,7 @@ import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as GodotLsp from '../src/index.ts'
 import { Config, createConnectDeps } from '../src/index.ts'
 import type { SubprocessLike } from '../src/index.ts'
-import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { FakeGodotLspServer } from './fixtures/fake-lsp-server.ts'
 
 let root: string
@@ -196,7 +196,7 @@ describe('createConnectDeps spawn pipeline over a fake subprocess', () => {
     // The version probe and the editor spawn are distinguished by argv; the
     // EDITOR handle is switched per phase (exits-immediately vs long-lived).
     let editorHandle: SubprocessHandle = handleWithOutput('', false)
-    const spawnImpl = vi.fn((spec: { argv: string[] }) => {
+    const spawnImpl = vi.fn((spec: SubprocessSpawnSpec) => {
       spawns.push(spec)
       return spec.argv.includes('--version') ? probeHandle : editorHandle
     })

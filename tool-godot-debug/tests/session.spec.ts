@@ -180,7 +180,7 @@ describe('debug session service', () => {
         }[]
       }
     }
-    const stop = snapshot.pause.stops[0]
+    const stop = snapshot.pause.stops[0]!
     expect(stop).toMatchObject({
       index: 0,
       reason: '',
@@ -199,7 +199,7 @@ describe('debug session service', () => {
     game.debugEnter(false, 'error')
     await waitFor(() => stateOf(service, sessionId) === 'paused', 'second pause')
     expect((service.poll(sessionId) as { version: number }).version).toBeGreaterThan(versionBefore)
-    expect((service.poll(sessionId) as { pause: { stops: { reason: string }[] } }).pause.stops[0].reason).toBe('error')
+    expect((service.poll(sessionId) as { pause: { stops: { reason: string }[] } }).pause.stops[0]!.reason).toBe('error')
   })
 
   it('sends step and next and moves back to running', async () => {
@@ -385,7 +385,7 @@ describe('debug session service', () => {
     game.debugEnter(true, '')
     await waitFor(() => stateOf(service, sessionId) === 'paused', 'paused')
     const snap = service.poll(sessionId) as { pause: { stops: { sceneTree: { lines: string[] } }[] } }
-    const lines = snap.pause.stops[0].sceneTree.lines
+    const lines = snap.pause.stops[0]!.sceneTree.lines
     expect(lines).toContain('root [Window] (1)')
     expect(lines).toContain('  Main [Node2D] (7)')
     expect(lines).toContain('  Player [CharacterBody2D] (8)')
