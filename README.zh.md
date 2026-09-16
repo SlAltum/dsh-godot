@@ -11,6 +11,7 @@
 | `tool-godot/` | 无头 CLI 工具：`godot_validate`、`godot_run_scene`、`godot_format`、`godot_inspect`、`godot_editor_script` | `ctx.tools` |
 | `lsp-godot/` | GDScript 导航（`goToDefinition` / `findReferences` / `hover`），经由 Godot 内置 TCP 语言服务器，attach 或 spawn | `ctx.lsp` |
 | `tool-godot-debug/` | `godot_debug`：一次有界的脚本化调试运行——断点、无头启动、逐步栈 / 变量快照、结构化报告 | `ctx.tools` |
+| `ui-godot/` | `godot` 命名空间的 Web 设置卡（持久客户端包，`dsh.client` 行） | 浏览器 slots |
 
 本仓库的能力从 **godot-vscode-plugin**（Godot Tools v2.7.1，约 70 万安装量）迁移而来，保留纯逻辑核心；迁移由针对真实 Godot 4.7 实例记录的协议事实钉住。模块地图与协议事实指引见 [docs/architecture.md](docs/architecture.md)。
 
@@ -82,7 +83,7 @@ export async function mount(ctx: Context): Promise<void> {
 
 ## 仓库结构
 
-- `tool-godot/`、`lsp-godot/`、`tool-godot-debug/` —— 上述三个包（模块地图见 [architecture](docs/architecture.md)）。
+- `tool-godot/`、`lsp-godot/`、`tool-godot-debug/`、`ui-godot/` —— 上述四个包（模块地图见 [architecture](docs/architecture.md)）。
 - `docs/` —— 架构文档。
 
 ## 测试

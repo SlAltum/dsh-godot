@@ -11,6 +11,7 @@ A family of Godot Engine plugins for the [DeepSeek Harness](https://github.com/d
 | `tool-godot/` | Headless CLI tools: `godot_validate`, `godot_run_scene`, `godot_format`, `godot_inspect`, `godot_editor_script` | `ctx.tools` |
 | `lsp-godot/` | GDScript navigation (`goToDefinition` / `findReferences` / `hover`) via Godot's built-in TCP language server, attach or spawn | `ctx.lsp` |
 | `tool-godot-debug/` | `godot_debug`: one bounded scripted debug run — breakpoints, headless launch, per-stop stack/variable snapshots, structured report | `ctx.tools` |
+| `ui-godot/` | Web settings card for the `godot` namespace (persistent client package, `dsh.client` row) | browser slots |
 
 The capabilities were migrated from **godot-vscode-plugin** (Godot Tools v2.7.1, ~700k installs), keeping the pure-logic cores; the migration is pinned by protocol facts recorded against a real Godot 4.7 instance. See [docs/architecture.md](docs/architecture.md) for the module map and protocol-fact pointers.
 
@@ -82,7 +83,7 @@ Every key has a default; per-package details live in each package's README.
 
 ## Repository layout
 
-- `tool-godot/`, `lsp-godot/`, `tool-godot-debug/` — the three packages above (see [architecture](docs/architecture.md) for the module map).
+- `tool-godot/`, `lsp-godot/`, `tool-godot-debug/`, `ui-godot/` — the four packages above (see [architecture](docs/architecture.md) for the module map).
 - `docs/` — architecture documentation.
 
 ## Testing

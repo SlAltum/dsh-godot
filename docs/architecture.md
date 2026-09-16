@@ -48,6 +48,14 @@ The full module map, data flows and protocol notes behind the [repository README
         ├── snapshot.ts             ← bounded stack/variable rendering (depth/size caps, truncation flags)
         ├── config.ts               ← plugin config + load-time validation
         └── error.ts                ← GodotError (three codes, local implementation)
+└── ui-godot/                       ← Web settings card (browser slots)
+    └── src/client/
+        ├── index.ts                ← plugin entry (settings.plugin.item registration, dictionaries)
+        ├── godot-card-controller.ts ← scope → staged form → snapshot-store face
+        ├── godot-card-form.ts      ← self-contained staged form (CardForm-equivalent)
+        ├── GodotCard.tsx           ← the card component
+        ├── GodotCard.module.css    ← card styles (--dsw-* tokens)
+        └── locales.ts              ← zh (v2.3 copy) / en dictionaries
 ```
 
 ## Data flows

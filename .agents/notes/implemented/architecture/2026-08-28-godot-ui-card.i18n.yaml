@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-28-godot-ui-card.md
+2026-08-28-godot-ui-card.md: 3db544ad347bf1595b14b414f76a508d445f2d91
+2026-08-28-godot-ui-card.zh.md: 5cbd3222eb427d7a4cad4257fc27e524c64196fc

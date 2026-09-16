@@ -48,6 +48,14 @@
         ├── snapshot.ts             ← 有界堆栈/变量渲染（深度/大小上限、截断标志）
         ├── config.ts               ← 插件配置 + 加载时校验
         └── error.ts                ← GodotError（三码，本地实现）
+└── ui-godot/                       ← Web 设置卡（浏览器 slots）
+    └── src/client/
+        ├── index.ts                ← 插件入口（settings.plugin.item 注册、字典）
+        ├── godot-card-controller.ts ← scope → 暂存表单 → 快照 store face
+        ├── godot-card-form.ts      ← 自包含暂存表单（CardForm 等价物）
+        ├── GodotCard.tsx           ← 卡片组件
+        ├── GodotCard.module.css    ← 卡片样式（--dsw-* token）
+        └── locales.ts              ← zh（v2.3 文案）/ en 字典
 ```
 
 ## 数据流
