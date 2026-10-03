@@ -1,6 +1,82 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot-debug/README.md
-README.md: 6eaa96cf87c4d09c844c898d60a897a1e45136fd
-README.zh.md: e7a803a510084178a8055addf98acd4dc1c582fb
+/deepseek-ai-dsh-tool-godot-debug:
+  en: 77f61cb24788ff07
+  zh: 16131f6864b49b12
+/deepseek-ai-dsh-tool-godot-debug/how-it-works:
+  en: 4fddc73eb842de16
+  zh: 45973664f54fa004
+/deepseek-ai-dsh-tool-godot-debug/settings:
+  en: c7d207a4820c9f91
+  zh: 96de0915839bed96
+/deepseek-ai-dsh-tool-godot-debug/config:
+  en: 06b8cc651001e350
+  zh: 0d0cd8dd697fdd8b
+/deepseek-ai-dsh-tool-godot-debug/tool:
+  en: ab2bc769d8a7032e
+  zh: 5430bb6aef25a732
+/deepseek-ai-dsh-tool-godot-debug/errors:
+  en: c44e00feada4b66b
+  zh: fd61559bca2086a1
+/deepseek-ai-dsh-tool-godot-debug/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-godot-debug/model-experience/system-prompt:
+  en: cf78b9dd5596495f
+  zh: cf78b9dd5596495f
+/deepseek-ai-dsh-tool-godot-debug/model-experience/system-prompt/what-the-model-sees:
+  en: f8458be574231fb6
+  zh: 3890b063786a90e5
+/deepseek-ai-dsh-tool-godot-debug/model-experience/system-prompt/what-the-model-sees/godot-debug-guidance-tool-godot-debug:
+  en: 4d1668f37a0b0478
+  zh: dedb52ffe90cee27
+/deepseek-ai-dsh-tool-godot-debug/model-experience/system-prompt/token-effect:
+  en: 377a325d36a98e05
+  zh: 579d7d3999c7cf7b
+/deepseek-ai-dsh-tool-godot-debug/model-experience/system-prompt/kv-cache-effect:
+  en: c4d44998009cd082
+  zh: afa00578753f61f6
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-schemas:
+  en: 3039bc5e7a796b21
+  zh: 6b7a9eaf69c9ea53
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-schemas/what-the-model-sees:
+  en: 49b9f2d9b291c552
+  zh: 439345094b74a075
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-schemas/token-effect:
+  en: 97cce067584eadff
+  zh: 4589d5211e755bfb
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-schemas/kv-cache-effect:
+  en: c8cbbef533bdb90f
+  zh: d2924e0872e0bc42
+/deepseek-ai-dsh-tool-godot-debug/model-experience/results:
+  en: 8e1b2953471f22ba
+  zh: 765a7c4655654c0a
+/deepseek-ai-dsh-tool-godot-debug/model-experience/results/what-the-model-sees:
+  en: f4af8271b6aadecc
+  zh: e9401cc93df411f4
+/deepseek-ai-dsh-tool-godot-debug/model-experience/results/what-the-browser-sees-structured-card-view-t20:
+  en: 8a6c21e7bc1daba2
+  zh: 2d69238b19c16ebe
+/deepseek-ai-dsh-tool-godot-debug/model-experience/results/token-effect:
+  en: 05684db39f2f4593
+  zh: 215e4be7542d655a
+/deepseek-ai-dsh-tool-godot-debug/model-experience/results/kv-cache-effect:
+  en: 19f4d26f590d11ac
+  zh: 2db9597a38b6fbe3
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-errors:
+  en: 2d4f2c8605eccab3
+  zh: 67f1f0218f73c6bf
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-errors/what-the-model-sees:
+  en: 2fe7d089abe2f25e
+  zh: 75f2d7d2fc6abe7b
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-errors/token-effect:
+  en: 681cadd5be7b8ac1
+  zh: 70a74726f6f7a0f2
+/deepseek-ai-dsh-tool-godot-debug/model-experience/tool-errors/kv-cache-effect:
+  en: 3241295f9591f589
+  zh: 0da88836c96ef9bb
+/deepseek-ai-dsh-tool-godot-debug/known-limitations-and-deferred-work:
+  en: 99d7ff1325c708fb
+  zh: 46d11199ae17cc22

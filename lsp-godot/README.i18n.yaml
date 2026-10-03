@@ -1,6 +1,61 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/lsp-godot/README.md
-README.md: 856d5719378e7bba600694240b88bdcb43e72b62
-README.zh.md: 5c5f582126e204c2083691099f25d713cc62c17d
+/deepseek-ai-dsh-lsp-godot:
+  en: 8555a24f29d19938
+  zh: 098af941f3fdceba
+/deepseek-ai-dsh-lsp-godot/deployment-requirement:
+  en: 677641eed23d728f
+  zh: 90cc1eeb46af3b6a
+/deepseek-ai-dsh-lsp-godot/settings:
+  en: 996ec6f3e5530433
+  zh: 5433e60afb4d1427
+/deepseek-ai-dsh-lsp-godot/config:
+  en: 5e57b1fd60263ee1
+  zh: 0fba6b952e5b7e16
+/deepseek-ai-dsh-lsp-godot/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-lsp-godot/model-experience/system-prompt:
+  en: cf78b9dd5596495f
+  zh: cf78b9dd5596495f
+/deepseek-ai-dsh-lsp-godot/model-experience/system-prompt/what-the-model-sees:
+  en: 6d8dcff6a3964d81
+  zh: dfe3f5f88fc53b86
+/deepseek-ai-dsh-lsp-godot/model-experience/system-prompt/what-the-model-sees/godot-lsp-guidance-provider:
+  en: 26309b011f4a137c
+  zh: d3ea4e2faa561c2d
+/deepseek-ai-dsh-lsp-godot/model-experience/system-prompt/token-effect:
+  en: 83baf5c01fbb1303
+  zh: d350ad15963f3788
+/deepseek-ai-dsh-lsp-godot/model-experience/system-prompt/kv-cache-effect:
+  en: f77f1585215c703c
+  zh: f1984930bfa0c3c4
+/deepseek-ai-dsh-lsp-godot/model-experience/results:
+  en: 8e1b2953471f22ba
+  zh: 765a7c4655654c0a
+/deepseek-ai-dsh-lsp-godot/model-experience/results/what-the-model-sees:
+  en: d407a207f47d9b44
+  zh: cdc78f74df346e58
+/deepseek-ai-dsh-lsp-godot/model-experience/results/token-effect:
+  en: c7bfa46543c12149
+  zh: 4ed37b1722ca3587
+/deepseek-ai-dsh-lsp-godot/model-experience/results/kv-cache-effect:
+  en: 881c1d8f88c148c4
+  zh: d6735228870422d4
+/deepseek-ai-dsh-lsp-godot/model-experience/tool-errors:
+  en: 2d4f2c8605eccab3
+  zh: 67f1f0218f73c6bf
+/deepseek-ai-dsh-lsp-godot/model-experience/tool-errors/what-the-model-sees:
+  en: 2fbb96686faf9840
+  zh: 26fb590cdd162969
+/deepseek-ai-dsh-lsp-godot/model-experience/tool-errors/token-effect:
+  en: 22595b53f2c3849d
+  zh: 450c88d5cb3e05ba
+/deepseek-ai-dsh-lsp-godot/model-experience/tool-errors/kv-cache-effect:
+  en: 3241295f9591f589
+  zh: 0da88836c96ef9bb
+/deepseek-ai-dsh-lsp-godot/known-limitations-and-deferred-work:
+  en: 322710fa361af470
+  zh: 7566ff70161ed742

@@ -38,7 +38,7 @@ await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 | `stdoutMaxBytes` | `1048576` | 单次运行 stdout 保留的最大字节数；有损读取会把结果标记为 `stdoutTruncated`。 |
 | `stderrMaxBytes` | `262144` | 单次运行 stderr 保留的最大字节数；有损读取会把结果标记为 `stderrTruncated`。 |
 | `validateMaxErrors` | `200` | 单次 `godot_validate` 结果内联保留的最大 issue 数；更多 issue 会置 `issuesTruncated`。 |
-| `graceMs` | `5000` | 中止运行落定前，子进程 seam 给予的正向终止升级宽限；不得超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md)。 |
+| `graceMs` | `5000` | 中止运行落定前，子进程 seam 给予的正向终止升级宽限；不得超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.zh.md)。 |
 | `timeoutMs` | `60000` | 五个工具的协作调用预算，由 `@deepseek-ai/dsh-tool-call-timeout-policy` 经 `exec.signal` 实施。首次项目校验会启动无头编辑器并导入资源；大型项目可能需要更大预算。 |
 
 ## 工具
@@ -85,7 +85,7 @@ Use godot_validate after editing GDScript to get structured parse errors, godot_
 
 #### 模型看到什么
 
-生成的 [`godot_*` schema](../../../docs/tool-catalog.md#deepseek-aidsh-tool-godot) 描述每个工具的参数与规范输出；工具无条件注册，宿主机缺可执行文件不会改变 schema。
+生成的 [`godot_*` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-godot) 描述每个工具的参数与规范输出；工具无条件注册，宿主机缺可执行文件不会改变 schema。
 
 #### Token 影响
 
@@ -132,4 +132,4 @@ Use godot_validate after editing GDScript to get structured parse errors, godot_
 - **godot_editor_script 运行项目代码**——脚本在用户项目内以完整编辑器访问权执行；属于用户自己的信任边界，已在工具描述中声明。
 - **无头运行写项目缓存**——validate/run/editor_script 会写 `.godot/` 导入产物；这是 Godot 的预期行为，已在系统提示指引中声明。
 - **Godot 4.4+ 内置格式化器无稳定 CLI**——`gdformat` 后端依赖 gdtoolkit；builtin 后端内嵌 godot-vscode-plugin 的格式化器。编辑器内置格式化器不在范围内。
-- **语义导航在 `lsp-godot` 中**——DSH `ctx.lsp` seam 针对 Godot TCP 语言服务器的四个导航操作由同级包 [`lsp-godot`](../lsp-godot/README.md) 提供（attach 已运行的编辑器或自起 headless 编辑器）；本包只覆盖 headless CLI 工作流。
+- **语义导航在 `lsp-godot` 中**——DSH `ctx.lsp` seam 针对 Godot TCP 语言服务器的四个导航操作由同级包 [`lsp-godot`](../lsp-godot/README.zh.md) 提供（attach 已运行的编辑器或自起 headless 编辑器）；本包只覆盖 headless CLI 工作流。

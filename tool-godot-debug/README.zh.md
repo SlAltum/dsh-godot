@@ -40,7 +40,7 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 | `maxMessageBytes` | `16777216` | 接受的最大单条协议帧消息。 |
 | `maxOutputBytes` | `1048576` | 单次运行保留的游戏 `output`/`error` 内容字节上限；超出后结果标记 `outputTruncated`。 |
 | `maxStderrBytes` | `1048576` | 自起游戏保留的 stderr 尾部上限（用于诊断）。 |
-| `idleTimeoutMs` | `10000` | 半帧/响应停滞预算，超时断开连接；不能超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md)。 |
+| `idleTimeoutMs` | `10000` | 半帧/响应停滞预算，超时断开连接；不能超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.zh.md)。 |
 | `connectWaitMs` | `20000` | spawn 后游戏连入的预算（冷启动 + 首次 import）。 |
 | `graceMs` | `5000` | 中止运行前的终止升级宽限；不能超过 `MAX_TIMER_DELAY_MS`。 |
 | `timeoutMs` | `60000` | 协作式工具调用预算，经 `exec.signal` 由工具调用超时策略强制执行。大项目首次 import 可能需要更大预算。 |
@@ -90,7 +90,7 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 #### 模型所见
 
-生成的 `godot_debug` schema 见[工具目录](../../../docs/tool-catalog.md#deepseek-aidsh-tool-godot-debug)；工具无条件注册，因此宿主缺少可执行文件不会改变 schema。
+生成的 `godot_debug` schema 见[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-godot-debug)；工具无条件注册，因此宿主缺少可执行文件不会改变 schema。
 
 #### Token 影响
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-Web 插件配置界面（设置 → Plugins）中的 **Godot 设置卡片**。浏览器插件注册一个以 `godot` 为键的本地化 `settings.plugin.item` 贡献；"插件"分区拥有卡片槽位与外壳。卡片通过客户端 settings scope 读写 `godot` 设置命名空间——命名空间本身由宿主侧的 [`tool-godot`](../tool-godot/README.md) 包注册，因此本包不携带任何宿主代码；当部署未组合 tool-godot 时，卡片渲染为空。
+Web 插件配置界面（设置 → Plugins）中的 **Godot 设置卡片**。浏览器插件注册一个以 `godot` 为键的本地化 `settings.plugin.item` 贡献；"插件"分区拥有卡片槽位与外壳。卡片通过客户端 settings scope 读写 `godot` 设置命名空间——命名空间本身由宿主侧的 [`tool-godot`](../tool-godot/README.zh.md) 包注册，因此本包不携带任何宿主代码；当部署未组合 tool-godot 时，卡片渲染为空。
 
 本包是动态 UI 插件（`docs/ui-plugin-godot.js`）所提供设置卡片的**持久化**替代品：作为部署组合中的 `dsh.client` 行，它能挺过 dsh web 进程重启，而进程内存态的动态插件做不到。动态插件的调试工具卡（键 `godot_debug` / `godot_debug_session`）不在范围内；本次只迁移设置卡片。
 

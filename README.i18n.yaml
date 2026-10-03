@@ -1,6 +1,43 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/README.md
-README.md: 6f3bd64a44389389f1f351016077c2a1b106c309
-README.zh.md: 054fca7046ffd10fc1fa371869bc0d44f6d99600
+/dsh-godot-godot-capability-family-for-deepseek-harness:
+  en: e59bede3762a5c85
+  zh: 52c97a994b728a75
+/dsh-godot-godot-capability-family-for-deepseek-harness/features:
+  en: 029fe0e66942b382
+  zh: dc3ac4ec326f9899
+/dsh-godot-godot-capability-family-for-deepseek-harness/prerequisites:
+  en: 53c941c4e14e2534
+  zh: d7d57ae58b7981b3
+/dsh-godot-godot-capability-family-for-deepseek-harness/installation:
+  en: 115bd3c7d86492e7
+  zh: 113a81a24314ce75
+/dsh-godot-godot-capability-family-for-deepseek-harness/configuration:
+  en: 3dcd7f6185729336
+  zh: ea307f98b494e8b3
+/dsh-godot-godot-capability-family-for-deepseek-harness/model-facing-tools:
+  en: 9a5680e4b22d6f0c
+  zh: 831c0634e20521af
+/dsh-godot-godot-capability-family-for-deepseek-harness/how-it-works:
+  en: f790500d910b12b1
+  zh: 6e165c95b8b13afe
+/dsh-godot-godot-capability-family-for-deepseek-harness/deployment-notes:
+  en: dbcc5484830b2c93
+  zh: 82eaf608a03429d2
+/dsh-godot-godot-capability-family-for-deepseek-harness/building-from-source:
+  en: 536eae6b1931f477
+  zh: 0200e3c4e70d2b42
+/dsh-godot-godot-capability-family-for-deepseek-harness/repository-layout:
+  en: 0cd6ebd23bd4548f
+  zh: 9eaca563b0ef0038
+/dsh-godot-godot-capability-family-for-deepseek-harness/testing:
+  en: 7d26ac4d3766aece
+  zh: ed0c0223629c28c3
+/dsh-godot-godot-capability-family-for-deepseek-harness/known-limitations-and-deferred-work:
+  en: eb3acbf305192365
+  zh: 55663c44219311d6
+/dsh-godot-godot-capability-family-for-deepseek-harness/license:
+  en: 07368bc4443473b7
+  zh: df12cdeffacc820f
