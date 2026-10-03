@@ -7,7 +7,7 @@ import css from './GodotCard.module.css'
 
 /** Props the renderer binds for the Godot card. */
 export type GodotCardProps =
-  PropsRuntime<'settings.plugin.item'>
+  PropsRuntime<'plugins.item'>
   & PropsLocale<'settings.godot'>
   & InjectFace<GodotCardFace>
 
@@ -53,7 +53,7 @@ export function GodotCard(props: GodotCardProps) {
   // A card renders nothing while its namespace is unavailable, matching the
   // plugin-card chrome: a deployment that does not compose the owning plugin
   // should show no trace of it.
-  if (!state.available && !state.loading) return null
+  if (!state.available) return null
   const disabled = !state.writable
   const chipFor = (field: 'executable' | 'gdformatExecutable' | 'formatBackend' | 'timeoutMs') => state[field].overridden
     ? [
@@ -74,7 +74,6 @@ export function GodotCard(props: GodotCardProps) {
     <li className={css.card}>
       <div className={css.head}>
         <span className={css.name}>{t('name')}</span>
-        {state.loading ? <span className={css.note}>{t('loading')}</span> : null}
         {!state.writable ? <span className={css.note}>{t('readOnly')}</span> : null}
       </div>
       <div className={css.desc}>{t('description')}</div>

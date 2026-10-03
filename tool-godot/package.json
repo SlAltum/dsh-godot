@@ -41,6 +41,10 @@
     "@deepseek-ai/cordis": "workspace:^"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
+    "@deepseek-ai/dsh-app-boot": "workspace:^",
+    "@deepseek-ai/dsh-config-editor": "workspace:^",
+    "@deepseek-ai/dsh-hmr": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",

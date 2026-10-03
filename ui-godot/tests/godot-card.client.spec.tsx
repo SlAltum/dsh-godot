@@ -10,10 +10,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import type { SettingsFieldState, SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import { GodotCard } from '../src/client/GodotCard.tsx'
 import type { GodotCardProps } from '../src/client/GodotCard.tsx'
 import type { GodotCardState } from '../src/client/godot-card-controller.ts'
-import type { GodotCardShell, GodotFieldState } from '../src/client/godot-card-form.ts'
 import { en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -21,9 +21,8 @@ afterEach(cleanup)
 const t = (key: keyof typeof en) => en[key]
 
 /** A settled form: nothing staged, everything served. */
-const settled: GodotCardShell = {
+const settled: SettingsFormShell = {
   available: true,
-  loading: false,
   writable: true,
   dirty: false,
   invalid: false,
@@ -32,7 +31,7 @@ const settled: GodotCardShell = {
 }
 
 /** One control's state, defaulting to an inherited value. */
-function field(text: string, rest: Partial<GodotFieldState> = {}): GodotFieldState {
+function field(text: string, rest: Partial<SettingsFieldState> = {}): SettingsFieldState {
   return { text, overridden: false, invalid: false, ...rest }
 }
 
@@ -57,16 +56,9 @@ function renderGodot(state: Partial<GodotCardState> = {}) {
 
 describe('GodotCard', () => {
   it('renders nothing while the namespace is unavailable', () => {
-    renderGodot({ available: false, loading: false })
+    renderGodot({ available: false })
 
     expect(screen.queryByText(en.name)).toBeNull()
-  })
-
-  it('shows a loading note while the first section has not arrived', () => {
-    renderGodot({ available: false, loading: true })
-
-    expect(screen.getByText(en.name)).toBeTruthy()
-    expect(screen.getByText(en.loading)).toBeTruthy()
   })
 
   it('shows a read-only note and disables its controls on a read-only document', () => {

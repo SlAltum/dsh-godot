@@ -23,9 +23,9 @@
  * @module @deepseek-ai/dsh-tool-godot
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveExecutable } from './godot-core.ts'
 import type { ResolvedCaps } from './godot-core.ts'
@@ -63,173 +63,91 @@ export type { FormatMeta, ValidateMeta } from './presentation.ts'
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-godot'
 
-/**
- * The `godot` settings namespace: the GUI-editable overlay on this plugin's
- * config, owned here so the client card and the settings service agree on
- * the spelling.
- */
-export const GODOT_SETTINGS_NAMESPACE = 'godot'
-
 /** Services required by the godot tool suite. */
 export const inject = ['tools', 'systemPrompt', 'subprocess']
 
-/** Plugin config; every field has a default. */
+/**
+ * Plugin config. The executable paths, the format backend, and the call
+ * timeout are volatile: the settings form edits them live, and every call
+ * reads the reference again, so a saved value applies to the next call
+ * without remounting. The remaining caps stay composition-level by design —
+ * a registered tool's timeout declaration is read once at registration.
+ */
 export interface Config {
   /** Godot executable path or PATH-resolved command name (default `godot`). */
-  executable?: string
+  executable: Volatile<string>
   /** Fixed argv elements inserted after the godot executable (deployment wrappers). */
-  executableArgs?: string[]
+  executableArgs: string[]
   /** gdformat executable path or PATH-resolved command name (default `gdformat`). */
-  gdformatExecutable?: string
+  gdformatExecutable: Volatile<string>
   /** Fixed argv elements inserted after the gdformat executable. */
-  gdformatArgs?: string[]
+  gdformatArgs: string[]
   /** `godot_format` backend: `gdformat` (gdtoolkit, default) or `builtin` (embedded TextMate formatter, no Python). */
-  formatBackend?: 'gdformat' | 'builtin'
+  formatBackend: Volatile<'gdformat' | 'builtin'>
   /** Builtin backend: max consecutive blank lines inside the file (default 2). */
-  builtinMaxEmptyLines?: number
+  builtinMaxEmptyLines: number
   /** Builtin backend: remove extra space inside function parameter lists (default false). */
-  builtinDenseFunctionParameters?: boolean
+  builtinDenseFunctionParameters: boolean
   /** Builtin backend: spaces before an end-of-line comment (`'1'` or `'2'`, default `'1'`). */
-  builtinSpacesBeforeEndOfLineComment?: '1' | '2'
+  builtinSpacesBeforeEndOfLineComment: '1' | '2'
   /** Max bytes retained for one run's stdout (default 1 MiB). */
-  stdoutMaxBytes?: number
+  stdoutMaxBytes: number
   /** Max bytes retained for one run's stderr (default 256 KiB). */
-  stderrMaxBytes?: number
+  stderrMaxBytes: number
   /** Max issues one `godot_validate` result retains inline (default 200). */
-  validateMaxErrors?: number
+  validateMaxErrors: number
   /** Terminate-escalation grace (ms), bounded by `MAX_TIMER_DELAY_MS` (default 5000). */
-  graceMs?: number
+  graceMs: number
   /** Cooperative tool-call timeout budget (ms) on all tools, enforced through `exec.signal` (default 60000). */
-  timeoutMs?: number
+  timeoutMs: Volatile<number>
 }
 
-export const Config: z<Config> = z.object({
-  executable: z.string().default('godot'),
+export const Config = z.object({
+  executable: z.string().default('godot').volatile(),
   executableArgs: z.array(z.string()).default([]),
-  gdformatExecutable: z.string().default('gdformat'),
+  gdformatExecutable: z.string().default('gdformat').volatile(),
   gdformatArgs: z.array(z.string()).default([]),
-  formatBackend: z.union(['gdformat', 'builtin'] as const).default('gdformat'),
-  builtinMaxEmptyLines: z.number().default(2),
+  formatBackend: z.union(['gdformat', 'builtin'] as const).default('gdformat').volatile(),
+  builtinMaxEmptyLines: z.number().min(1).step(1).default(2),
   builtinDenseFunctionParameters: z.boolean().default(false),
   builtinSpacesBeforeEndOfLineComment: z.union(['1', '2'] as const).default('1'),
-  stdoutMaxBytes: z.number().default(1_048_576),
-  stderrMaxBytes: z.number().default(262_144),
-  validateMaxErrors: z.number().default(200),
-  graceMs: z.number().default(5_000),
-  timeoutMs: z.number().default(60_000),
+  stdoutMaxBytes: z.number().min(1).step(1).default(1_048_576),
+  stderrMaxBytes: z.number().min(1).step(1).default(262_144),
+  validateMaxErrors: z.number().min(1).step(1).default(200),
+  graceMs: z.number().min(1).step(1).max(MAX_TIMER_DELAY_MS).default(5_000),
+  timeoutMs: z.number().min(1).step(1).default(60_000).volatile(),
 })
-
-/** The shape after schemastery applied the defaults. */
-type ResolvedConfig = Required<Config>
-
-/** Every cap counts items/bytes/milliseconds — a positive integer, or retention arithmetic misbehaves silently. */
-function assertPositiveInteger(name: string, value: number): void {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`tool-godot: ${name} must be a positive integer`)
-  }
-}
-
-/** Validate one resolved config (composition or settings section) beyond what the schema can express. */
-function assertServiceableConfig(value: ResolvedConfig): void {
-  assertPositiveInteger('stdoutMaxBytes', value.stdoutMaxBytes)
-  assertPositiveInteger('stderrMaxBytes', value.stderrMaxBytes)
-  assertPositiveInteger('validateMaxErrors', value.validateMaxErrors)
-  assertPositiveInteger('graceMs', value.graceMs)
-  assertPositiveInteger('builtinMaxEmptyLines', value.builtinMaxEmptyLines)
-  if (value.graceMs > MAX_TIMER_DELAY_MS) {
-    throw new Error(`tool-godot: graceMs must be no greater than ${MAX_TIMER_DELAY_MS}`)
-  }
-  assertPositiveInteger('timeoutMs', value.timeoutMs)
-}
 
 /**
  * Register the five godot tools. Registration is unconditional; a missing
  * godot executable surfaces as the structured `GODOT_UNAVAILABLE` error at
- * call time, never at load time. The `godot` settings namespace overlays the
- * composition entry: every call re-reads the authoritative config (settings
- * section when one is attached, the composition entry otherwise), so
- * executable changes made in the GUI apply to the next call without a
- * reload.
- *
- * The settings section is attached through `internal/service` events rather
- * than `installSettingsSection`'s `ctx.inject`: in a composed Loader tree the
- * settings provider can register after this plugin's apply ran, and the
- * `ctx.inject` child fiber is then not reliably re-evaluated (observed
- * deterministically failing for function-style plugins while Service-style
- * consumers such as bash-local attach fine). The event fires on every
- * service registration, which the settings provider's construction triggers,
- * so the attach is eventual and race-free.
+ * call time, never at load time. The volatile config references are read on
+ * every call, so an executable saved in the settings card applies to the next
+ * call without a reload.
  *
  * @param ctx - plugin context; registrations are effects scoped to this plugin.
  * @param config - resolved plugin configuration from schemastery.
  */
 // oxlint-disable-next-line typescript/require-await -- async keeps a load-time config rejection a rejection, not a synchronous throw
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  // schemastery (Config) has already filled every defaulted field.
-  const entry = config as ResolvedConfig
-  assertServiceableConfig(entry)
-
-  // The authoritative config source: the settings section while one is
-  // attached, the composition entry otherwise.
-  let source: () => ResolvedConfig = () => entry
-  let attached = false
-
-  const attach = (): void => {
-    if (attached) return
-    const settings = ctx.get('settings') as { register<T>(ns: unknown, schema: z<T>, options?: { base?: T; validate?: (value: T) => void }): SettingsScope<T> } | undefined
-    if (settings === undefined) return
-    let scope: SettingsScope<Config> | undefined
-    try {
-      scope = settings.register<Config>(GODOT_SETTINGS_NAMESPACE, Config, {
-        base: entry,
-        validate: (value: Config) => {
-          assertServiceableConfig(value as ResolvedConfig)
-        },
-      })
-    } catch (error) {
-      /* v8 ignore start -- a duplicate registration needs a settings-provider
-         reload mid-session, which tests cannot stage deterministically. */
-      ctx.logger.warn(`tool-godot: settings registration skipped: ${String(error)}`)
-      return
-      /* v8 ignore stop */
-    }
-    attached = true
-    source = () => scope.get() as ResolvedConfig
-    // Every cap is read through the getter on each call; nothing derived
-    // needs rebuilding when the document changes.
-    scope.watch(() => {})
-  }
-
-  // Attach immediately when the settings service already exists, and listen
-  // for its registration when the provider mounts later (composed trees
-  // activate entries concurrently, so the provider may appear after apply).
-  // The service's unload notification carries `undefined` and detaches back
-  // to the composition entry.
-  attach()
-  ctx.on('internal/service', (name, value) => {
-    if (name !== 'settings') return
-    if (value === undefined || value === null) {
-      attached = false
-      source = () => entry
-      return
-    }
-    attach()
-  })
+  // A custom card renders this entry's fields in the Plugins page, so the
+  // generic generated page is suppressed.
+  ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
 
   const caps = (): ResolvedCaps => {
-    const cfg = source()
+    const endComment = config.builtinSpacesBeforeEndOfLineComment
     return {
-      godot: resolveExecutable(cfg.executable, cfg.executableArgs, 'godot'),
-      gdformat: resolveExecutable(cfg.gdformatExecutable, cfg.gdformatArgs, 'gdformat'),
-      formatBackend: cfg.formatBackend,
-      builtinMaxEmptyLines: cfg.builtinMaxEmptyLines,
-      builtinDenseFunctionParameters: cfg.builtinDenseFunctionParameters,
-      builtinSpacesBeforeEndOfLineComment: cfg.builtinSpacesBeforeEndOfLineComment === '2' ? 2 : 1,
-      stdoutMaxBytes: cfg.stdoutMaxBytes,
-      stderrMaxBytes: cfg.stderrMaxBytes,
-      validateMaxErrors: cfg.validateMaxErrors,
-      graceMs: cfg.graceMs,
-      timeoutMs: cfg.timeoutMs,
+      godot: resolveExecutable(config.executable.get(), config.executableArgs, 'godot'),
+      gdformat: resolveExecutable(config.gdformatExecutable.get(), config.gdformatArgs, 'gdformat'),
+      formatBackend: config.formatBackend.get(),
+      builtinMaxEmptyLines: config.builtinMaxEmptyLines,
+      builtinDenseFunctionParameters: config.builtinDenseFunctionParameters,
+      builtinSpacesBeforeEndOfLineComment: endComment === '2' ? 2 : 1,
+      stdoutMaxBytes: config.stdoutMaxBytes,
+      stderrMaxBytes: config.stderrMaxBytes,
+      validateMaxErrors: config.validateMaxErrors,
+      graceMs: config.graceMs,
+      timeoutMs: config.timeoutMs.get(),
     }
   }
 

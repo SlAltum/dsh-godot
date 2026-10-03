@@ -1,60 +1,71 @@
 /**
- * The `godot` settings section layered over the tool plugin's composition
- * entry: GUI-written values (executable paths, caps) become authoritative
- * for the next tool call without a reload, and fall back to the composition
- * entry when the settings provider detaches.
+ * The `tool-godot` entry through a real profile patch and Loader: a settings
+ * write reaches the next tool call without remounting, and the schema refuses
+ * values the resolved caps would misbehave on.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { expect, it, onTestFinished } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { Fiber } from '@deepseek-ai/cordis'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import { SettingsProvider } from '@deepseek-ai/dsh-settings'
-import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import Timer from '@deepseek-ai/cordis-plugin-timer'
+import { boot, initProfile, readProfilePatches, type ProfileContext } from '@deepseek-ai/dsh-app-boot'
+import ConfigEditor from '@deepseek-ai/dsh-config-editor'
+import Hmr from '@deepseek-ai/dsh-hmr'
+import Settings from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import { GODOT_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-tool-godot'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import * as ToolGodot from '@deepseek-ai/dsh-tool-godot'
 
 const FAKE = fileURLToPath(new URL('./fixtures/fake-godot.mjs', import.meta.url))
 const testToolSignal = new AbortController().signal
+const ENTRY = 'tool-godot'
 
-/** The smallest real provider: one in-memory document, always writable. */
-class MemorySettings extends SettingsProvider {
-  doc: Record<string, unknown> = {}
-
-  get writable(): boolean {
-    return true
+/** Boot a real profile whose `tool-godot` entry points at the fake executable. */
+async function bootGodot(): Promise<{ ctx: Context; dir: string }> {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'godot-settings-')))
+  const dir = join(home, 'profiles', 'test')
+  initProfile(dir, ['test-bundle'])
+  const bundle = join(dir, 'node_modules', 'test-bundle')
+  mkdirSync(bundle, { recursive: true })
+  writeFileSync(join(home, 'package.json'), '{"name":"test-installation"}\n')
+  writeFileSync(join(bundle, 'package.json'), JSON.stringify({ name: 'test-bundle', version: '1.0.0', dsh: { bundle: { patch: 'cordis.patch.yml' } } }))
+  writeFileSync(join(bundle, 'cordis.patch.yml'), JSON.stringify([{ insert: [
+    { id: 'config-editor', name: 'cordis:editor' },
+    { id: 'settings', name: 'cordis:settings' },
+    { id: 'system-prompt', name: 'cordis:systemPrompt' },
+    { id: 'tools', name: 'cordis:tools' },
+    { id: 'subprocess', name: 'cordis:localSubprocess' },
+    { id: ENTRY, name: 'cordis:godot', config: { executable: process.execPath, executableArgs: [FAKE] } },
+  ] }]))
+  writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+  const profile: ProfileContext = {
+    name: 'test', startedBundles: ['test-bundle'], dir, patchPath: join(dir, 'cordis.patch.yml'),
+    installAnchor: join(home, 'package.json'), cwd: home, home, overlays: [], telemetryDisabledEnv: undefined,
   }
-
-  protected load(): Promise<Record<string, unknown>> {
-    return Promise.resolve(structuredClone(this.doc))
-  }
-
-  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    this.doc = { ...this.doc, [ns]: structuredClone(section) }
-    return Promise.resolve()
-  }
+  const ctx = await boot('test', join(dir, 'cordis.yml'), readProfilePatches('test', profile), (context) => {
+    context.provide('profileContext', profile)
+    context.provide('appReady', { onReady: (listener: () => void) => { listener(); return () => {} } })
+    Object.assign(context.loader.builtins, {
+      editor: ConfigEditor, settings: Settings, systemPrompt: SystemPrompt,
+      tools: ToolRuntime, localSubprocess: LocalSubprocessRuntime, godot: ToolGodot,
+    })
+  })
+  onTestFinished(async () => { await ctx.fiber.dispose(); rmSync(home, { recursive: true, force: true }) })
+  await ctx.plugin(Timer)
+  const hmr = ctx.plugin(Hmr, { root: [], ignored: [], debounce: 0 })
+  await hmr.await()
+  await ctx.hmr.runExclusive(async () => {})
+  return { ctx, dir }
 }
 
-/** Boot the real godot tool stack with the fake executable and an optional settings provider. */
-async function boot(): Promise<{ ctx: Context; settingsFiber: Fiber; pluginFiber: Fiber; dir: string }> {
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-godot-settings-'))
-  await writeFile(join(dir, 'project.godot'), 'config_version=5\n')
-  const ctx = new Context()
-  await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime)
-  await ctx.plugin(LocalSubprocessRuntime)
-  const settingsFiber = ctx.plugin(MemorySettings)
-  await settingsFiber.await()
-  const pluginFiber = ctx.plugin(ToolGodot, { executable: process.execPath, executableArgs: [FAKE] })
-  await pluginFiber.await()
-  return { ctx, settingsFiber, pluginFiber, dir }
+/** The entry fiber the live-Config write must leave in place. */
+function entryFiber(ctx: Context): unknown {
+  return [...ctx.loader.entries()].find(entry => entry.options.id === ENTRY)?.fiber
 }
 
 let callCounter = 0
@@ -71,136 +82,31 @@ function validate(ctx: Context, dir: string) {
 }
 
 function text(result: { content: { type: string; text?: string }[] }): string {
-  return result.content.filter(b => b.type === 'text').map(b => b.text).join('')
+  return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
-describe('godot settings section', () => {
-  afterEach(async () => {
-    // Every bench tears its own fibers down inline; nothing to clean here.
-  })
+it('applies a settings-written executable to the next call without remounting', async () => {
+  const { ctx, dir } = await bootGodot()
+  const fiber = entryFiber(ctx)
+  expect(text(await validate(ctx, dir))).toContain('passed')
 
-  it('applies a settings-written executable to the next call', async () => {
-    const bench = await boot()
-    try {
-      // Composition entry is the fake node stub: a clean pass.
-      const before = await validate(bench.ctx, bench.dir)
-      expect(before.isError).toBe(false)
-      expect(text(before)).toContain('passed')
+  // The live reference wins: a bogus executable fails the next call.
+  await ctx.settings.update(ENTRY, { executable: 'no-such-godot-xyz' })
+  const broken = await validate(ctx, dir)
+  expect(broken.isError).toBe(true)
+  expect(broken.error).toMatchObject({ info: { code: 'GODOT_UNAVAILABLE' } })
+  expect(entryFiber(ctx)).toBe(fiber)
 
-      // The settings section wins: a bogus executable fails the next call.
-      await bench.ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { executable: 'no-such-godot-xyz' })
-      const broken = await validate(bench.ctx, bench.dir)
-      expect(broken.isError).toBe(true)
-      expect(broken.error).toMatchObject({ info: { code: 'GODOT_UNAVAILABLE' } })
+  // Writing the fake back restores service without any remount.
+  await ctx.settings.update(ENTRY, { executable: process.execPath })
+  expect(text(await validate(ctx, dir))).toContain('passed')
+  expect(entryFiber(ctx)).toBe(fiber)
+})
 
-      // Writing the fake back restores service without any reload.
-      await bench.ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { executable: process.execPath, executableArgs: [FAKE] })
-      const restored = await validate(bench.ctx, bench.dir)
-      expect(restored.isError).toBe(false)
-      expect(text(restored)).toContain('passed')
-    } finally {
-      await bench.ctx.fiber.dispose()
-      await rm(bench.dir, { recursive: true, force: true })
-    }
-  })
-
-  it('refuses a stored value the constructor would have rejected', async () => {
-    const bench = await boot()
-    try {
-      await expect(bench.ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { timeoutMs: 0 }))
-        .rejects.toThrow(/timeoutMs must be a positive integer/)
-      await expect(bench.ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { graceMs: Number.MAX_SAFE_INTEGER }))
-        .rejects.toThrow(/graceMs must be no greater than/)
-      // The rejected writes left the authoritative config unchanged.
-      const result = await validate(bench.ctx, bench.dir)
-      expect(result.isError).toBe(false)
-    } finally {
-      await bench.ctx.fiber.dispose()
-      await rm(bench.dir, { recursive: true, force: true })
-    }
-  })
-
-  it('falls back to the composition entry when the settings provider detaches', async () => {
-    const bench = await boot()
-    try {
-      await bench.ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { executable: 'no-such-godot-xyz' })
-      expect((await validate(bench.ctx, bench.dir)).isError).toBe(true)
-
-      await bench.settingsFiber.dispose()
-
-      const result = await validate(bench.ctx, bench.dir)
-      expect(result.isError).toBe(false)
-      expect(text(result)).toContain('passed')
-    } finally {
-      await bench.ctx.fiber.dispose()
-      await rm(bench.dir, { recursive: true, force: true })
-    }
-  })
-
-  it('keeps the composition entry when no settings provider is mounted', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'dsh-godot-settings-none-'))
-    await writeFile(join(dir, 'project.godot'), 'config_version=5\n')
-    const ctx = new Context()
-    try {
-      await ctx.plugin(SystemPrompt)
-      await ctx.plugin(ToolRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      await ctx.plugin(ToolGodot, { executable: process.execPath, executableArgs: [FAKE] }).await()
-
-      const result = await validate(ctx, dir)
-      expect(result.isError).toBe(false)
-      expect(text(result)).toContain('passed')
-    } finally {
-      await ctx.fiber.dispose()
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('releases the namespace when the plugin unloads', async () => {
-    const bench = await boot()
-    try {
-      expect(bench.ctx.settings.describe().map(row => String(row.ns))).toContain('godot')
-
-      await bench.pluginFiber.dispose()
-
-      expect(bench.ctx.settings.describe().map(row => String(row.ns))).not.toContain('godot')
-    } finally {
-      await bench.ctx.fiber.dispose()
-      await rm(bench.dir, { recursive: true, force: true })
-    }
-  })
-
-  it('attaches the namespace when the settings provider mounts later', async () => {
-    // The composed Loader tree activates entries concurrently, so the
-    // settings provider can register after this plugin's apply ran. The
-    // event-driven attach must still register the namespace and make it
-    // authoritative for the next call.
-    const dir = await mkdtemp(join(tmpdir(), 'dsh-godot-settings-late-'))
-    await writeFile(join(dir, 'project.godot'), 'config_version=5\n')
-    const ctx = new Context()
-    try {
-      await ctx.plugin(SystemPrompt)
-      await ctx.plugin(ToolRuntime)
-      await ctx.plugin(LocalSubprocessRuntime)
-      // ToolGodot first; the settings provider is mounted afterwards.
-      await ctx.plugin(ToolGodot, { executable: process.execPath, executableArgs: [FAKE] }).await()
-
-      const settingsFiber = ctx.plugin(MemorySettings)
-      await settingsFiber.await()
-
-      await vi.waitFor(() => {
-        expect(ctx.settings.describe().map(row => String(row.ns))).toContain('godot')
-      })
-
-      // The late-attached section is authoritative: a bogus executable fails
-      // the next call, proving the source switched away from the composition.
-      await ctx.settings.update(GODOT_SETTINGS_NAMESPACE, { executable: 'no-such-godot-xyz' })
-      const result = await validate(ctx, dir)
-      expect(result.isError).toBe(true)
-      expect(result.error).toMatchObject({ info: { code: 'GODOT_UNAVAILABLE' } })
-    } finally {
-      await ctx.fiber.dispose()
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
+it('refuses non-volatile and schema-invalid writes', async () => {
+  const { ctx, dir } = await bootGodot()
+  await expect(ctx.settings.update(ENTRY, { executableArgs: [] })).rejects.toThrow()
+  await expect(ctx.settings.update(ENTRY, { timeoutMs: 0 })).rejects.toThrow()
+  // The rejected writes left the authoritative config unchanged.
+  expect(text(await validate(ctx, dir))).toContain('passed')
 })

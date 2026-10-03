@@ -1,18 +1,17 @@
-/** The Godot card's staged form over the `godot` settings namespace. */
+/** The Godot card's staged form over the composed `tool-godot` entry's config. */
 
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
-  digitsField, GodotCardForm, selectField, textField,
-  type GodotCardActions, type GodotCardShell, type GodotFieldState,
-} from './godot-card-form.ts'
+  SettingsFormModel, settingsNumberField, settingsTextField,
+  type SettingsFieldSpec, type SettingsFieldState, type SettingsFormActions, type SettingsFormScope, type SettingsFormShell,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 
 /**
- * Namespace of the Godot tooling capability. Spelled here rather than
- * imported: a client package must not depend on a Host package, and the
- * tool-godot package that owns the namespace spells the same value.
+ * Profile entry id of the Godot tool package. Spelled here rather than
+ * imported: a client package must not depend on a Host package, and the base
+ * bundle composes the tool under this id.
  */
-export const GODOT_NS = 'godot'
+export const GODOT_NS = 'tool-godot'
 
 /** The Godot fields this card edits — a subset of the served schema by design. */
 export interface GodotSettings {
@@ -27,37 +26,54 @@ export interface GodotSettings {
 }
 
 /** What the Godot card renders. */
-export interface GodotCardState extends GodotCardShell {
+export interface GodotCardState extends SettingsFormShell {
   /** Godot editor executable path or PATH command name. */
-  executable: GodotFieldState
+  executable: SettingsFieldState
   /** gdformat executable path or PATH command name. */
-  gdformatExecutable: GodotFieldState
+  gdformatExecutable: SettingsFieldState
   /** Which format backend the tools use. */
-  formatBackend: GodotFieldState
+  formatBackend: SettingsFieldState
   /** Cooperative tool-call budget in milliseconds. */
-  timeoutMs: GodotFieldState
+  timeoutMs: SettingsFieldState
 }
 
 /** The registration-side face the Godot card's slot entry injects. */
-export interface GodotCardFace extends GodotCardActions {
+export interface GodotCardFace extends SettingsFormActions {
   hooks: {
     /** Card snapshot bound by the renderer as useGodotCard. */
     godotCard: SnapshotStore<GodotCardState>
   }
 }
 
-/** Bridges the `godot` scope onto the Godot card's staged form. */
+/**
+ * A single-choice field backed by a fixed value set (the format-backend
+ * select). The select can only produce listed values, but the spec still
+ * refuses anything else so a stray draft cannot reach the Host.
+ * @param field - field name inside the entry section.
+ * @param values - the accepted values, first being the format default.
+ * @returns the field's conversion spec.
+ */
+function settingsSelectField(field: string, values: readonly [string, ...string[]]): SettingsFieldSpec {
+  const fallback = values[0]
+  return {
+    field,
+    format: value => values.includes(value as string) ? value as string : fallback,
+    parse: text => (values.includes(text) ? { kind: 'set', value: text } : undefined),
+  }
+}
+
+/** Bridges the `tool-godot` entry's form onto the Godot card's staged form. */
 export class GodotCardController {
-  private readonly form: GodotCardForm
+  private readonly form: SettingsFormModel<GodotSettings>
   private readonly store: SnapshotStore<GodotCardState>
 
-  /** @param scope - the bound settings scope for the `godot` namespace. */
-  constructor(scope: SettingsScope<GodotSettings>) {
-    this.form = new GodotCardForm(scope, [
-      textField('executable'),
-      textField('gdformatExecutable'),
-      selectField('formatBackend', ['gdformat', 'builtin']),
-      digitsField('timeoutMs'),
+  /** @param scope - the shared configuration form of the composed Godot tool entry. */
+  constructor(scope: SettingsFormScope<GodotSettings>) {
+    this.form = new SettingsFormModel(scope, [
+      settingsTextField('executable'),
+      settingsTextField('gdformatExecutable'),
+      settingsSelectField('formatBackend', ['gdformat', 'builtin']),
+      settingsNumberField('timeoutMs'),
     ])
     this.store = this.form.bind(() => this.projection())
   }
@@ -79,4 +95,7 @@ export class GodotCardController {
   inject(): GodotCardFace {
     return { hooks: { godotCard: this.store }, ...this.form.actions() }
   }
+
+  /** Release the form subscription. */
+  dispose(): void { this.form.dispose() }
 }

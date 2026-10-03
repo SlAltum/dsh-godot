@@ -121,12 +121,12 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
       ['timeoutMs', 0],
     ] as const) {
       it(`rejects a ${key} of 0 at load time`, async () => {
-        await expect(boot({ [key]: bad })).rejects.toThrow(/positive integer/)
+        await expect(boot({ [key]: bad })).rejects.toThrow(/invalid config/)
       })
     }
 
     it('rejects a graceMs above the timer delay cap', async () => {
-      await expect(boot({ graceMs: MAX_TIMER_DELAY_MS + 1 })).rejects.toThrow(/no greater than/)
+      await expect(boot({ graceMs: MAX_TIMER_DELAY_MS + 1 })).rejects.toThrow(/invalid config/)
     })
   })
 

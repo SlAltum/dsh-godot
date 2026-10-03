@@ -30,7 +30,7 @@ beforeEach(async () => {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(LocalSubprocessRuntime)
-  await ctx.plugin(ToolGodot, ToolGodot.Config({ formatBackend: 'builtin' }))
+  await ctx.plugin(ToolGodot, { formatBackend: 'builtin' })
 })
 
 afterEach(async () => {
@@ -86,7 +86,7 @@ describe('godot_format builtin backend', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
-    await ctx.plugin(ToolGodot, ToolGodot.Config({ formatBackend: 'builtin', builtinSpacesBeforeEndOfLineComment: '2' }))
+    await ctx.plugin(ToolGodot, { formatBackend: 'builtin', builtinSpacesBeforeEndOfLineComment: '2' })
 
     const file = join(dir, 'scripts', 'c.gd')
     await writeFile(file, 'var x = 1# hi\n', 'utf8')

@@ -9,8 +9,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
+import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const PLUGIN_ID = '@deepseek-ai/dsh-ui-godot'
@@ -47,6 +48,7 @@ describe('tsdown client artifact', () => {
       ['react/jsx-runtime', await import('react/jsx-runtime')],
       ['react-dom', await import('react-dom')],
       ['@deepseek-ai/dsh-client-store', await import('@deepseek-ai/dsh-client-store')],
+      ['@deepseek-ai/dsh-client-ui-primitives', await import('@deepseek-ai/dsh-client-ui-primitives')],
     ])
     const exports = handoff!.factory((spec) => {
       if (!modules.has(spec)) throw new Error(`unexpected require: ${spec}`)
@@ -59,30 +61,38 @@ describe('tsdown client artifact', () => {
     const { handoff, exports } = await loadArtifact()
     expect(handoff.id).toBe(PLUGIN_ID)
     expect(exports.apply).toBeTypeOf('function')
-    expect(exports.inject).toEqual(['slots', 'locale', 'settingsScope'])
+    expect(exports.inject).toEqual(['slots', 'locale', 'configForms'])
   })
 
   it.skipIf(code === undefined)('mounted as an object plugin, apply registers the Godot card on the real ring', async () => {
     const { exports } = await loadArtifact()
     const ctx = new Context()
-    const slots = new SlotRegistry(ctx)
-    // The settings section declares the keyed card slot; this registration-only
-    // probe declares it directly.
+    await ctx.plugin(SlotRegistry).await()
+    const slots = ctx.slots
+    // The Plugins page declares the card slot; this registration-only probe
+    // declares it directly.
     slots.register({
       name: 'root',
-      children: { 'settings.plugin.item': { kind: 'keyed', scope: 'root' } },
+      children: { 'plugins.item': { kind: 'list', scope: 'root' } },
     }, (_p: { renderSlot?: unknown }) => null)
     ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
     ctx.provide('remote', { $on: () => () => {} } as never)
-    ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
+    // The shared configuration forms the card edits through. This probe never
+    // reads a Host document, so the scope stub stands in and whileServed
+    // registers as if the Host served the tool-godot entry.
+    ctx.provide('configForms', {
+      developerTools: { enabled: createSnapshotStore(true) },
+      get: () => stubConfigForm().scope,
+      whileServed: (_namespaces: readonly string[], register: () => () => void) => register(),
+    } as never)
     const locale = await import('@deepseek-ai/dsh-client-locale/client')
-    ctx.plugin({ inject: [...locale.inject], apply: locale.apply })
+    await ctx.plugin({ inject: [...locale.inject], apply: locale.apply }).await()
     const fiber = ctx.plugin(exports as { apply: (ctx: Context) => void; inject: string[] })
     await fiber.await()
 
-    expect(slots.entries('settings.plugin.item').map(entry => entry.options.key)).toEqual(['godot'])
+    expect(slots.entries('plugins.item').map(entry => entry.options.id)).toEqual(['tool-godot'])
     await fiber.dispose()
-    expect(slots.entries('settings.plugin.item')).toHaveLength(0)
+    expect(slots.entries('plugins.item')).toHaveLength(0)
   })
 
   it.skipIf(code === undefined)('injects plugin-tagged module CSS during factory execution', async () => {
