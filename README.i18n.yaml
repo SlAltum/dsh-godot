@@ -3,26 +3,26 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/README.md
 /dsh-godot-godot-capability-family-for-deepseek-harness:
-  en: e59bede3762a5c85
-  zh: 52c97a994b728a75
+  en: e39fe81fd630dab4
+  zh: 573368f07f862a85
 /dsh-godot-godot-capability-family-for-deepseek-harness/features:
-  en: 029fe0e66942b382
-  zh: dc3ac4ec326f9899
+  en: d3fae214cd6dbf0f
+  zh: 5a2b2dc8b8d965be
 /dsh-godot-godot-capability-family-for-deepseek-harness/prerequisites:
   en: 53c941c4e14e2534
-  zh: d7d57ae58b7981b3
+  zh: 84c5522ab50f2c61
 /dsh-godot-godot-capability-family-for-deepseek-harness/installation:
-  en: 115bd3c7d86492e7
-  zh: 113a81a24314ce75
+  en: 85cc3bab78c967f8
+  zh: c821cd81eec2fdfe
 /dsh-godot-godot-capability-family-for-deepseek-harness/configuration:
-  en: 3dcd7f6185729336
-  zh: ea307f98b494e8b3
+  en: 43f6364a806f9163
+  zh: 9975dd249e8b74c6
 /dsh-godot-godot-capability-family-for-deepseek-harness/model-facing-tools:
-  en: 9a5680e4b22d6f0c
-  zh: 831c0634e20521af
+  en: a03e0cd5ee114d84
+  zh: 58a5804038cdfd6e
 /dsh-godot-godot-capability-family-for-deepseek-harness/how-it-works:
-  en: f790500d910b12b1
-  zh: 6e165c95b8b13afe
+  en: 4fc29f5dc05d6083
+  zh: 1439ed7cff6b67a1
 /dsh-godot-godot-capability-family-for-deepseek-harness/deployment-notes:
   en: dbcc5484830b2c93
   zh: 82eaf608a03429d2
@@ -30,14 +30,14 @@
   en: 536eae6b1931f477
   zh: 0200e3c4e70d2b42
 /dsh-godot-godot-capability-family-for-deepseek-harness/repository-layout:
-  en: 0cd6ebd23bd4548f
-  zh: 9eaca563b0ef0038
+  en: 600a254ffe0c926d
+  zh: c461c32706111ad7
 /dsh-godot-godot-capability-family-for-deepseek-harness/testing:
-  en: 7d26ac4d3766aece
+  en: 7524a730b85bc3cf
   zh: ed0c0223629c28c3
 /dsh-godot-godot-capability-family-for-deepseek-harness/known-limitations-and-deferred-work:
   en: eb3acbf305192365
-  zh: 55663c44219311d6
+  zh: 48fa677636a03172
 /dsh-godot-godot-capability-family-for-deepseek-harness/license:
   en: 07368bc4443473b7
   zh: df12cdeffacc820f

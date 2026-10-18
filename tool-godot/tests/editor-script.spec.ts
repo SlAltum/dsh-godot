@@ -1,10 +1,11 @@
 /**
  * Unit tests for `godot_editor_script`: argument parsing, argv construction,
- * JSON detection, rendering, and card presentation.
+ * bootstrap generation, JSON detection, rendering, and card presentation.
  */
 
 import { describe, expect, it } from 'vitest'
 import {
+  buildEditorScriptBootstrap,
   buildEditorScriptCommand,
   parseEditorScriptArgs,
   presentEditorScriptCall,
@@ -34,25 +35,25 @@ describe('parseEditorScriptArgs', () => {
 })
 
 describe('buildEditorScriptCommand', () => {
-  it('builds the plain argv without user args', () => {
-    expect(buildEditorScriptCommand('C:\\proj', 'res://tools/check.gd')).toEqual([
+  it('points --script at the written bootstrap, not the EditorScript', () => {
+    expect(buildEditorScriptCommand('C:\\proj', 'C:\\tmp\\boot.gd')).toEqual([
       '--headless',
       '--editor',
       '--path',
       'C:\\proj',
       '--script',
-      'res://tools/check.gd',
+      'C:\\tmp\\boot.gd',
     ])
   })
 
   it('passes user args after --', () => {
-    expect(buildEditorScriptCommand('C:\\proj', 'res://tools/check.gd', ['--a', 'b'])).toEqual([
+    expect(buildEditorScriptCommand('C:\\proj', 'C:\\tmp\\boot.gd', ['--a', 'b'])).toEqual([
       '--headless',
       '--editor',
       '--path',
       'C:\\proj',
       '--script',
-      'res://tools/check.gd',
+      'C:\\tmp\\boot.gd',
       '--',
       '--a',
       'b',
@@ -60,16 +61,41 @@ describe('buildEditorScriptCommand', () => {
   })
 })
 
+describe('buildEditorScriptBootstrap', () => {
+  it('embeds the target path and runs its _run()', () => {
+    const source = buildEditorScriptBootstrap('res://tools/check.gd')
+    expect(source.startsWith('extends SceneTree\n')).toBe(true)
+    expect(source).toContain('var target := "res://tools/check.gd"')
+    expect(source).toContain('if instance.has_method("run"):')
+    expect(source).toContain('instance.call("_run")')
+    expect(source).toContain('\tquit(0)')
+  })
+
+  it('escapes quotes and backslashes in the embedded path', () => {
+    expect(buildEditorScriptBootstrap('res://a"b\\c.gd')).toContain('var target := "res://a\\"b\\\\c.gd"')
+  })
+})
+
 describe('tryParseJson', () => {
-  it('parses object and array JSON output', () => {
+  it('parses object and array output', () => {
     expect(tryParseJson('{"ok":true}')).toEqual({ ok: true })
     expect(tryParseJson('  [1, 2]  ')).toEqual([1, 2])
   })
 
-  it('returns undefined for non-JSON output', () => {
+  it('returns undefined for empty or non-JSON output', () => {
     expect(tryParseJson('')).toBeUndefined()
     expect(tryParseJson('hello world')).toBeUndefined()
     expect(tryParseJson('{oops')).toBeUndefined()
+  })
+
+  it('finds the JSON line past the engine banner', () => {
+    expect(tryParseJson('Godot Engine v4.7.2\n[ 0% ] scanning\n{"ok":true}\n')).toEqual({ ok: true })
+  })
+
+  it('walks back past trailing text and unparseable JSON lines', () => {
+    expect(tryParseJson('{"count":3}\ntrailing text\n')).toEqual({ count: 3 })
+    expect(tryParseJson('banner\n[1,2]\n')).toEqual([1, 2])
+    expect(tryParseJson('banner\n{broken}\n')).toBeUndefined()
   })
 })
 
@@ -79,6 +105,7 @@ describe('renderEditorScriptOutput', () => {
     script: 'res://tools/check.gd',
     exitCode: 0,
     output: '{"ok":true}',
+    stderr: '',
     ok: true,
     stdoutTruncated: false,
     stderrTruncated: false,
@@ -98,6 +125,18 @@ describe('renderEditorScriptOutput', () => {
 
   it('renders the no-output placeholder', () => {
     expect(renderEditorScriptOutput({ ...base, output: '' })).toContain('(no output)')
+  })
+
+  it('surfaces the engine stderr of a failed run', () => {
+    const text = renderEditorScriptOutput({
+      ...base,
+      ok: false,
+      exitCode: 1,
+      output: '',
+      stderr: 'ERROR: Failed to load script "res://tools/check.gd"\n',
+    })
+    expect(text).toContain('exited with code 1')
+    expect(text).toContain('stderr:\nERROR: Failed to load script')
   })
 })
 

@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-ui-godot",
-  "description": "Godot settings card for the Web Plugins configuration surface (persistent replacement for the dynamic UI plugin's settings card)",
+  "description": "Godot browser surface for the Web client: the settings card for the godot namespace and the sandbox watch panel (floating ball, live MJPEG frame, click-to-drive)",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"
@@ -29,6 +29,7 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-plugin-manager"
       ],
@@ -44,6 +45,7 @@
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-client-locale": "workspace:^",
     "@deepseek-ai/dsh-client-store": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:^",
     "@deepseek-ai/dsh-client-ui-plugin-manager": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
@@ -56,6 +58,7 @@
     "@deepseek-ai/dsh-client-locale": "workspace:^",
     "@deepseek-ai/dsh-client-store": "workspace:^",
     "@deepseek-ai/dsh-client-test-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:^",
     "@deepseek-ai/dsh-client-ui-plugin-manager": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",

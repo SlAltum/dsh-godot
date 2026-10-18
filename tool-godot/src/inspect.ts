@@ -359,7 +359,7 @@ export function applyInspectTool(ctx: Context): void {
         throw new GodotError(`cannot inspect ${target}`, 'GODOT_PARSE_ERROR', { cause: error })
       }
       let text: string
-      /* v8 ignore start -- resolveInspectTarget just stat'd the file; an
+      /* v8 ignore start -- resolveInspectTarget already stat'd the file; an
          unreadable-after-stat race cannot be driven in tests. */
       try {
         text = await readFile(resolved.path, 'utf8')

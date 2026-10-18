@@ -104,7 +104,7 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
       // evidence the engine accepted the write.
       expect(value.output.some(line => line.includes('counter=779'))).toBe(true)
       // Phase 5: the first stop expands `self`. The response className is the
-      // ENGINE class (get_class(), "Node" even for the Player script class —
+      // engine class (get_class(), "Node" even for the Player script class —
       // pinned in `.context/t5/facts.md`), so assert on the engine class and
       // the script member rows instead.
       expect(value.expandedObjects).toBeGreaterThan(0)
@@ -138,7 +138,7 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
     const prevAppData = process.env.APPDATA
     process.env.APPDATA = appdata
     // Bind-probe a free port (like pickFreePort) so the test never collides
-    // with a stale listener. NOTE: no TCP liveness probe after the tool
+    // with a stale listener. Note: no TCP liveness probe after the tool
     // binds — a probe connection gets accepted and dropped, which the
     // controller treats as a game disconnect and aborts the run.
     const port = await probeFreePort()

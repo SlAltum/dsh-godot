@@ -2,9 +2,13 @@
 
 [English](README.md) | 中文
 
-Web 插件配置界面（设置 → Plugins）中的 **Godot 设置卡片**。浏览器插件注册一个以 `godot` 为键的本地化 `settings.plugin.item` 贡献；"插件"分区拥有卡片槽位与外壳。卡片通过客户端 settings scope 读写 `godot` 设置命名空间——命名空间本身由宿主侧的 [`tool-godot`](../tool-godot/README.zh.md) 包注册，因此本包不携带任何宿主代码；当部署未组合 tool-godot 时，卡片渲染为空。
+**Godot 浏览器界面**：Godot bundle 插件页上的设置卡片，以及运行中游戏的浮动观察窗。设置卡片注册一个以 `@deepseek-ai/dsh-godot-bundle` 为键的本地化 `plugins.bundle.config` 贡献；观察窗在 `shell.overlay` 注册一个实时取帧的悬浮球。两者都只存在于浏览器半边。宿主接缝归 [`tool-godot`](../tool-godot/README.zh.md)（设置命名空间）与 [`tool-godot-ego`](../tool-godot-ego/README.zh.md)（`/api/godot` 端点）所有。本包由可选的 [`dsh-godot-bundle`](../bundle-godot/README.zh.md) 安装，不再随 `dsh-web-app` 发布；没有该 bundle 时，这个客户端半边不会加载。
 
-本包是动态 UI 插件（`docs/ui-plugin-godot.js`）所提供设置卡片的**持久化**替代品：作为部署组合中的 `dsh.client` 行，它能挺过 dsh web 进程重启，而进程内存态的动态插件做不到。动态插件的调试工具卡（键 `godot_debug` / `godot_debug_session`）不在范围内；本次只迁移设置卡片。
+源码入口：[`src/client/index.ts`](src/client/index.ts)——设置卡与观察窗注册。
+
+本包是动态 UI 插件（`docs/ui-plugin-godot.js`）所提供设置卡片的**持久化**替代品：作为 Godot bundle 的 `dsh.client` 行，它能在 dsh web 进程重启后继续存在，而进程内存态的动态插件不能。动态插件的调试工具卡（键 `godot_debug` / `godot_debug_session`）不在范围内；本次只迁移设置卡片。
+
+设置卡与观察球使用 Godot logo。随包携带的 `src/client/assets/godot-logo.svg` 是 `godot-vscode-plugin` 的 `resources/godot_icon.svg` 未修改副本；Godot logo 版权归 Godot Foundation，采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可。
 
 ## 设置
 
@@ -17,28 +21,44 @@ Web 插件配置界面（设置 → Plugins）中的 **Godot 设置卡片**。�
 | `formatBackend` | `godot_format` 后端：`gdformat` 或 `builtin`。 |
 | `timeoutMs` | 协作式工具调用预算（毫秒，仅限数字；留空使用默认值）。 |
 
-卡片暂存用户输入，仅在点击**保存**时写入；宿主是接受与否的唯一权威，未落盘的保存会保留草稿供修正。用户层携带的字段显示**已覆盖**标记与**重置**控件；清空字段后重新继承组合层。命名空间不可用时卡片渲染为空，首个分区到达前显示加载提示，只读文档下禁用全部控件。
+卡片暂存用户输入，仅在点击**保存**时写入；宿主决定是否接受，保存未落盘时卡片保留草稿供修正。用户层携带的字段显示**已覆盖**标记与**重置**控件；清空字段后重新继承组合层。命名空间不可用时卡片渲染为空，首个分区到达前显示加载提示，只读文档下禁用全部控件。
 
-## 模型体验
+## 观察窗
 
-无：卡片只编辑浏览器侧设置，不注册任何模型接口。
+悬浮球固定在界面右下角（`shell.overlay`）并始终可见，部署因此能看出沙箱已安装。圆点表示状态：灰色空闲、绿色运行中、橙色已断开、红色端点错误。点击它展开面板，显示会话 id 与状态、实时画面，以及一个可点击操作的游戏画面区。悬浮球与面板都可拖动（面板拖标题栏）；位置写入 `localStorage`，窗口缩放时收进视口，面板每次打开都会吸附到悬浮球旁边。
 
-#### KV Cache 影响
+画面来自宿主的 MJPEG 流（`/api/godot/view?session=...`，640 宽 JPEG、每 200ms 一帧；客户端背压时宿主跳过该帧）。点击画面时把显示矩形映射到会话窗口尺寸，再 POST `/api/godot/input`，因此落点与用户指向的游戏坐标一致。面板每 1.5s 轮询 `/api/godot/sessions`；该列表从不请求游戏。在 `tool-godot-ego` 挂载且 `godot_play` 启动会话之前，面板显示空闲提示，悬浮球保持灰色。
 
-无；本包既不组装也不发送提供方请求。
+`/api/godot` 端点在宿主侧受保护：回环地址与同站校验（`Sec-Fetch-Site`/`Origin`），或部署配置的固定 token。同源浏览器无需 token。
 
 ## 部署
 
-在部署组合中添加一行 `dsh.client`：
+安装可选的 [`dsh-godot-bundle`](../bundle-godot/README.zh.md)；它会连同 `tool-godot` 与 `tool-godot-ego` 一起插入 `ui-godot` 行：
+
+```bash
+dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-godot
+```
+
+自定义组合也可以直接加行：
 
 ```yaml
 - id: ui-godot
   name: '@deepseek-ai/dsh-ui-godot'
 ```
 
-需要宿主提供 `godot` 设置命名空间（由 `tool-godot` 包注册）；标签页只为宿主实际提供的命名空间分发卡片。
+设置卡渲染在 Godot bundle 的页面上。宿主必须提供 `godot` 设置命名空间（由 `tool-godot` 包注册）；卡片只为宿主实际提供的命名空间渲染。观察窗还需要宿主挂载 [`tool-godot-ego`](../tool-godot-ego/README.zh.md)（它提供 `/api/godot/*`），并要求 shell 声明 `shell.overlay`（由 `dsh-client-ui-layout` 拥有）；没有宿主插件时，悬浮球保持空闲并显示端点错误提示。安装或移除这两个包后都需要重启 dsh web，模块表才会包含它们。
+
+## 模型体验
+
+无：设置卡与观察窗只编辑浏览器侧设置、渲染宿主状态，不注册任何模型接口。
+
+#### KV Cache 影响
+
+无；本包既不组装也不发送提供方请求。
 
 ## 已知限制与暂缓事项
 
-- **仅设置卡片** —— 调试工具卡仍由动态 UI 插件（`docs/ui-plugin-godot.js`）提供；待有部署挂载 `tool-godot-debug` 后再迁移。
+- **调试工具卡仍是动态插件** —— `godot_debug` 卡片视图仍在 `docs/ui-plugin-godot.js`；待有部署挂载 `tool-godot-debug` 后再迁移。
+- **观察窗依赖宿主插件** —— 客户端始终渲染悬浮球，但画面与点击转发需要 `tool-godot-ego`；未挂载的部署显示空闲/错误状态。
+- **每个 workspace 一个预览** —— 面板显示第一个运行中的会话；宿主当前强制每 workspace 单会话。
 - **无宿主代码** —— 命名空间、其 schema 与默认值由 `tool-godot` 持有；本包无法改变宿主提供的内容。

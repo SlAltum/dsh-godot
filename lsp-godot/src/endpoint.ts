@@ -83,7 +83,7 @@ export class GodotLspEndpoint {
 
   /**
    * Establish the TCP connection. Rejects with `CONNECT_FAILED` on a socket
-   * error (e.g. connection refused) or `CONNECT_TIMEOUT` when the connect
+   * error (for example, connection refused) or `CONNECT_TIMEOUT` when the connect
    * budget elapses first.
    */
   connect(): Promise<void> {

@@ -32,7 +32,7 @@ export interface GodotDebugConfig {
   graceMs?: number
   /** Cooperative tool-call budget on `godot_debug`, enforced through `exec.signal`. */
   timeoutMs?: number
-  /** Max objects expanded via `scene:inspect_object` on the first frame-bearing
+  /** Max objects expanded through `scene:inspect_object` on the first frame-bearing
    *  stop (0 = expansion disabled). */
   maxExpandedObjects?: number
   /** Max property rows kept per expanded object. */

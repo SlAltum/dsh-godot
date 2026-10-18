@@ -35,13 +35,13 @@ export class ConnectionPool<T extends ConnectionHandle> {
 
   /**
    * Run one operation against the workspace's connection, creating it on
-   * demand (single-flight via the per-workspace serialized queue) and
+   * demand (single-flight through the per-workspace serialized queue) and
    * serializing behind prior runs of the same workspace.
    * @param workspaceKey - the canonical workspace identity.
    * @param signal - optional cancellation; aborts the queue wait and the run.
    * @param run - the operation; receives the live connection.
    * @param create - optional per-call creator that captures caller context
-   * (e.g. the canonical workspace) for connection establishment; falls back
+   * (for example, the canonical workspace) for connection establishment; falls back
    * to the pool factory when absent.
    * @returns the run's result.
    */
@@ -110,8 +110,8 @@ export class ConnectionPool<T extends ConnectionHandle> {
     const created = create === undefined ? await this.factory(workspaceKey, signal) : await create(signal)
     throwIfAborted(signal)
     /* v8 ignore start -- serialization prevents concurrent connectionFor for one key; the preference guards a future parallel factory. */
-    // Another waiter may have published a fresh connection while we built;
-    // prefer the published one and close our duplicate.
+    // Another waiter may have published a fresh connection while the connection was built;
+    // prefer the published one and close the duplicate.
     const published = this.connections.get(workspaceKey)
     if (published !== undefined && !published.dead) {
       created.close()

@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/lsp-godot/README.md
 /deepseek-ai-dsh-lsp-godot:
-  en: 8555a24f29d19938
-  zh: 098af941f3fdceba
+  en: 4944737bb64dbf45
+  zh: dabf5664dda99029
 /deepseek-ai-dsh-lsp-godot/deployment-requirement:
   en: 677641eed23d728f
-  zh: 90cc1eeb46af3b6a
+  zh: 83f006e96aaf5c6a
 /deepseek-ai-dsh-lsp-godot/settings:
   en: 996ec6f3e5530433
   zh: 5433e60afb4d1427
 /deepseek-ai-dsh-lsp-godot/config:
   en: 5e57b1fd60263ee1
-  zh: 0fba6b952e5b7e16
+  zh: 407fec99d6f0da39
 /deepseek-ai-dsh-lsp-godot/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -49,7 +49,7 @@
   zh: 67f1f0218f73c6bf
 /deepseek-ai-dsh-lsp-godot/model-experience/tool-errors/what-the-model-sees:
   en: 2fbb96686faf9840
-  zh: 26fb590cdd162969
+  zh: 2446dd0d5fe2104d
 /deepseek-ai-dsh-lsp-godot/model-experience/tool-errors/token-effect:
   en: 22595b53f2c3849d
   zh: 450c88d5cb3e05ba
@@ -58,4 +58,4 @@
   zh: 0da88836c96ef9bb
 /deepseek-ai-dsh-lsp-godot/known-limitations-and-deferred-work:
   en: 322710fa361af470
-  zh: 7566ff70161ed742
+  zh: a5bf0c5178420f52

@@ -3,20 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot-debug/README.md
 /deepseek-ai-dsh-tool-godot-debug:
-  en: 77f61cb24788ff07
-  zh: 16131f6864b49b12
+  en: b43c2a1f47604f16
+  zh: bc45cb65960906e4
 /deepseek-ai-dsh-tool-godot-debug/how-it-works:
   en: 4fddc73eb842de16
-  zh: 45973664f54fa004
+  zh: 484cc7b56327d1c6
 /deepseek-ai-dsh-tool-godot-debug/settings:
   en: c7d207a4820c9f91
   zh: 96de0915839bed96
 /deepseek-ai-dsh-tool-godot-debug/config:
-  en: 06b8cc651001e350
-  zh: 0d0cd8dd697fdd8b
+  en: d6edea4297487ccb
+  zh: 5cba1da0684488eb
 /deepseek-ai-dsh-tool-godot-debug/tool:
-  en: ab2bc769d8a7032e
-  zh: 5430bb6aef25a732
+  en: 876993ddf4d48a83
+  zh: 5eee065bca53bbe8
+/deepseek-ai-dsh-tool-godot-debug/tool/card-view:
+  en: 8cafc84957bff5b0
+  zh: e8983240f0b6f511
 /deepseek-ai-dsh-tool-godot-debug/errors:
   en: c44e00feada4b66b
   zh: fd61559bca2086a1
@@ -55,10 +58,7 @@
   zh: 765a7c4655654c0a
 /deepseek-ai-dsh-tool-godot-debug/model-experience/results/what-the-model-sees:
   en: f4af8271b6aadecc
-  zh: e9401cc93df411f4
-/deepseek-ai-dsh-tool-godot-debug/model-experience/results/what-the-browser-sees-structured-card-view-t20:
-  en: 8a6c21e7bc1daba2
-  zh: 2d69238b19c16ebe
+  zh: 1e6d7792577401e9
 /deepseek-ai-dsh-tool-godot-debug/model-experience/results/token-effect:
   en: 05684db39f2f4593
   zh: 215e4be7542d655a
@@ -78,5 +78,5 @@
   en: 3241295f9591f589
   zh: 0da88836c96ef9bb
 /deepseek-ai-dsh-tool-godot-debug/known-limitations-and-deferred-work:
-  en: 99d7ff1325c708fb
-  zh: 46d11199ae17cc22
+  en: 1d3e7b3e1680889c
+  zh: 837235a59b8d62ac

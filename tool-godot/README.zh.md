@@ -2,7 +2,9 @@
 
 [English](README.md) | 中文
 
-**面向模型的 Godot 项目工具**——`godot_validate`、`godot_run_scene`、`godot_format`、`godot_inspect`、`godot_editor_script`——由**宿主机安装的 godot 与 gdformat 可执行文件**支撑，通过 `ctx.subprocess` seam 以纯 argv 向量拉起（无 shell 层，因此不存在引号转义）。与打包 ripgrep 的搜索套件不同，本包不随附任何二进制：注册是无条件的，可执行文件缺失会在调用时以结构化 `GODOT_UNAVAILABLE` / `GODOT_FORMAT_UNAVAILABLE` 错误呈现，绝不会在加载时失败。包注入 `tools`、`systemPrompt` 与 `subprocess`——刻意**不**注入 `fs`；只有 `godot_inspect`（纯解析 Godot 文本格式）与 `godot_format`（临时副本，绝不触碰用户文件）通过普通 `node:fs` 接触文件系统。
+**面向模型的 Godot 项目工具**——`godot_validate`、`godot_run_scene`、`godot_format`、`godot_inspect`、`godot_editor_script`——由**宿主机安装的 godot 与 gdformat 可执行文件**支撑。它们通过 `ctx.subprocess` 接缝以纯 `argv` 参数启动，没有 shell 层，因此不存在引号转义。与打包 ripgrep 的搜索套件不同，本包不随附任何二进制：注册是无条件的；可执行文件缺失时，调用会返回结构化 `GODOT_UNAVAILABLE` / `GODOT_FORMAT_UNAVAILABLE` 错误，绝不会在加载时失败。包注入 `tools`、`systemPrompt` 与 `subprocess`——刻意**不**注入 `fs`；只有 `godot_inspect`（纯解析 Godot 文本格式）与 `godot_format`（临时副本，绝不触碰用户文件）通过普通 `node:fs` 接触文件系统。
+
+源码入口：[`src/index.ts`](src/index.ts)——插件注册、配置与 `godot` 设置命名空间。
 
 ```ts ignore-check
 // A deployment points at its godot install; the defaults resolve `godot` and
@@ -11,15 +13,15 @@ await ctx.plugin(LocalSubprocessRuntime)                       // @deepseek-ai/d
 await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 ```
 
-为什么走子进程：Godot 校验与无头运行天然是 CLI 工作流，且不存在可供 harness 绑定的稳定进程内 Godot API。子进程 seam 负责 spawn 执行、进程树终止、环境清理与有界输出捕获；本包负责 schema、参数校验、argv 构造、诊断解析、结果保留与超时声明。工具绝不暴露后台任务——调用只有在进程退出、被协作超时终止、被取消或失败后才返回。
+为什么使用子进程：Godot 校验与无头运行天然是 CLI 工作流，且不存在可供 harness 绑定的稳定进程内 Godot API。子进程接缝负责 spawn 执行、进程树终止、环境清理与有界输出捕获；本包负责 schema、参数校验、argv 构造、诊断解析、结果保留与超时声明。工具绝不暴露后台任务——进程退出、协作超时、调用方取消或失败都会结束调用。
 
-## 部署要求：宿主机 godot 与（可选）gdformat
+## 部署要求：宿主上的 godot 与可选的 gdformat
 
-工具需要 godot 可执行文件（任意 4.x 构建，必须支持 `--headless`）。`godot_format` 默认运行 [gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit) 的 `gdformat`，或使用 **builtin 后端**（`formatBackend: 'builtin'`）——内嵌的 TextMate 格式化器（移植自 godot-vscode-plugin），无需 Python。两者通过 `executable` / `gdformatExecutable` 配置解析，可以是完整路径或 PATH 命令名。返回的路径相对已解析的工作目录（调用方 agent 的会话 cwd，缺省为 `process.cwd()`）显示，仅当该工作目录与文件系统根指向同一工作区时才能被 `read` 继续读取——与搜索套件记录的共置要求一致。
+工具需要 godot 可执行文件（任意 4.x 构建，必须支持 `--headless`）。`godot_format` 默认运行 [gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit) 的 `gdformat`，或使用 **builtin 后端**（`formatBackend: 'builtin'`）——内嵌的 TextMate 格式化器（移植自 godot-vscode-plugin），无需 Python。两者通过 `executable` / `gdformatExecutable` 配置解析，可以是完整路径或 PATH 命令名。返回的路径按已解析的工作目录显示（调用方 agent 的会话 cwd，缺省为 `process.cwd()`），仅当该工作目录与文件系统根指向同一工作区时，`read` 才能继续读取——与搜索套件记录的共置要求一致。
 
-## 设置（Settings）
+## 设置
 
-本包注册 `godot` settings 命名空间（`GODOT_SETTINGS_NAMESPACE`），Web UI 的插件配置区以 Godot 卡片呈现。`executable` 与 `gdformatExecutable` 可在其中编辑；保存的值对**下一次工具调用**即生效——权威配置（设置层覆盖组合条目）在每次执行时重新读取，无需重载。清空字段会重新继承组合条目。其余上限按设计留在组合层：已注册工具的超时声明无法按调用重读。
+本包注册 `godot` settings 命名空间（`GODOT_SETTINGS_NAMESPACE`），在 Web UI 的插件配置区显示为 Godot 卡片。`executable` 与 `gdformatExecutable` 可在其中编辑；保存的值对**下一次工具调用**即生效——每次执行时重新读取权威配置（设置层覆盖组合条目），无需重载。清空字段会重新继承组合条目。其余上限按设计留在组合层：工具注册时声明的超时无法按调用重新读取。
 
 ## 配置
 
@@ -45,15 +47,15 @@ await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
-| `godot_validate` | `path?`、`mode?`（默认 `project`，可 `file`） | `project` 运行 `godot --headless --editor --path <root> --quit`（导入资源并解析全部脚本）；`file` 运行 `godot --headless --check-only --script <file> --path <root>`。把 `ERROR:` / `SCRIPT ERROR:` / `WARNING:` 行及其 `at:` 位置解析为结构化 issue（`res://` 路径按项目相对显示）。存在任何 error 类 issue 或非零/被杀退出时 `ok` 为 false。 |
+| `godot_validate` | `path?`、`mode?`（默认 `project`，可 `file`） | `project` 先运行 `godot --headless --editor --path <root> --quit`（导入资源并暴露场景/资源错误），再运行一个生成的 `SceneTree` 扫描脚本加载 `res://` 下所有 `.gd`，因此也能捕获脚本语法错误；`file` 运行 `godot --headless --check-only --script <file> --path <root>`。把 `ERROR:` / `SCRIPT ERROR:` / `WARNING:` 行及其 `at:` 位置（`<path>:<line>[:<column>]` 或 `<function> (<path>:<line>[:<column>])`）解析为结构化 issue（`res://` 路径按项目相对显示）。存在任何 error 类 issue 或非零退出/信号终止时 `ok` 为 false；失败且未解析出任何 issue 的运行会以其引擎输出尾部作为 `diagnostics` 返回。 |
 | `godot_run_scene` | `scene`、`path?`、`frames?`、`args?` | 运行 `godot --headless --path <root> [--quit-after <frames>] <scene> [-- <args>]` 并返回捕获的输出。非零退出或信号杀死是领域结果（`ok: false`），不是错误。 |
 | `godot_format` | `file` | 格式化 `.gd` 文件并返回 `{ file, formatted, original, changed }`；绝不写入用户文件，因此模型用 `write`/`edit` 应用变更并受文件策略约束。`gdformat` 后端在**临时副本**上运行（gdformat 拒绝文件语法为 `GODOT_PARSE_ERROR`；格式化器崩溃或缺模块为 `GODOT_FORMAT_UNAVAILABLE`）；`builtin` 后端进程内格式化，无需 Python。 |
 | `godot_inspect` | `path` | 纯解析 Godot 文本格式：项目根得到名称/主场景/autoload/章节；`.tscn` 得到 format/uid/ext_resources/节点；`.tres` 得到章节/ext_resources。不启动任何 godot 子进程。 |
-| `godot_editor_script` | `script`（`res://`）、`path?`、`args?` | 运行 `godot --headless --editor --path <root> --script <script> [-- <args>]` 并返回 stdout，脚本输出 JSON 时按 JSON 解析。这是需要编辑器访问的项目专属检查（场景图审计、自定义校验、快照导出）的逃生口；脚本是项目代码，拥有完整编辑器访问权（属于用户自己的信任边界）。非零退出是领域结果。 |
+| `godot_editor_script` | `script`（`res://`）、`path?`、`args?` | 在项目之外写入一个生成的 `SceneTree` 引导脚本并运行 `godot --headless --editor --path <root> --script <bootstrap> [-- <args>]`；引导脚本加载 `res://` EditorScript、在编辑器上下文中实例化它并调用其 `_run()`。Godot 的 `--script` 只接受 `SceneTree`/`MainLoop` 脚本，这正是 EditorScript 不能直接传入的原因。返回 stdout 与 stderr，脚本输出 JSON 时按 JSON 解析 stdout。这是需要编辑器访问的项目专属检查（场景图审计、自定义校验、快照导出）的逃生口；脚本是项目代码，拥有完整编辑器访问权（属于用户自己的信任边界）。非零退出是领域结果。 |
 
 ## 执行设计
 
-每次运行都是经由 `ctx.subprocess` 的普通前台 spawn，工作目录为会话 cwd，`exec.signal` 被透传，协作超时与调用方取消会终止进程树。捕获输出由 `stdoutMaxBytes`/`stderrMaxBytes` 限制；截断会在结果中报告（绝不会从模型视野中静默丢失）。退出语义归工具所有：非零退出与信号杀死是 `ok: false` 的领域结果——只有启动/基础设施失败（`GODOT_UNAVAILABLE`、`GODOT_FORMAT_UNAVAILABLE`）、不可读/不可解析的输入（`GODOT_PARSE_ERROR`）与取消（`GODOT_ABORTED`）才是类型化失败。无头 godot 运行会写 `.godot/` 导入产物；这是 Godot 的预期行为，已在系统提示指引中声明。
+每次运行都是通过 `ctx.subprocess` 的普通前台 spawn，工作目录为会话 cwd，`exec.signal` 会透传给子进程，协作超时与调用方取消会终止进程树。捕获输出由 `stdoutMaxBytes`/`stderrMaxBytes` 限制；截断会在结果中报告（绝不会从模型视野中静默丢失）。退出语义归工具所有：非零退出与信号杀死是 `ok: false` 的领域结果——只有启动/基础设施失败（`GODOT_UNAVAILABLE`、`GODOT_FORMAT_UNAVAILABLE`）、不可读/不可解析的输入（`GODOT_PARSE_ERROR`）与取消（`GODOT_ABORTED`）才是类型化失败。无头 godot 运行会写 `.godot/` 导入产物；这是 Godot 的预期行为，已在系统提示指引中声明。`godot_validate` 的 project 模式与 `godot_editor_script` 生成的引导脚本写到系统临时目录，绝不写入用户项目。
 
 ## 错误
 
@@ -125,11 +127,11 @@ Use godot_validate after editing GDScript to get structured parse errors, godot_
 
 ## 已知限制与延后工作
 
-- **godot 是宿主机安装；gdformat 仅默认后端需要**——包不随附二进制；可执行文件缺失会在调用时（`GODOT_UNAVAILABLE` / `GODOT_FORMAT_UNAVAILABLE`）失败，绝不会在加载时失败。`builtin` 后端（`formatBackend: 'builtin'`）既不需要 gdformat 也不需要 Python——只需内嵌 TextMate 语法与其依赖自带的 `vscode-oniguruma` WASM。
+- **godot 由宿主安装；gdformat 仅默认后端需要**——包不随附二进制；可执行文件缺失会在调用时（`GODOT_UNAVAILABLE` / `GODOT_FORMAT_UNAVAILABLE`）失败，绝不会在加载时失败。`builtin` 后端（`formatBackend: 'builtin'`）既不需要 gdformat 也不需要 Python——只需内嵌 TextMate 语法与其依赖自带的 `vscode-oniguruma` WASM。
 - **builtin 格式化器遵循 godot-vscode-plugin 规则而非 gdformat 的**——其空白决策（参数列表、空行上限、注释间距）由迁移的 snapshot 套件锁定；切换后端会改变同一文件的输出。`gdformat` 仍是默认，以保持 gdtoolkit 一致性。
 - **godot_format 按设计只读**——它返回文本；模型必须用 `write`/`edit` 应用变更，使文件策略生效。超大文件的 diff 卡片元数据每侧上限 64 KiB（规范结果仍携带完整文本）。
-- **首次导入延迟**——`godot_validate` 的 project 模式会启动无头编辑器，首次运行导入资源；大型项目可能需要调大默认 60 秒协作超时（配置 `timeoutMs`）。
+- **project 模式校验会跑两次引擎**——编辑器导入阶段会启动无头编辑器（首次资源导入是慢的部分），GDScript 扫描阶段会再次启动它，因此大型项目可能需要调大默认 60 秒协作超时（配置 `timeoutMs`）。扫描会丢弃 godot 自身的 `leaked at exit` 收尾噪声——即使项目干净，`--script` 退出路径也会打印它们。
 - **godot_editor_script 运行项目代码**——脚本在用户项目内以完整编辑器访问权执行；属于用户自己的信任边界，已在工具描述中声明。
 - **无头运行写项目缓存**——validate/run/editor_script 会写 `.godot/` 导入产物；这是 Godot 的预期行为，已在系统提示指引中声明。
 - **Godot 4.4+ 内置格式化器无稳定 CLI**——`gdformat` 后端依赖 gdtoolkit；builtin 后端内嵌 godot-vscode-plugin 的格式化器。编辑器内置格式化器不在范围内。
-- **语义导航在 `lsp-godot` 中**——DSH `ctx.lsp` seam 针对 Godot TCP 语言服务器的四个导航操作由同级包 [`lsp-godot`](../lsp-godot/README.zh.md) 提供（attach 已运行的编辑器或自起 headless 编辑器）；本包只覆盖 headless CLI 工作流。
+- **语义导航在 `lsp-godot` 中**——DSH `ctx.lsp` 接缝针对 Godot TCP 语言服务器的四个导航操作由同级包 [`lsp-godot`](../lsp-godot/README.zh.md) 提供（attach 已运行的编辑器或自起无头编辑器）；本包只覆盖无头 CLI 工作流。

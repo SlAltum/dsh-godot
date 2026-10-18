@@ -1,0 +1,24 @@
+# The Godot capability bundle: one optional install for the whole family. It is
+# deliberately absent from dsh-base and dsh-web-app — a profile adds this bundle
+# only when a project uses Godot, and removing it withdraws every Godot tool,
+# the LSP provider, the debugger, the sandbox, and the browser surface together.
+#
+# Rows carry no deployment-specific paths: the executable fields stay at their
+# `godot` defaults, and a profile overrides them when the binary is elsewhere.
+- insert:
+    - id: tool-godot
+      name: '@deepseek-ai/dsh-tool-godot'
+
+    - id: lsp-godot
+      name: '@deepseek-ai/dsh-lsp-godot'
+
+    - id: tool-godot-debug
+      name: '@deepseek-ai/dsh-tool-godot-debug'
+
+    - id: tool-godot-ego
+      name: '@deepseek-ai/dsh-tool-godot-ego'
+
+    # The browser half: settings card on this bundle's page and the sandbox
+    # watch panel. The module loader scans this row's package for `dsh.client`.
+    - id: ui-godot
+      name: '@deepseek-ai/dsh-ui-godot'

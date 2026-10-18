@@ -62,7 +62,9 @@ export interface DebugSessionService {
     | { error: 'unknown-session' }
 }
 
-/** Create the single-session manager. */
+/** Create the single-session manager.
+ * @param options - the session bounds and factory.
+ * @returns the single-session manager. */
 export function createDebugSessionService(options: DebugSessionServiceOptions): DebugSessionService {
   let current: DebugSession | undefined
 

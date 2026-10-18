@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot/README.md
 /deepseek-ai-dsh-tool-godot:
-  en: 41dd4358e1e34fe7
-  zh: 43220105d1cedd09
+  en: 5ae8930dc4efdffb
+  zh: 77cea68076b76c08
 /deepseek-ai-dsh-tool-godot/deployment-requirement-host-godot-and-optionally-gdformat:
   en: 81a0cba2a6ca666e
-  zh: f0cfc90400cfcec1
+  zh: 1fef44d96148fe1e
 /deepseek-ai-dsh-tool-godot/settings:
   en: bd7b3d4263ae6785
-  zh: cb56e993bb739c45
+  zh: b2ff7d3d3dd7f4d5
 /deepseek-ai-dsh-tool-godot/config:
   en: 764436437b52021e
   zh: 4838df5af01a9351
 /deepseek-ai-dsh-tool-godot/tools:
-  en: 27a26e054c540e44
-  zh: 4b844dad693ea4e3
+  en: be009c763762132c
+  zh: 06678c58ce8b45c9
 /deepseek-ai-dsh-tool-godot/execution-design:
-  en: 4e96d82720ce30e0
-  zh: 4d9b58deb080b4de
+  en: 165b11f230223b48
+  zh: e196546086215bab
 /deepseek-ai-dsh-tool-godot/errors:
   en: eccdbf3a1a58e1ff
   zh: 9db46cc58fce29fe
@@ -78,5 +78,5 @@
   en: f5d5f97a153f7c70
   zh: 691124d181767c5e
 /deepseek-ai-dsh-tool-godot/known-limitations-and-deferred-work:
-  en: 058ce410f6d3f7f2
-  zh: fc405f26d1f8668c
+  en: ad2cbb6cc1d52396
+  zh: a4a9194751a71375

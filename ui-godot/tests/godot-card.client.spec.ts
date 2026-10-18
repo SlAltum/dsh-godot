@@ -90,6 +90,23 @@ describe('GodotCardController', () => {
     controller.dispose()
   })
 
+  it('accepts a listed format backend edit', async () => {
+    const host = stubConfigForm<GodotSettings>()
+    acceptWrites(host)
+    const controller = new GodotCardController(host.scope)
+    host.publish({ status: 'ready', writable: true, value: { formatBackend: 'gdformat' }, base: {}, user: {} })
+    const face = controller.inject()
+
+    face.edit('formatBackend', 'builtin')
+
+    expect(face.hooks.godotCard.getSnapshot().formatBackend).toMatchObject({ text: 'builtin', invalid: false })
+    expect(face.hooks.godotCard.getSnapshot().dirty).toBe(true)
+    face.save()
+    await vi.waitFor(() => { expect(host.mutate).toHaveBeenCalled() })
+
+    controller.dispose()
+  })
+
   it('falls back to the first listed backend when the section carries an unknown one', () => {
     const host = stubConfigForm<GodotSettings>()
     const controller = new GodotCardController(host.scope)

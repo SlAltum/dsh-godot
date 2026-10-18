@@ -13,8 +13,10 @@
  * @module @deepseek-ai/dsh-tool-godot/godot-core
  */
 
-import { readdir, stat } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -279,6 +281,32 @@ export async function runGodot(
     stdoutTruncated: stdout.lossy,
     stderrTruncated: stderr.lossy,
     workdir,
+  }
+}
+
+/**
+ * Write `source` to a fresh temporary `.gd` file, hand its absolute path to
+ * `run`, and remove the file afterwards.
+ *
+ * Bootstrap scripts deliberately live OUTSIDE the project: the tool layer must
+ * never add files to the user's project, and Godot's `--script` accepts an
+ * absolute filesystem path for exactly this case (see the command line
+ * tutorial's "Running a script"). The name carries the process id and a UUID so
+ * concurrent tool calls never share one script.
+ *
+ * @param source - the complete GDScript source to write.
+ * @param run - the callback that runs godot against the written path.
+ * @returns the callback's result.
+ */
+export async function withTempGdScript<T>(source: string, run: (path: string) => Promise<T>): Promise<T> {
+  const file = join(tmpdir(), `dsh-godot-bootstrap-${process.pid}-${randomUUID()}.gd`)
+  await writeFile(file, source, 'utf8')
+  try {
+    return await run(file)
+  } finally {
+    /* v8 ignore start -- rm(force: true) cannot reject for a missing temp file; the guard is defensive. */
+    await rm(file, { force: true }).catch(() => {})
+    /* v8 ignore stop */
   }
 }
 

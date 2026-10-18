@@ -3,20 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/ui-godot/README.md
 /deepseek-ai-dsh-ui-godot:
-  en: ccf1f7c23c4027de
-  zh: 86a48d3b9a3d35eb
+  en: a6633a7b311f3a99
+  zh: d432a98e88e1eea8
 /deepseek-ai-dsh-ui-godot/settings:
   en: cf3443ee265968f3
-  zh: 91efaba54252e6f1
+  zh: b8fd90db8b487a5d
+/deepseek-ai-dsh-ui-godot/watch-panel:
+  en: ba0ce9a364086ac9
+  zh: c575c53e1c1903a9
+/deepseek-ai-dsh-ui-godot/deployment:
+  en: b0cdfd6fe20245bc
+  zh: 6c9e9e4adbddcac1
 /deepseek-ai-dsh-ui-godot/model-experience:
-  en: 3a5576b9e3a5605b
-  zh: 442541700a0abe62
+  en: c89c265f10809150
+  zh: ff2e3bdb30642240
 /deepseek-ai-dsh-ui-godot/model-experience/kv-cache-effect:
   en: ca75c51c89c2c9b0
   zh: f57cc48a1b5cbfa9
-/deepseek-ai-dsh-ui-godot/deployment:
-  en: 4bea46858382c760
-  zh: 5fa6ee6713f8ac9b
 /deepseek-ai-dsh-ui-godot/known-limitations-and-deferred-work:
-  en: 3237423a0abed55f
-  zh: ba0dcc2704e8f5ac
+  en: 1c2ddbceb739e84b
+  zh: 9890117c5064ee37

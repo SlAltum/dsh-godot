@@ -3,7 +3,7 @@
  * the tool applies model-specified `scene:set_object_property` edits and
  * verifies each one by re-inspecting the target object. Since Phase 12 the
  * `property` parameter accepts a NESTED PATH (`arr[0]`, `dict["k"]`,
- * `arr[0].x`, `arr[0][1]`), not just a plain property name:
+ * `arr[0].x`, `arr[0][1]`), not only a plain property name:
  *
  * - A path ending in a plain property edits that property on the resolved
  *   object (top-level object, or any nested object reached through container
@@ -42,7 +42,7 @@ export type EditValueType = 'int' | 'float' | 'string' | 'bool'
 
 /** One requested edit: a variable/object target, a property path, and a value. */
 export interface EditRequest {
-  /** The top-level variable name to edit (locals/members/globals, e.g. `self`, `player`). */
+  /** The top-level variable name to edit (locals/members/globals, for example, `self` or `player`). */
   target: string
   /** The property name or a nested path: `health`, `arr[0]`, `dict["k"]`,
    *  `arr[0].x`, `arr[0][1]` — container members are written by rebuilding
@@ -62,7 +62,7 @@ export interface EditResult {
   requested: number | string | boolean | bigint
   type: EditValueType
   ok: boolean
-  /** Why the edit failed, when `ok` is false (e.g. `value unchanged`, `property not found`). */
+  /** Why the edit failed, when `ok` is false (for example, `value unchanged` or `property not found`). */
   detail?: string
 }
 
@@ -131,7 +131,7 @@ export function parseEditPath(property: string): EditPathSegment[] | null {
  * parse rules are the model-facing contract; the verify catches the
  * difference. Engine int slots are 64-bit: an int beyond the int32 range
  * parses to a BIGINT so the encoder's INT64 path carries it (a plain number
- * would be written as INT32 and sign-wrap, e.g. 3000000000 → negative).
+ * would be written as INT32 and sign-wrap, for example, 3000000000 → negative).
  * @param type - the declared value type (`'string'` when omitted).
  * @param raw - the raw string input.
  * @returns the parsed value, or null when unparseable.
@@ -169,7 +169,7 @@ export function parseEditValue(type: EditValueType | undefined, raw: string): nu
 
 /**
  * Find the target object's id in one stop's raw vars, or resolve an explicit
- * `node:<id>` reference (T15 — scene-tree node ids live in the SAME id space
+ * `node:<id>` reference (T15 — scene-tree node ids live in the same id space
  * as stack variables, pinned T7.0 fact 8, so a tree node can be edited
  * directly by its rendered id). Only `ObjectId` values are editable (pinned
  * T6.0 fact 10: scalar variables carry no object id and the engine has no
@@ -649,7 +649,7 @@ async function applyPropertyEdit(
 ): Promise<void> {
   controller.send('scene:set_object_property', [resolved.id, resolved.name, parsed])
   // Verify by re-inspecting the object (no ack exists, T6.0 fact 1): the
-  // engine answers nothing for set, so we must actively re-request.
+  // engine answers nothing for set, so the tool must actively re-request.
   controller.send('scene:inspect_object', [resolved.id])
   const resp = await controller.waitForMessage(
     m => m[0] === 'scene:inspect_object' && normalizeVerifyId(Array.isArray(m[2]) ? m[2][0] : null) === resolved.id,

@@ -29,7 +29,7 @@ export interface GodotLspConfig {
   spawnExecutable?: string
   /** Extra argv inserted after the executable. */
   spawnArgs?: string[]
-  /** Spawn LSP port; 0 = provider picks a free port via bind-probe. */
+  /** Spawn LSP port; 0 = provider picks a free port through a bind probe. */
   spawnPort?: number
   /** Budget for a spawned editor's LSP port to accept connections (cold start + first import). */
   spawnReadyTimeoutMs?: number

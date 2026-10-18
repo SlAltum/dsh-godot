@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 The **Godot GDScript language-server provider** for the LSP capability seam (`ctx.lsp`). One plugin registers the `godot` provider (`.gd` → `gdscript`) so the model-facing `lsp` tool serves `goToDefinition`, `findReferences`, and `hover` against Godot's built-in TCP language server — attached to a running editor (`127.0.0.1:6005` by default) or spawned as a headless editor (`godot --path <dir> --editor --headless --no-window --lsp-port <p>`). `goToImplementation` is rejected by capability negotiation because Godot never advertises it (T0 facts recorded from Godot 4.7).
 
+Source entry: [`src/index.ts`](src/index.ts) — provider registration and connect-mode wiring.
+
 Godot-specific protocol cleaning lives here: hover markdown cleaning (leading-tab strip plus the source plugin's bbcode-residue floor) and URI normalization (`file:///D%3A/...` → `file:///D:/...`, matching the fs providers' `pathToFileURL` form). Framing, capability negotiation, and result normalization are reused from `@deepseek-ai/dsh-lsp-stdio`.
 
 ```ts ignore-check

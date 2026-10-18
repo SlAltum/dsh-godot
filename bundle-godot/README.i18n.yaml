@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/godot/bundle-godot/README.md
+/deepseek-ai-dsh-godot-bundle:
+  en: 2a3afcdd8e7f0d0b
+  zh: d40107e1473484bb
+/deepseek-ai-dsh-godot-bundle/what-it-adds:
+  en: 69b1c4c8043a339a
+  zh: de0a84388f60bbf2
+/deepseek-ai-dsh-godot-bundle/install:
+  en: 10af9aa3db3c5789
+  zh: 885554b1bb824fb7
+/deepseek-ai-dsh-godot-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-godot-bundle/model-experience/composed-godot-tools:
+  en: c71aea2b21f89c06
+  zh: b86798fac5915316
+/deepseek-ai-dsh-godot-bundle/model-experience/composed-godot-tools/what-the-model-sees:
+  en: 1440766e95702aa0
+  zh: e069ce5206514da9
+/deepseek-ai-dsh-godot-bundle/model-experience/composed-godot-tools/token-effect:
+  en: 214a485630d4b929
+  zh: 88fc12d84027ca7f
+/deepseek-ai-dsh-godot-bundle/model-experience/composed-godot-tools/kv-cache-effect:
+  en: a7f612a53eb5c07f
+  zh: 3a22af1c1281e060
+/deepseek-ai-dsh-godot-bundle/known-limitations-and-deferred-work:
+  en: e4d98239b75c4da4
+  zh: 9601022ae02f7b02

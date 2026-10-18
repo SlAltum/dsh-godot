@@ -46,7 +46,7 @@ export function parseRunSceneArgs(args: { scene: string; path?: string; frames?:
 /**
  * Build the godot argv for one scene run: `--headless --path <root>`, an
  * optional `--quit-after <frames>`, the scene, then the user args after `--`
- * (readable via `OS.get_cmdline_user_args()`). Every model-controlled value
+ * (readable through `OS.get_cmdline_user_args()`). Every model-controlled value
  * is a plain argv element.
  *
  * @param root - the resolved project root.
@@ -129,7 +129,7 @@ export function applyRunSceneTool(ctx: Context, caps: () => ResolvedCaps): void 
     name: 'godot_run_scene',
     description:
       'Run a Godot scene headless with the configured godot executable and return the captured output. '
-      + 'frames quits after that many rendered frames (no explicit quit otherwise); args are passed after -- and readable via OS.get_cmdline_user_args(). '
+      + 'frames quits after that many rendered frames (no explicit quit otherwise); args are passed after -- and readable through OS.get_cmdline_user_args(). '
       + 'A non-zero exit is reported in the result, not as an error. Requires a godot executable configured or on PATH.',
     parameters: {
       scene: {

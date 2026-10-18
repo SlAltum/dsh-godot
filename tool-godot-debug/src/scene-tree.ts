@@ -3,7 +3,7 @@
  * flat recursive array into a node tree and renders it into model-facing
  * lines. Protocol facts pinned in `.context/t7/facts.md`: params are
  * `[childCount, name, className, id, sceneFilePath, viewFlags, ...children
- * recursive]`; ids are non-negative INT64 bigints in the SAME id space as
+ * recursive]`; ids are non-negative INT64 bigints in the same id space as
  * `scene:inspect_object` (tree node ids can be inspected); className is the
  * engine class for engine nodes and the script path (`res://main.gd`) for
  * script nodes; viewFlags (0/14) carry no display meaning and are dropped; a
@@ -99,7 +99,7 @@ export function parseSceneTree(params: unknown, maxNodes: number): SceneTreePars
  * [Window]` is skipped); the FIRST node matching the name chain wins
  * (duplicate names are documented as first-match).
  * @param root - the parsed tree root (may be null).
- * @param paths - the requested paths (e.g. `Main`, `Main/Player`).
+ * @param paths - the requested paths (for example, `Main`, `Main/Player`).
  * @returns the resolved `{ path, id }` pairs, in request order; unresolvable
  *  paths are omitted (the caller treats them like a skipped object).
  */

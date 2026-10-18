@@ -1,6 +1,6 @@
 /* oxlint-disable sonarjs/no-identical-functions -- protocol value classes
    project their own fields into sub_values; the identical bodies are the
-   natural result of the Godot value shapes (e.g. Basis and Vector3 both have
+   natural result of the Godot value shapes (for example, Basis and Vector3 both have
    x/y/z members), not duplicated logic to extract. */
 /**
  * The Godot variant type system: type codes, encoding flags, the buffer

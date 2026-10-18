@@ -176,7 +176,7 @@ export class DebugController {
    * immediately when the controller already captured it.
    * @param timeoutMs - budget before the wait fails.
    * @param signal - caller cancellation; aborts the wait.
-   * @returns the thread id (also exposed via {@link threadId}).
+   * @returns the thread id (also exposed as {@link threadId}).
    */
   async waitForSetPid(timeoutMs: number, signal?: AbortSignal): Promise<number> {
     await this.waitFor(msg => msg[0] === 'set_pid', timeoutMs, signal, 'set_pid')
@@ -229,7 +229,7 @@ export class DebugController {
 
   /**
    * Wait for one complete stop snapshot: the stack dump and every
-   * `stack_frame_var` the game announces via `stack_frame_vars`. Returns the
+   * `stack_frame_var` the game announces through `stack_frame_vars`. Returns the
    * messages' `params` arrays (the dump's `[N, file, line, func, ...]` shape
    * is pinned by T3.0).
    * @param timeoutMs - budget for the whole snapshot.

@@ -3,11 +3,12 @@
 import type { ReactNode } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { GodotCardFace } from './godot-card-controller.ts'
+import godotLogo from './assets/godot-logo.svg'
 import css from './GodotCard.module.css'
 
 /** Props the renderer binds for the Godot card. */
 export type GodotCardProps =
-  PropsRuntime<'plugins.item'>
+  PropsRuntime<'plugins.bundle.config'>
   & PropsLocale<'settings.godot'>
   & InjectFace<GodotCardFace>
 
@@ -44,16 +45,19 @@ function Field(props: FieldProps) {
 
 /**
  * Render the Godot card.
- * @param props - locale copy, the card snapshot, and its form actions.
- * @returns the card, or nothing when the namespace is unavailable.
+ * @param props - the view the Plugins page asks for, locale copy, the card snapshot, and its form actions.
+ * @returns the one-liner in `summary` view, the form in `page` view, or nothing when the namespace is unavailable.
  */
 export function GodotCard(props: GodotCardProps) {
   const { t } = props
   const state = props.useGodotCard(snapshot => snapshot)
   // A card renders nothing while its namespace is unavailable, matching the
   // plugin-card chrome: a deployment that does not compose the owning plugin
-  // should show no trace of it.
+  // shows no trace of it.
   if (!state.available) return null
+  // The list row asks every entry for a one-liner and renders it as the row's
+  // description; answering with the form nested a second Godot card there.
+  if (props.view === 'summary') return t('description')
   const disabled = !state.writable
   const chipFor = (field: 'executable' | 'gdformatExecutable' | 'formatBackend' | 'timeoutMs') => state[field].overridden
     ? [
@@ -73,6 +77,7 @@ export function GodotCard(props: GodotCardProps) {
   return (
     <li className={css.card}>
       <div className={css.head}>
+        <img className={css.logo} src={godotLogo} alt="" draggable={false} />
         <span className={css.name}>{t('name')}</span>
         {!state.writable ? <span className={css.note}>{t('readOnly')}</span> : null}
       </div>

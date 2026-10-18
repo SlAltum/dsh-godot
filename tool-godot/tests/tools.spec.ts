@@ -52,6 +52,7 @@ async function fakeInput(input: {
   exit?: number
   gdformatOutput?: string
   delayMs?: number
+  calls?: Array<{ stdout?: string; stderr?: string; exit?: number; gdformatOutput?: string; delayMs?: number }>
 }): Promise<void> {
   await writeFile(join(dir, 'fake-godot-input.json'), JSON.stringify(input))
 }
@@ -169,6 +170,35 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
       expect(result.isError).toBe(false)
       expect(result.meta).toMatchObject({ ok: true })
       expect(text(result)).toContain('passed')
+    })
+
+    it('runs the GDScript sweep after the import pass in project mode', async () => {
+      // Invocation 1 is the editor import pass (clean), invocation 2 the sweep;
+      // the sweep's own RID-leak teardown chatter must not become an issue.
+      await fakeInput({
+        calls: [
+          {},
+          {
+            exit: 1,
+            stdout: "ERROR: 6 RID allocations of type 'Viewport' were leaked at exit.\n",
+            stderr: 'SCRIPT ERROR: Parse Error: Expected grouping expression.\n   at: GDScript::reload (res://scripts/broken.gd:4)\n',
+          },
+        ],
+      })
+      const result = await call('godot_validate', {}, agent())
+      expect(result.isError).toBe(false)
+      const output = text(result)
+      expect(output).toContain('failed (exit 1)')
+      expect(output).toContain('scripts/broken.gd:4 [error] Parse Error: Expected grouping expression.')
+      expect(output).not.toContain('leaked at exit')
+    })
+
+    it('surfaces the engine output of a failed run that parsed no issue', async () => {
+      await fakeInput({ calls: [{ exit: 3221225477, stderr: 'editor settings could not be saved\n' }, {}] })
+      const result = await call('godot_validate', {}, agent())
+      expect(result.isError).toBe(false)
+      expect(text(result)).toContain('failed (exit 3221225477)')
+      expect(text(result)).toContain('No issues reported.\neditor settings could not be saved')
     })
 
     it('validates a single file in file mode', async () => {
@@ -375,6 +405,14 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
       const result = await call('godot_editor_script', { script: 'res://tools/check.gd' }, agent())
       expect(result.isError).toBe(false)
       expect(text(result)).toContain('exited with code 4')
+    })
+
+    it('surfaces the engine stderr when the run fails', async () => {
+      await fakeInput({ exit: 1, stderr: 'ERROR: Failed to load script "res://tools/check.gd"\n' })
+      const result = await call('godot_editor_script', { script: 'res://tools/check.gd' }, agent())
+      expect(result.isError).toBe(false)
+      expect(text(result)).toContain('exited with code 1')
+      expect(text(result)).toContain('stderr:\nERROR: Failed to load script')
     })
 
     it('rejects a non-res script path', async () => {

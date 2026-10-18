@@ -65,8 +65,8 @@ export interface ExpandOptions {
   /** Caller cancellation. */
   signal: AbortSignal
   /** Explicit objects to expand FIRST (T15): scene-tree node ids (name
-   *  `node:<id>`) and scene-node paths (name = the path, e.g. `Main`) — all
-   *  in the SAME id space as stack variables (pinned T7.0 fact 8; strings
+   *  `node:<id>`) and scene-node paths (name = the path, for example, `Main`) — all
+   *  in the same id space as stack variables (pinned T7.0 fact 8; strings
    *  avoid JSON bigint precision loss). Merged with the top-level variable
    *  selection and deduplicated across all sources. */
   extraIds?: { name: string; id: bigint }[]
@@ -203,7 +203,7 @@ export function parseInspectProps(
  * top level AND nested (dedup is the caller's job, fact 2). Keys display via
  * {@link keyDisplay} (T13.0 fact 3 — StringName keys are not `[object Object]`).
  * @param value - the decoded property value.
- * @param basePath - the display path of the value (e.g. `player`, `arr`,
+ * @param basePath - the display path of the value (for example, `player`, `arr`,
  *   `dict`), extended per element/key (`arr[0]`, `dict["k"]`).
  * @returns the nested `{ path, id }` pairs, in traversal order.
  */
@@ -253,7 +253,7 @@ interface FetchedEntry {
  * disconnect/cancel semantics identical to Phase 8), retaining raw props —
  * then RENDER — index each object's `__repr__` member and render rows with
  * references to expanded objects resolved to their repr display name
- * (`Object<id>` fallback; the source plugin resolves these lazily via its
+ * (`Object<id>` fallback; the source plugin resolves these lazily through its
  * VariablesManager — the one-shot tool resolves only what it expanded, a
  * documented divergence). Runs only while the game is paused (pinned: a
  * running game answers with silence). Failure taxonomy (plan D4/D5):

@@ -196,7 +196,7 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
           for (const entry of value.expansion.entries) lines.push(...renderEntry(entry, 4))
         }
         // Phase 6: the variable edits applied on this same stop, with the
-        // per-edit outcome (verified against the engine via re-inspect).
+        // per-edit outcome (verified against the engine through a re-inspect).
         if (value.edits != null && value.edits.results.length > 0) {
           lines.push(`  edits (${value.edits.results.length}):`)
           for (const r of value.edits.results) {
@@ -293,23 +293,23 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
           + 'up to maxStops. Returns per-stop stack frames and variable values plus the game output and errors. Object variables '
           + 'are expanded in place on the first stop (properties under "expanded objects"; nested objects inside properties are '
           + 'expanded recursively, bounded by config maxExpandDepth, with location-path names like arr[0] or dict["k"] (StringName '
-          + 'dictionary keys render the &\'x\' form, e.g. dict["&\'snkey\'"]); StringNames '
+          + 'dictionary keys render the &\'x\' form, for example, dict["&\'snkey\'"]); StringNames '
           + 'render as &\'x\', arrays preview their actual values like (2) [(11, 12), (21, 22)], and an object that declares a '
-          + '__repr__ member displays it as its name — e.g. self = Thing(hero) [Node]; without one, Object<id> [engine class]). '
-          + 'Property names may carry group prefixes from the engine (e.g. Node/process_mode); edits accept the bare name, the '
+          + '__repr__ member displays it as its name — for example, self = Thing(hero) [Node]; without one, Object<id> [engine class]). '
+          + 'Property names may carry group prefixes from the engine (for example, Node/process_mode); edits accept the bare name, the '
           + 'Members/ prefix, or the displayed prefixed form. '
           + 'Variable edits (edits parameter) are applied on the first stop while paused and verified against the engine: give '
-          + 'target (a top-level variable name, e.g. self or player), property (the name shown in the expansion, Members/ prefix '
+          + 'target (a top-level variable name, for example, self or player), property (the name shown in the expansion, Members/ prefix '
           + 'optional — or a NESTED PATH like arr[0], dict["k"], arr[0].x, arr[0][1]: container members are written by rebuilding '
           + 'the whole container and fail explicitly when the container holds object references), value as a string, and type '
           + 'int|float|string|bool (default string). Only object properties and container members are editable — scalar variables '
           + 'are not. Each edit reports ok/failed. '
           + 'The scene tree (current node hierarchy, "scene tree" block under each stop) is snapshotted on every stop that has a '
           + 'stack frame; node ids are usable for future inspect linkage. '
-          + 'Tree NODE IDS and SCENE PATHS are directly usable: pass scene-tree node ids (the numbers in the tree lines) to expandNodes, '
-          + 'or scene paths (e.g. Main/Player, engine root excluded) to nodePaths — both expand on the first stop before the top-level '
+          + 'Tree node ids and scene paths are directly usable: pass scene-tree node ids (the numbers in the tree lines) to expandNodes, '
+          + 'or scene paths (for example, Main/Player, engine root excluded) to nodePaths — both expand on the first stop before the top-level '
           + 'variables. Edits accept target "node:<id>" (any scene node id) or "path:<scene path>" (resolved against the stop\'s tree, '
-          + 'e.g. path:Main/Player). Paths are the stable cross-call channel: raw ids are per-run random in launch mode. '
+          + 'for example, path:Main/Player). Paths are the stable cross-call channel: raw ids are per-run random in launch mode. '
           + 'mode=attach joins a game the user already started with --remote-debug tcp://127.0.0.1:<port>: breakpoints are sent '
           + 'dynamically after connect (the only attach source), pauseOnAttach pauses it immediately, and the game keeps running '
           + 'after detach.',
@@ -322,7 +322,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             + 'snapshots the stack and locals/members/globals at each stop (object variables are expanded on the first stop, '
             + 'bounded by config maxExpandedObjects/maxExpandedProps; nested objects inside property values are expanded '
             + 'recursively up to config maxExpandDepth, deduplicated across levels; explicit scene-tree node ids in expandNodes '
-            + 'and scene paths in nodePaths (e.g. Main/Player) expand first, deduplicated against the variables), applies variable edits on the first stop while paused '
+            + 'and scene paths in nodePaths (for example, Main/Player) expand first, deduplicated against the variables), applies variable edits on the first stop while paused '
             + '(edits: target = a top-level object variable name from the expansion, node:<id> for any scene-tree node id, or path:<scene path> resolved against the stop\'s tree; property = its property name or a NESTED PATH '
             + '(arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent '
             + 'semantics; containers holding object references fail explicitly), value as a '
@@ -340,7 +340,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             mode: {
               type: 'string',
-              description: 'launch spawns the project headless; attach joins a game the user already started with --remote-debug.',
+              description: '`launch` spawns the project headless; `attach` joins a game the user already started with --remote-debug.',
               enum: ['launch', 'attach'],
             },
             port: {
@@ -349,7 +349,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             scene: {
               type: 'string',
-              description: 'Scene to run (res:// path); omitted = the project main scene. launch only.',
+              description: 'Scene to run (`res://` path); omitted = the project main scene. Launch mode only.',
             },
             breakpoints: {
               type: 'array',
@@ -358,14 +358,14 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  file: { type: 'string', required: true, description: 'res:// path or absolute file path of a .gd script.' },
+                  file: { type: 'string', required: true, description: '`res://` path or an absolute file path of a `.gd` script.' },
                   line: { type: 'number', required: true, description: '1-based source line.' },
                 },
               },
             },
             pauseOnAttach: {
               type: 'boolean',
-              description: 'attach only: pause the game immediately once connected (break) for a "what is the game doing now" probe stop.',
+              description: 'Attach mode only: pause the game immediately once connected (break) for a "what is the game doing now" probe stop.',
             },
             expandNodes: {
               type: 'array',
@@ -374,12 +374,12 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             nodePaths: {
               type: 'array',
-              description: 'Scene-node paths (e.g. Main/Player, engine root excluded) to expand on the first stop with a stack frame, resolved against that stop\'s scene tree — the stable cross-call form (raw ids are per-run random in launch). Requires scene-tree snapshots (maxTreeNodes > 0); unresolvable paths are skipped.',
+              description: 'Scene-node paths (for example, Main/Player, engine root excluded) to expand on the first stop with a stack frame, resolved against that stop\'s scene tree — the stable cross-call form (raw ids are per-run random in launch). Requires scene-tree snapshots (maxTreeNodes > 0); unresolvable paths are skipped.',
               items: { type: 'string' },
             },
             edits: {
               type: 'array',
-              description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (e.g. self, player) from the expansion; property = the property name or a nested path (arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent semantics; containers holding object references fail explicitly); value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties and container members are editable — scalar variables are not.',
+              description: 'Variable edits applied on the first stop with a stack frame, while paused, each verified against the engine. target = a top-level object variable name (for example, self or player) from the expansion; property = the property name or a nested path (arr[0], dict["k"], arr[0].x, arr[0][1] — container members are written by rebuilding the whole container, changes_parent semantics; containers holding object references fail explicitly); value = the new value as a string; type = how to parse it (int truncates like the engine, default string). Only object properties and container members are editable — scalar variables are not.',
               items: {
                 type: 'object',
                 additionalProperties: false,
@@ -402,12 +402,12 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             args: {
               type: 'array',
-              description: 'Extra argv passed to the game after -- (e.g. --fixed-fps 60). launch only.',
+              description: 'Extra argv passed to the game after -- (for example, --fixed-fps 60). Launch mode only.',
               items: { type: 'string' },
             },
             singleThreadedScene: {
               type: 'boolean',
-              description: 'launch only: pass --single-threaded-scene to the game (engine runs its scene on the main thread only; source-plugin parity).',
+              description: 'Launch mode only: pass --single-threaded-scene to the game (the engine runs its scene on the main thread only; source-plugin parity).',
             },
           },
           timeoutMs: resolved.timeoutMs,
@@ -773,18 +773,18 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             + 'action=start returns the sessionId and a connecting state immediately (the game may connect later, within the '
             + 'idle window); action=command sends one control command (pause/continue/step/next/breakpoint/edits); '
             + 'action=stop detaches (best-effort breakpoint removal + continue). The Web panel controls the same session '
-            + 'through the session id. NOTE: a port previously used by a one-shot godot_debug attach will never reconnect '
+            + 'through the session id. Note: a port previously used by a one-shot godot_debug attach never reconnects '
             + '(Godot does not retry a failed connection) — start the game fresh on this port.',
           parameters: {
             action: {
               type: 'string',
               enum: ['start', 'stop', 'command'],
-              description: 'start (default) creates the session; command sends one control; stop detaches.',
+              description: '`start` (default) creates the session; `command` sends one control; `stop` detaches.',
             },
             mode: {
               type: 'string',
               enum: ['attach', 'launch'],
-              description: 'attach (default) joins a caller-started game on port; launch (T21.8) spawns the game (version-gated; the session terminates it on stop).',
+              description: '`attach` (default) joins a caller-started game on port; `launch` (T21.8) spawns the game (version-gated; the session terminates it on stop).',
             },
             port: {
               type: 'number',
@@ -792,7 +792,7 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             executable: {
               type: 'string',
-              description: 'launch only: the godot executable to spawn (defaults to the configured executable).',
+              description: 'Launch mode only: the godot executable to spawn (defaults to the configured executable).',
             },
             projectRoot: {
               type: 'string',
@@ -800,16 +800,16 @@ export function apply(ctx: Context, config: GodotDebugConfig): void {
             },
             scene: {
               type: 'string',
-              description: 'launch only: scene to run (res:// path); omitted = the project main scene.',
+              description: 'Launch mode only: scene to run (`res://` path); omitted = the project main scene.',
             },
             args: {
               type: 'array',
-              description: 'launch only: extra argv passed to the game after --.',
+              description: 'Launch mode only: extra argv passed to the game after --.',
               items: { type: 'string' },
             },
             singleThreadedScene: {
               type: 'boolean',
-              description: 'launch only: pass --single-threaded-scene to the game.',
+              description: 'Launch mode only: pass --single-threaded-scene to the game.',
             },
             sessionId: {
               type: 'string',

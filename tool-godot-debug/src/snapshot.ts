@@ -186,7 +186,7 @@ export function renderValue(
  * `Vector2i(11, 12)`); StringNames `&'x'`; ObjectIds resolve through repr
  * when known; primitives use the top-level rules. Nested arrays/maps keep
  * the full {@link renderValue} rules (the source plugin's preview is
- * shallow; our recursion is bounded by `maxDepth`).
+ * shallow; the recursion is bounded by `maxDepth`).
  * @param value - the array item.
  * @param depth - the current nesting depth.
  * @param options - the render bounds.

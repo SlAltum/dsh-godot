@@ -20,6 +20,11 @@
  * formatting copy — the format tool never writes the user's file, so file
  * mutations stay on the policy-enforced `write`/`edit` surface.
  *
+ * `godot_validate` (project mode) and `godot_editor_script` additionally write
+ * a generated bootstrap script to the OS temp directory — never into the
+ * user's project — because Godot's `--script` runs a `SceneTree`/`MainLoop`
+ * and accepts an absolute filesystem path.
+ *
  * @module @deepseek-ai/dsh-tool-godot
  */
 
@@ -45,9 +50,10 @@ export {
   resolveProjectRoot,
   resToRelative,
   runGodot,
+  withTempGdScript,
 } from './godot-core.ts'
 export type { GodotCaps, GodotErrorCode, GodotExecutable, GodotRun, ResolvedCaps } from './godot-core.ts'
-export { applyValidateTool, buildValidateCommand, parseGodotDiagnostics, parseValidateArgs, presentValidateCall, presentValidateResult, renderValidateOutput, stripAnsi } from './validate.ts'
+export { VALIDATE_DIAGNOSTIC_LINES, applyValidateTool, buildScriptSweepCommand, buildValidateCommand, dropTeardownNoise, failedRunExcerpt, parseGodotDiagnostics, parseValidateArgs, presentValidateCall, presentValidateResult, renderValidateOutput, stripAnsi } from './validate.ts'
 export type { GodotIssue, ValidateInput, ValidateResult } from './validate.ts'
 export { applyRunSceneTool, buildRunSceneCommand, parseRunSceneArgs, presentRunSceneCall, renderRunSceneOutput } from './run-scene.ts'
 export type { RunSceneInput, RunSceneResult } from './run-scene.ts'
@@ -55,7 +61,7 @@ export { applyInspectTool, parseAttrs, parseInspectArgs, parseProjectFile, parse
 export type { ExtResource, InspectInput, InspectResult, ProjectInfo, ResourceInfo, SceneInfo, SceneNode } from './inspect.ts'
 export { applyFormatTool, buildFormatCommand, parseFormatArgs, presentFormatCall, presentFormatResult } from './format.ts'
 export type { FormatInput, FormatResult } from './format.ts'
-export { applyEditorScriptTool, buildEditorScriptCommand, parseEditorScriptArgs, presentEditorScriptCall, renderEditorScriptOutput, tryParseJson } from './editor-script.ts'
+export { applyEditorScriptTool, buildEditorScriptBootstrap, buildEditorScriptCommand, parseEditorScriptArgs, presentEditorScriptCall, renderEditorScriptOutput, tryParseJson } from './editor-script.ts'
 export type { EditorScriptInput, EditorScriptResult } from './editor-script.ts'
 export { capUtf8, formatMeta, formatViewFromMeta, validateMeta, validateViewFromMeta } from './presentation.ts'
 export type { FormatMeta, ValidateMeta } from './presentation.ts'

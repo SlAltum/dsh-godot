@@ -3,7 +3,7 @@
  * headless-LSP version gate (Godot 4.2+ / 3.6+, source plugin's
  * verify_godot_version), `pickFreePort` pre-selects a concrete port for
  * `--lsp-port` (never port 0, plan D6), and `spawnGodotLsp` orchestrates
- * version probe → port pick → editor spawn via an injected spawner and
+ * version probe → port pick → editor spawn through an injected spawner and
  * version probe, so the orchestration is testable without a real Godot
  * binary (real process wiring lands in the plugin assembly).
  */

@@ -2,8 +2,8 @@
  * A fake Godot game for controller tests: a TCP client that connects to the
  * controller's listening port and replays the recorded byte stream. On
  * connect it sends the `connect`-triggered frames; after each decoded command
- * it sends the frames whose manifest trigger matches that command (e.g.
- * `get_stack_dump` → the stack_dump frame). `scene:inspect_object` responses
+ * it sends the frames whose manifest trigger matches that command (for
+ * example, `get_stack_dump` → the stack_dump frame). `scene:inspect_object` responses
  * are dispatched by the REQUESTED object id AND request sequence (manifest
  * triggers `inspect:<id>` for the first request of an id, `inspect:<id>:2`
  * for the second, ...) so several serial expansions and edit verifications
@@ -37,7 +37,7 @@ export class FakeGame {
     private manifest: FixtureFrame[],
   ) {}
 
-  /** Pre-select a free port the tool will bind (bind-probe, like pickFreePort). */
+  /** Pre-select a free port the tool binds (bind-probe, like pickFreePort). */
   async connectPort(): Promise<number> {
     const server = createServer()
     await new Promise<void>((resolve, reject) => {

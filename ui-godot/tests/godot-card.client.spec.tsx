@@ -39,7 +39,7 @@ function cardActions() {
   return { edit: vi.fn(), resetField: vi.fn(), save: vi.fn(), discard: vi.fn() }
 }
 
-function renderGodot(state: Partial<GodotCardState> = {}) {
+function renderGodot(state: Partial<GodotCardState> = {}, view: 'summary' | 'page' = 'page') {
   const store = createSnapshotStore<GodotCardState>({
     ...settled,
     executable: field('godot'),
@@ -49,7 +49,7 @@ function renderGodot(state: Partial<GodotCardState> = {}) {
     ...state,
   })
   const actions = cardActions()
-  const props = { ...actions, t, useGodotCard: bindSnapshotSelector(store) } as unknown as GodotCardProps
+  const props = { ...actions, t, view, useGodotCard: bindSnapshotSelector(store) } as unknown as GodotCardProps
   render(<GodotCard {...props} />)
   return actions
 }
@@ -59,6 +59,16 @@ describe('GodotCard', () => {
     renderGodot({ available: false })
 
     expect(screen.queryByText(en.name)).toBeNull()
+  })
+
+  it('answers the list row with its one-liner only', () => {
+    renderGodot({}, 'summary')
+
+    expect(screen.getByText(en.description)).toBeTruthy()
+    // The Plugins page renders this summary as the row's description: a form
+    // here would put a second Godot card inside the row.
+    expect(screen.queryByLabelText(en.executable)).toBeNull()
+    expect(screen.queryByRole('button', { name: en.save })).toBeNull()
   })
 
   it('shows a read-only note and disables its controls on a read-only document', () => {

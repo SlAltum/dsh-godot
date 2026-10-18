@@ -102,7 +102,7 @@ export interface SessionSnapshot {
   port: number
   /** Present once detached: why. */
   reason?: DetachReason
-  /** Surface detail for infrastructure failures (e.g. EADDRINUSE). */
+  /** Surface detail for infrastructure failures (for example, EADDRINUSE). */
   errorDetail?: string
   /** Present while paused: the stop's structured card view (T20). */
   pause?: DebugView
@@ -177,10 +177,12 @@ export class DebugSession {
     this.idleTimer = setInterval(() => { this.checkIdle() }, idleCheckIntervalMs)
   }
 
+  /** Current session state. */
   get state(): SessionState {
     return this.stateValue
   }
 
+  /** Whether the session has detached. */
   get detached(): boolean {
     return this.detachedValue
   }
@@ -229,7 +231,7 @@ export class DebugSession {
   }
 
   /** Launch mode (T21.8): version gate (4.2+, protocol threadId facts) then
-   *  spawn the headless game with `--remote-debug` against our bound port. */
+   *  spawn the headless game with `--remote-debug` against the bound port. */
   private async spawnGame(): Promise<void> {
     const launch = this.launch as DebugSessionLaunch
     const subprocess = this.subprocess as SubprocessLike
@@ -374,7 +376,9 @@ export class DebugSession {
   }
 
   /** Run one command. `edits` is async (set + re-inspect verification); all
-   *  other commands are synchronous send-only. */
+   *  other commands are synchronous send-only.
+   * @param request - the command to send.
+   * @returns the command outcome. */
   async command(request: SessionCommandRequest): Promise<SessionCommandResult> {
     if (this.detachedValue) return { ok: false, error: 'session-detached' }
     if (this.busyValue) return { ok: false, error: 'session-busy' }
@@ -433,7 +437,8 @@ export class DebugSession {
     }
   }
 
-  /** The pollable snapshot. */
+  /** The pollable snapshot.
+   * @returns the current session snapshot. */
   poll(): SessionSnapshot {
     return {
       sessionId: this.sessionId,
@@ -454,7 +459,8 @@ export class DebugSession {
   /** Detach: idempotent T4 teardown (best-effort breakpoint removal +
    *  continue), then abort the pause loop and dispose the controller. In
    *  launch mode (T21.8) the session OWNS the game — the process tree is
-   *  terminated too; an attached game is left running. */
+   *  terminated too; an attached game is left running.
+   * @param reason - why the session detaches. */
   detach(reason: DetachReason): void {
     if (this.detachedValue) return
     this.detachedValue = true

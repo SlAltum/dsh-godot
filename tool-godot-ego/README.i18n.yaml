@@ -1,0 +1,88 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/godot/tool-godot-ego/README.md
+/deepseek-ai-dsh-tool-godot-ego:
+  en: 57ecc2eee6f842cc
+  zh: 3006798173662dcc
+/deepseek-ai-dsh-tool-godot-ego/how-it-works:
+  en: 63216af4cab13886
+  zh: 8a90d2daa849693b
+/deepseek-ai-dsh-tool-godot-ego/host-endpoints:
+  en: c6a03c45e5d06d67
+  zh: 9e5b66a4188dd697
+/deepseek-ai-dsh-tool-godot-ego/system-boundary:
+  en: 51898964e94be71f
+  zh: 392066e71a574ae2
+/deepseek-ai-dsh-tool-godot-ego/settings:
+  en: 0551b9acbf1ad77f
+  zh: 6a23e0867e95acf3
+/deepseek-ai-dsh-tool-godot-ego/config:
+  en: b54dfc610dd1f8cf
+  zh: 2d2a4d1ec52a8fcf
+/deepseek-ai-dsh-tool-godot-ego/tools:
+  en: f0e8d9e43a476045
+  zh: 1f405810b035637a
+/deepseek-ai-dsh-tool-godot-ego/errors:
+  en: 32707c2ee1a9fb18
+  zh: ba83d6680c03f8bf
+/deepseek-ai-dsh-tool-godot-ego/testing:
+  en: 2d2c14aba68f2501
+  zh: 6183f94e8a28ae44
+/deepseek-ai-dsh-tool-godot-ego/model-experience:
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt:
+  en: cf78b9dd5596495f
+  zh: cf78b9dd5596495f
+/deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/what-the-model-sees:
+  en: 6dbcc25a512ef416
+  zh: f1760334a8e0f463
+/deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/what-the-model-sees/godot-visual-sandbox-guidance-tool-godot-ego:
+  en: 0bfb5467b9351c05
+  zh: 0bfb5467b9351c05
+/deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/token-effect:
+  en: 79ce2f6fbe781faa
+  zh: 9fad897d4aa43db3
+/deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/kv-cache-effect:
+  en: f857dfb15e1af45a
+  zh: 1c808b3a141d5ce7
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-schemas:
+  en: 3039bc5e7a796b21
+  zh: 3039bc5e7a796b21
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-schemas/what-the-model-sees:
+  en: 71e0d8edcf1b97e9
+  zh: b5d282de41cc9600
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-schemas/token-effect:
+  en: a826722f5dd4cdf9
+  zh: e74a07f2ae61c691
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-schemas/kv-cache-effect:
+  en: c8cbbef533bdb90f
+  zh: 652c6e0221c7dab7
+/deepseek-ai-dsh-tool-godot-ego/model-experience/results:
+  en: 8e1b2953471f22ba
+  zh: 8e1b2953471f22ba
+/deepseek-ai-dsh-tool-godot-ego/model-experience/results/what-the-model-sees:
+  en: f63079ea1cbce210
+  zh: c0778050cd983a6d
+/deepseek-ai-dsh-tool-godot-ego/model-experience/results/token-effect:
+  en: 4a9d484288c0f562
+  zh: 626cea88e67d0936
+/deepseek-ai-dsh-tool-godot-ego/model-experience/results/kv-cache-effect:
+  en: 6628cf2f089913c5
+  zh: e2e989b19e58b64f
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-errors:
+  en: 2d4f2c8605eccab3
+  zh: 2d4f2c8605eccab3
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-errors/what-the-model-sees:
+  en: ddba3bcc5a434e82
+  zh: 1bf9d7c7020dcde9
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-errors/token-effect:
+  en: 90283553f9e3c558
+  zh: b368b131ef7b46ae
+/deepseek-ai-dsh-tool-godot-ego/model-experience/tool-errors/kv-cache-effect:
+  en: 3241295f9591f589
+  zh: 4956fc6e16dfa507
+/deepseek-ai-dsh-tool-godot-ego/known-limitations-and-deferred-work:
+  en: 33cbef1bcb1a12d1
+  zh: 6713fa7a47c1662c

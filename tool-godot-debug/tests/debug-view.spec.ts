@@ -91,13 +91,17 @@ function input(overrides: InputOverrides = {}): StructuredDebugInput {
     outputTruncated: false,
     varsTruncated: false,
   }
-  const merged = { ...base, ...overrides } as {
-    [K in keyof StructuredDebugInput]?: StructuredDebugInput[K] | undefined
-  }
-  for (const key of ['sceneTrees', 'expansion', 'edits', 'exit'] as const) {
-    if (key in overrides && overrides[key] === undefined) delete merged[key]
-  }
-  return merged as StructuredDebugInput
+  const merged = { ...base, ...overrides } as StructuredDebugInput & InputOverrides
+  // `undefined` in an override means the carrier is ABSENT from the fixture
+  // input (not merely empty): the destructure drops it, and each carrier comes
+  // back only when it holds a value.
+  const { sceneTrees, expansion, edits, exit, ...rest } = merged
+  const result: StructuredDebugInput = { ...rest }
+  if (sceneTrees !== undefined) result.sceneTrees = sceneTrees
+  if (expansion !== undefined) result.expansion = expansion
+  if (edits !== undefined) result.edits = edits
+  if (exit !== undefined) result.exit = exit
+  return result
 }
 
 describe('structuredDebugView', () => {

@@ -163,7 +163,7 @@ export function applyFormatTool(ctx: Context, caps: () => ResolvedCaps): void {
           throw new GodotError(`gdformat rejected ${target}: ${run.stderr.trim()}`, 'GODOT_PARSE_ERROR')
         }
         let formatted: string
-        /* v8 ignore start -- the temp file was just written by this tool; an
+        /* v8 ignore start -- the temp file was written by this tool; an
            unreadable-after-write race cannot be driven in tests. */
         try {
           formatted = await readFile(tmpFile, 'utf8')

@@ -19,6 +19,7 @@ import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import Lsp from '@deepseek-ai/dsh-lsp'
 import * as TimeoutPolicy from '@deepseek-ai/dsh-tool-call-timeout-policy'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import * as GodotLsp from '../src/index.ts'
 import { Config, createConnectDeps } from '../src/index.ts'
@@ -40,7 +41,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** Mount the full tool chain with lsp-godot attached to a fake server. */
+/**
+ * Mount the full tool chain with lsp-godot attached to a fake server.
+ *
+ * `tool-lsp` runtime-injects the `workingDirectory` service (the seam that
+ * resolves one Session's effective directory), so the harness must provide it
+ * or the plugin stays pending and `lsp` is never registered. The structural
+ * Agent stub carries `session.header.cwd` and nothing else, so the testkit
+ * fixture — which reads exactly that — is the right collaborator.
+ */
 async function mount(server: FakeGodotLspServer): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
@@ -49,6 +58,7 @@ async function mount(server: FakeGodotLspServer): Promise<Context> {
   await ctx.plugin(LocalFileSystem, { cwd: process.cwd() })
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(TimeoutPolicy)
+  provideWorkingDirectoryFixture(ctx, ws)
   await ctx.plugin(GodotLsp, GodotLsp.Config({ connectMode: 'attach', ports: [server.port] }))
   await ctx.plugin(ToolLsp)
   return ctx

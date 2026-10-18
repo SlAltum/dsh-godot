@@ -242,7 +242,7 @@ describe('expandObjects', () => {
 
   it('does not consume a stale response for a different id', async () => {
     await connectGame()
-    // Prime the controller's history with a REAL self response we never wait
+    // Prime the controller's history with a REAL self response the test never waits
     // for (it would be "late" in a timeout scenario).
     controller.send('scene:inspect_object', [SELF_ID])
     await new Promise((resolve) => { setTimeout(resolve, 150) })
@@ -267,7 +267,7 @@ describe('expandObjects', () => {
   it('never requests RID values (excluded by selection)', async () => {
     await connectGame()
     // If a RID were requested, the fixture answers `inspect:94489280512`
-    // with an empty response — assert the selection simply excludes it.
+    // with an empty response — assert the selection excludes it.
     const vars: DecodedVariant[][] = [
       ['r_id', 1, 23, new RID(94489280512n), ''],
     ]

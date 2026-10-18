@@ -2,7 +2,6 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -33,10 +32,13 @@ async function bench(served?: string[]) {
 }
 
 /** The Plugins page's item slot, as its owner declares it. */
-function declareRoot(slots: SlotRegistry): () => void {
+function declareRoot(slots: SlotRegistry, overlay = false): () => void {
   return slots.register({
     name: 'root',
-    children: { 'plugins.item': { kind: 'list', scope: 'root' } },
+    children: {
+      'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
+      ...(overlay ? { 'shell.overlay': { kind: 'list', scope: 'root' } } : {}),
+    },
   } as never, () => null)
 }
 
@@ -51,10 +53,9 @@ describe('ui-godot apply', () => {
 
     await ctx.plugin({ inject: [...inject], apply }).await()
 
-    await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
-    const entry = slots.entries('plugins.item')[0]!
-    expect(entry.options).toMatchObject({ id: 'tool-godot', order: 20 })
-    expect(resolveSlotLabel(entry.options.label)).toBe('Godot')
+    await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(1) })
+    const entry = slots.entries('plugins.bundle.config')[0]!
+    expect(entry.options).toMatchObject({ key: '@deepseek-ai/dsh-godot-bundle' })
     expect(entry.locale).toBe(NS)
     const face = (entry.inject as () => Pick<GodotCardFace, 'hooks'>)()
     expect(Object.keys(face.hooks)).toEqual(['godotCard'])
@@ -66,17 +67,17 @@ describe('ui-godot apply', () => {
     declareRoot(slots)
     await ctx.plugin({ inject: [...inject], apply }).await()
     await vi.waitFor(() => { expect(describeSettings).toHaveBeenCalled() })
-    expect(slots.entries('plugins.item')).toHaveLength(0)
+    expect(slots.entries('plugins.bundle.config')).toHaveLength(0)
 
     describeSettings.mockResolvedValue({
       ok: true, value: { writable: true, hasDocument: true, namespaces: [view('tool-godot', 1)] },
     })
     remote.emit('settings/document-updated', ['tool-godot', 1])
-    await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
+    await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(1) })
 
     describeSettings.mockResolvedValue({ ok: true, value: { writable: true, hasDocument: true, namespaces: [] } })
     remote.emit('settings/document-updated', ['tool-godot', 2])
-    await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(0) })
+    await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(0) })
   })
 
   it('registers into a declaration that arrives after apply', async () => {
@@ -85,7 +86,7 @@ describe('ui-godot apply', () => {
 
     declareRoot(slots)
 
-    await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
+    await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(1) })
   })
 
   it('collapses the card on teardown', async () => {
@@ -93,10 +94,55 @@ describe('ui-godot apply', () => {
     declareRoot(slots)
     const fiber = ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
+    await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(1) })
 
     await fiber.dispose()
 
-    expect(slots.entries('plugins.item')).toHaveLength(0)
+    expect(slots.entries('plugins.bundle.config')).toHaveLength(0)
+  })
+
+  it('registers the watch panel into shell.overlay and removes it on teardown', async () => {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ sessions: [] }) }))
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const { ctx, slots } = await bench(['tool-godot'])
+      declareRoot(slots, true)
+      const fiber = ctx.plugin({ inject: [...inject], apply })
+      await fiber.await()
+      await vi.waitFor(() => { expect(slots.entries('shell.overlay')).toHaveLength(1) })
+      const entry = slots.entries('shell.overlay')[0]!
+      expect(entry.options).toMatchObject({ id: 'godot.watch', order: 40 })
+      expect(entry.locale).toBe('godot.watch')
+      const face = (entry.inject as () => { hooks: Record<string, unknown> })()
+      expect(Object.keys(face.hooks)).toEqual(['watch'])
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledWith('/api/godot/sessions', { headers: { accept: 'application/json' } }) })
+
+      await fiber.dispose()
+      expect(slots.entries('shell.overlay')).toHaveLength(0)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps the settings card when the watch panel cannot start', async () => {
+    const setIntervalStub = vi.fn(() => { throw new TypeError('Illegal invocation') })
+    vi.stubGlobal('setInterval', setIntervalStub)
+    try {
+      const { ctx, slots } = await bench(['tool-godot'])
+      declareRoot(slots, true)
+      const fiber = ctx.plugin({ inject: [...inject], apply })
+      await fiber.await()
+      await vi.waitFor(() => { expect(slots.entries('plugins.bundle.config')).toHaveLength(1) })
+      expect(slots.entries('shell.overlay')).toHaveLength(0)
+      expect(setIntervalStub).toHaveBeenCalled()
+      await fiber.dispose()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('has a no-op host entry', async () => {
+    const host = await import('../src/index.ts')
+    host.apply()
   })
 })

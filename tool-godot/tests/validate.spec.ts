@@ -1,11 +1,16 @@
 /**
  * Unit tests for `godot_validate`: argument parsing, argv construction, the
- * Godot diagnostics parser, rendering, and card presentation.
+ * Godot diagnostics parser, the failed-run excerpt, rendering, and card
+ * presentation.
  */
 
 import { describe, expect, it } from 'vitest'
 import {
+  VALIDATE_DIAGNOSTIC_LINES,
+  buildScriptSweepCommand,
   buildValidateCommand,
+  dropTeardownNoise,
+  failedRunExcerpt,
   parseGodotDiagnostics,
   parseValidateArgs,
   presentValidateCall,
@@ -13,7 +18,19 @@ import {
   renderValidateOutput,
   stripAnsi,
 } from '@deepseek-ai/dsh-tool-godot'
-import type { ValidateResult } from '@deepseek-ai/dsh-tool-godot'
+import type { GodotRun, ValidateResult } from '@deepseek-ai/dsh-tool-godot'
+
+/** One completed run with the test defaults filled in. */
+const run = (over: Partial<GodotRun>): GodotRun => ({
+  exitCode: 0,
+  signal: null,
+  stdout: '',
+  stderr: '',
+  stdoutTruncated: false,
+  stderrTruncated: false,
+  workdir: 'C:\\proj',
+  ...over,
+})
 
 describe('parseValidateArgs', () => {
   it('defaults to project mode and keeps an explicit path', () => {
@@ -43,6 +60,19 @@ describe('buildValidateCommand', () => {
   })
 })
 
+describe('buildScriptSweepCommand', () => {
+  it('runs the generated sweep under the editor against the project root', () => {
+    expect(buildScriptSweepCommand('C:\\proj', 'C:\\tmp\\sweep.gd')).toEqual([
+      '--headless',
+      '--editor',
+      '--path',
+      'C:\\proj',
+      '--script',
+      'C:\\tmp\\sweep.gd',
+    ])
+  })
+})
+
 describe('stripAnsi', () => {
   it('strips ANSI CSI sequences', () => {
     expect(stripAnsi('\u001b[31mERROR: x\u001b[0m')).toBe('ERROR: x')
@@ -62,6 +92,25 @@ describe('parseGodotDiagnostics', () => {
   it('parses an ERROR with a path:line location', () => {
     const issues = parseGodotDiagnostics('SCRIPT ERROR: Invalid access\n   at: res://scripts/main.gd:7\n')
     expect(issues).toEqual([{ kind: 'error', message: 'Invalid access', path: 'res://scripts/main.gd', line: 7 }])
+  })
+
+  it('parses the function-call location the script reload handler emits', () => {
+    const issues = parseGodotDiagnostics(
+      'SCRIPT ERROR: Parse Error: Expected grouping expression.\n   at: GDScript::reload (res://tools/broken.gd:6)\n',
+    )
+    expect(issues).toEqual([
+      { kind: 'error', message: 'Parse Error: Expected grouping expression.', path: 'res://tools/broken.gd', line: 6 },
+    ])
+  })
+
+  it('parses a column inside the function-call location', () => {
+    const issues = parseGodotDiagnostics('ERROR: Bad token\n   at: GDScript::reload (C:\\proj\\a.gd:12:5)\n')
+    expect(issues).toEqual([{ kind: 'error', message: 'Bad token', path: 'C:\\proj\\a.gd', line: 12, column: 5 }])
+  })
+
+  it('ignores an engine-internal call location that names no project resource', () => {
+    const issues = parseGodotDiagnostics('ERROR: Failed to load script\n   at: load (modules/gdscript/gdscript_resource_format.cpp:46)\n')
+    expect(issues).toEqual([{ kind: 'error', message: 'Failed to load script' }])
   })
 
   it('parses a WARNING', () => {
@@ -89,6 +138,47 @@ describe('parseGodotDiagnostics', () => {
 
   it('ignores blank and unrelated lines', () => {
     expect(parseGodotDiagnostics('\n\nGodot Engine v4.7\n\n')).toEqual([])
+  })
+})
+
+describe('dropTeardownNoise', () => {
+  it('drops godot shutdown chatter and keeps project issues', () => {
+    const issues = [
+      { kind: 'error' as const, message: "6 RID allocations of type 'Viewport' were leaked at exit." },
+      { kind: 'warning' as const, message: '209 ObjectDB instances were leaked at exit (run with --verbose for details).' },
+      { kind: 'warning' as const, message: 'Scan thread aborted...' },
+      { kind: 'error' as const, message: 'Parse Error: Expected grouping expression.', path: 'res://a.gd', line: 4 },
+    ]
+    expect(dropTeardownNoise(issues)).toEqual([{ kind: 'error', message: 'Parse Error: Expected grouping expression.', path: 'res://a.gd', line: 4 }])
+  })
+})
+
+describe('failedRunExcerpt', () => {
+  it('returns an empty string when every run succeeded', () => {
+    expect(failedRunExcerpt([run({})])).toBe('')
+  })
+
+  it('prefers the failed run stderr and drops blank lines', () => {
+    expect(failedRunExcerpt([run({}), run({ exitCode: 1, stderr: 'ERROR: boom\n\n\nERROR: second\n' })])).toBe('ERROR: boom\nERROR: second')
+  })
+
+  it('falls back to stdout when stderr is empty', () => {
+    expect(failedRunExcerpt([run({ exitCode: 2, stdout: 'crash trace\n' })])).toBe('crash trace')
+  })
+
+  it('treats a signal-killed run as failed', () => {
+    expect(failedRunExcerpt([run({ exitCode: null, signal: 'SIGKILL', stdout: 'killed\n' })])).toBe('killed')
+  })
+
+  it('returns an empty string when a failed run produced no output', () => {
+    expect(failedRunExcerpt([run({ exitCode: 2 })])).toBe('')
+  })
+
+  it('keeps only the trailing lines', () => {
+    const lines = Array.from({ length: VALIDATE_DIAGNOSTIC_LINES + 3 }, (_, index) => `ERROR: line ${index}`).join('\n')
+    const excerpt = failedRunExcerpt([run({ exitCode: 1, stderr: lines })])
+    expect(excerpt.split('\n')).toHaveLength(VALIDATE_DIAGNOSTIC_LINES)
+    expect(excerpt.startsWith('ERROR: line 3')).toBe(true)
   })
 })
 
@@ -127,6 +217,16 @@ describe('renderValidateOutput', () => {
     expect(text).toContain('scripts/main.gd:12:5 [error] Unexpected token')
     expect(text).toContain('scripts/main.gd [warning] Unused')
     expect(text).toContain('(showing the first 2 issues) (stdout truncated) (stderr truncated)')
+  })
+
+  it('appends the engine excerpt when a failed run reported nothing parseable', () => {
+    const text = renderValidateOutput({ ...base, ok: false, exitCode: 3221225477, diagnostics: 'ERROR: cannot open user://' })
+    expect(text).toContain('failed (exit 3221225477)')
+    expect(text).toContain('No issues reported.\nERROR: cannot open user://')
+  })
+
+  it('omits an empty diagnostics excerpt', () => {
+    expect(renderValidateOutput({ ...base, ok: false, diagnostics: '' }).endsWith('No issues reported.')).toBe(true)
   })
 
   it('renders a killed run', () => {

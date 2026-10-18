@@ -1,11 +1,21 @@
 /**
  * The model-facing `godot_validate` tool: validate a whole Godot project
- * (headless editor import + parse, `--editor --quit`) or one GDScript file
+ * (headless editor import + a GDScript parse sweep) or one GDScript file
  * (`--check-only --script`) and return structured parse errors. Execution
  * spawns the configured godot executable through the subprocess seam with a
  * plain argv vector; this module owns the model-facing schema, argument
  * validation, argv construction, Godot diagnostics parsing, rendering, and
  * presentation.
+ *
+ * ## Why project mode runs the engine twice
+ *
+ * The headless editor run (`--editor --quit`) imports assets and surfaces
+ * scene/resource errors, but it does NOT parse GDScript: a project holding a
+ * syntax-error script still exits 0 with an empty diagnostics stream (verified
+ * on 4.7.2, both with and without `class_name`). Project mode therefore
+ * follows it with a second run whose `--script` is a generated `SceneTree`
+ * sweep that loads every `.gd` under `res://`, so script parse errors are part
+ * of the verdict instead of silently passing.
  *
  * @module @deepseek-ai/dsh-tool-godot/validate
  */
@@ -15,13 +25,16 @@ import { resolve } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericResultView, GenericCallView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { resToRelative, resolveProjectRoot, runGodot } from './godot-core.ts'
-import type { ResolvedCaps } from './godot-core.ts'
+import { resToRelative, resolveProjectRoot, runGodot, withTempGdScript } from './godot-core.ts'
+import type { GodotRun, ResolvedCaps } from './godot-core.ts'
 import { validateMeta, validateViewFromMeta } from './presentation.ts'
 import type { ValidateMeta } from './presentation.ts'
 
 /** Default cap on issues one `godot_validate` result retains inline. */
 export const VALIDATE_MAX_ERRORS = 200
+
+/** Trailing non-empty engine lines a failed run with no parsed issue keeps. */
+export const VALIDATE_DIAGNOSTIC_LINES = 12
 
 /** One parsed Godot diagnostics line: an `ERROR:`/`SCRIPT ERROR:`/`WARNING:` and its `at:` location. */
 export type GodotIssue = {
@@ -40,8 +53,8 @@ export interface ValidateInput {
 
 /**
  * Validate value constraints the schema DSL can't express: a non-blank
- * `path` when given. Throws a plain `Error` (an ordinary tool argument
- * error) otherwise.
+ * `path` when given. Throws a plain `Error` (an ordinary tool argument error)
+ * otherwise.
  *
  * @param args - the schema-validated arguments.
  * @returns the accepted input.
@@ -54,7 +67,7 @@ export function parseValidateArgs(args: { path?: string; mode?: 'project' | 'fil
 /**
  * Build the godot argv for one validation run. `project` mode boots the
  * headless editor against the project root and quits, which imports assets
- * and parses every script; `file` mode parses one script via `--check-only`.
+ * and parses every script; `file` mode parses one script through `--check-only`.
  * Every model-controlled value is a plain argv element.
  *
  * @param mode - the validation mode.
@@ -65,6 +78,67 @@ export function parseValidateArgs(args: { path?: string; mode?: 'project' | 'fil
 export function buildValidateCommand(mode: 'project' | 'file', root: string, file: string): string[] {
   if (mode === 'file') return ['--headless', '--check-only', '--script', file, '--path', root]
   return ['--headless', '--editor', '--path', root, '--quit']
+}
+
+/**
+ * The `SceneTree` sweep project mode runs after the editor import pass. It
+ * loads every `.gd` under `res://` once so godot prints the parse diagnostics
+ * the editor run never emits, and exits non-zero when any script failed.
+ *
+ * A broken GDScript loads as an object whose instance base type is empty
+ * (that is the validity probe here; `can_instantiate()` is false even for
+ * valid scripts whose base class — `SceneTree`, for one — is not
+ * ClassDB-instantiable). Dot-directories such as `.godot` are skipped.
+ * The trailing marker line is a summary for anyone reading raw output; the
+ * tool itself consumes the engine's diagnostics stream.
+ */
+const SCRIPT_SWEEP_SOURCE = [
+  'extends SceneTree',
+  '',
+  '',
+  'func _gd_files(root: String) -> PackedStringArray:',
+  '\tvar out := PackedStringArray()',
+  '\tvar dir := DirAccess.open(root)',
+  '\tif dir == null:',
+  '\t\treturn out',
+  '\tdir.list_dir_begin()',
+  '\tvar entry := dir.get_next()',
+  '\twhile entry != "":',
+  '\t\tif not entry.begins_with("."):',
+  '\t\t\tvar full := root.path_join(entry)',
+  '\t\t\tif dir.current_is_dir():',
+  '\t\t\t\tout.append_array(_gd_files(full))',
+  '\t\t\telif entry.ends_with(".gd"):',
+  '\t\t\t\tout.append(full)',
+  '\t\tentry = dir.get_next()',
+  '\tdir.list_dir_end()',
+  '\treturn out',
+  '',
+  '',
+  'func _initialize() -> void:',
+  '\tvar files := _gd_files("res://")',
+  '\tvar failed := 0',
+  '\tfor path in files:',
+  '\t\tvar script: Script = ResourceLoader.load(path, "Script", ResourceLoader.CACHE_MODE_IGNORE)',
+  '\t\tif script == null or String(script.get_instance_base_type()) == "":',
+  '\t\t\tfailed += 1',
+  '\tprint("DSH_GODOT_SCRIPT_SWEEP ", JSON.stringify({"checked": files.size(), "failed": failed}))',
+  '\tquit(1 if failed > 0 else 0)',
+  '',
+].join('\n')
+
+/**
+ * Build the godot argv for the project-mode GDScript sweep: headless editor,
+ * project root, and `--script` pointed at the written sweep bootstrap. The
+ * editor flag keeps the parse faithful to what the editor sees (scripts
+ * referencing editor-only classes stay valid).
+ *
+ * @param root - the resolved project root.
+ * @param sweepPath - the absolute filesystem path of the sweep script.
+ * @returns the complete argv (excluding the executable itself).
+ */
+export function buildScriptSweepCommand(root: string, sweepPath: string): string[] {
+  return ['--headless', '--editor', '--path', root, '--script', sweepPath]
 }
 
 /** ANSI CSI sequences godot may emit in terminal builds (colors, cursor moves). */
@@ -82,12 +156,21 @@ export function stripAnsi(text: string): string {
 
 const ISSUE_RE = /^\s*(?:SCRIPT\s+)?(ERROR|WARNING):\s?(.*)$/
 const AT_RE = /^\s*at:\s+(.+?)(?::(\d+))(?::(\d+))?$/
+/**
+ * Godot's function-call location form, `at: <function> (<path>:<line>[:<col>])`,
+ * emitted by the script-error handler (`at: GDScript::reload (res://a.gd:6)`)
+ * and by engine-internal failures (`at: load (modules/.../x.cpp:46)`). The
+ * path must end in a Godot text-resource extension so C++ source locations
+ * never become issue locations.
+ */
+const AT_CALL_RE = /^\s*at:\s+.*?\((.+?\.(?:gd|tscn|tres|res|cs|gdshader|shader)):(\d+)(?::(\d+))?\)\s*$/
 
 /**
  * Parse Godot diagnostics from CLI output: `ERROR:` / `SCRIPT ERROR:` /
- * `WARNING:` lines, each optionally followed by an `   at: <path>:<line>`
- * (or `:line:column`) location line, with ANSI sequences stripped first.
- * An `at:` line with no pending issue is ignored.
+ * `WARNING:` lines, each optionally followed by an `at:` location line — either
+ * `<path>:<line>[:<column>]` or `<function> (<path>:<line>[:<column>])` — with
+ * ANSI sequences stripped first. An `at:` line with no pending issue is
+ * ignored.
  *
  * @param text - the raw stdout or stderr text.
  * @returns the parsed issues in output order.
@@ -104,7 +187,7 @@ export function parseGodotDiagnostics(text: string): GodotIssue[] {
       issues.push(pending)
       continue
     }
-    const at = AT_RE.exec(line)
+    const at = AT_RE.exec(line) ?? AT_CALL_RE.exec(line)
     if (at !== null && pending !== undefined && pending.path === undefined) {
       // The regex guarantees the path and line groups; only the column group
       // is optional.
@@ -119,6 +202,49 @@ export function parseGodotDiagnostics(text: string): GodotIssue[] {
   return issues
 }
 
+/**
+ * Engine teardown chatter a `--script` run prints as it exits: quitting the
+ * editor's SceneTree early leaves the editor's own resources allocated, so
+ * godot reports them as `... leaked at exit` — as `ERROR:` lines that describe
+ * the engine's shutdown, never the user's project. Only the sweep run drops
+ * them; the editor import pass does not emit them and file mode stays
+ * faithful.
+ */
+const TEARDOWN_NOISE_RE = /leaked at exit|were leaked|scan thread aborted/i
+
+/**
+ * Drop godot's own teardown chatter from a sweep run's parsed issues.
+ *
+ * @param issues - the sweep run's parsed issues.
+ * @returns only the issues that describe the project.
+ */
+export function dropTeardownNoise(issues: readonly GodotIssue[]): GodotIssue[] {
+  return issues.filter(issue => !TEARDOWN_NOISE_RE.test(issue.message))
+}
+
+/** Parse both captured streams of one completed run into issues. */
+function runIssues(run: GodotRun): GodotIssue[] {
+  return [...parseGodotDiagnostics(run.stdout), ...parseGodotDiagnostics(run.stderr)]
+}
+
+/**
+ * Extract the trailing engine output of the first failed run, so a non-zero
+ * exit that produced no parseable issue still shows godot's own message
+ * instead of a bare "No issues reported." (a crashed or misconfigured engine
+ * is exactly that case). stderr wins over stdout; blank lines are dropped and
+ * the tail is bounded by {@link VALIDATE_DIAGNOSTIC_LINES}.
+ *
+ * @param runs - the completed runs of one validation call, in call order.
+ * @returns the bounded excerpt, or an empty string when every run succeeded.
+ */
+export function failedRunExcerpt(runs: readonly GodotRun[]): string {
+  const failing = runs.find(run => run.signal !== null || run.exitCode !== 0)
+  if (failing === undefined) return ''
+  const text = (failing.stderr.trim().length > 0 ? failing.stderr : failing.stdout).trim()
+  if (text.length === 0) return ''
+  return text.split('\n').filter(line => line.trim().length > 0).slice(-VALIDATE_DIAGNOSTIC_LINES).join('\n')
+}
+
 /** The canonical `godot_validate` result. */
 export interface ValidateResult {
   /** The resolved project root the validation ran against. */
@@ -131,6 +257,8 @@ export interface ValidateResult {
   issues: GodotIssue[]
   /** The process exit code, present when the process exited (omitted when killed by a signal). */
   exitCode?: number
+  /** The trailing engine output of a failed run that produced no parsed issue. */
+  diagnostics?: string
   /** True when more issues existed than the inline cap retains. */
   issuesTruncated: boolean
   /** True when the subprocess seam dropped stdout bytes past the budget. */
@@ -141,15 +269,18 @@ export interface ValidateResult {
 
 /**
  * Format the model-facing `godot_validate` result text: a pass/fail head,
- * one `path:line:column [kind] message` line per retained issue, and
- * truncation notes.
+ * one `path:line:column [kind] message` line per retained issue, a raw engine
+ * excerpt when a failed run produced no issue, and truncation notes.
  *
  * @param value - the canonical result.
  * @returns the model-facing text.
  */
 export function renderValidateOutput(value: ValidateResult): string {
   const head = `Godot ${value.mode} validation at ${value.projectRoot}: ${value.ok ? 'passed' : 'failed'} (exit ${value.exitCode ?? 'killed'})`
-  if (value.issues.length === 0) return `${head}\nNo issues reported.`
+  if (value.issues.length === 0) {
+    const diagnostics = value.diagnostics !== undefined && value.diagnostics.length > 0 ? `\n${value.diagnostics}` : ''
+    return `${head}\nNo issues reported.${diagnostics}`
+  }
   const body = value.issues
     .map((issue) => {
       const where = [issue.path, issue.line, issue.column].filter(part => part !== undefined).join(':')
@@ -220,7 +351,7 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
       },
       mode: {
         type: 'string',
-        description: 'project validates the whole project via the headless editor; file validates one script.',
+        description: '`project` validates the whole project through the headless editor; `file` validates one script.',
         enum: ['project', 'file'],
       },
     },
@@ -249,6 +380,7 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
             },
           },
           exitCode: { type: 'number' },
+          diagnostics: { type: 'string' },
           issuesTruncated: { type: 'boolean', required: true },
           stdoutTruncated: { type: 'boolean', required: true },
           stderrTruncated: { type: 'boolean', required: true },
@@ -267,8 +399,20 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
         file = resolve(workdir, input.path)
       }
       const projectRoot = await resolveProjectRoot(input.path, workdir)
-      const run = await runGodot(ctx, exec, 'godot_validate', c.godot, buildValidateCommand(input.mode, projectRoot, file), c)
-      const parsed = [...parseGodotDiagnostics(run.stdout), ...parseGodotDiagnostics(run.stderr)]
+      const first = await runGodot(ctx, exec, 'godot_validate', c.godot, buildValidateCommand(input.mode, projectRoot, file), c)
+      const marked: Array<{ run: GodotRun; dropNoise: boolean }> = [{ run: first, dropNoise: false }]
+      if (input.mode === 'project') {
+        marked.push({
+          run: await withTempGdScript(SCRIPT_SWEEP_SOURCE, sweepPath =>
+            runGodot(ctx, exec, 'godot_validate', c.godot, buildScriptSweepCommand(projectRoot, sweepPath), c)),
+          dropNoise: true,
+        })
+      }
+      const runs = marked.map(entry => entry.run)
+      const parsed = marked.flatMap((entry) => {
+        const issues = runIssues(entry.run)
+        return entry.dropNoise ? dropTeardownNoise(issues) : issues
+      })
       const issues = parsed
         .map((issue) => {
           const path = issue.path !== undefined ? resToRelative(issue.path, projectRoot) : undefined
@@ -276,17 +420,21 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
         })
         .slice(0, c.validateMaxErrors)
       const issuesTruncated = parsed.length > issues.length
-      const ok = run.exitCode === 0 && run.signal === null && issues.every(issue => issue.kind !== 'error')
+      const failed = runs.find(run => run.signal !== null || run.exitCode !== 0)
+      const exitCode = (failed ?? first).exitCode
+      const ok = runs.every(run => run.exitCode === 0 && run.signal === null) && issues.every(issue => issue.kind !== 'error')
+      const diagnostics = failedRunExcerpt(runs)
       return {
         projectRoot,
         mode: input.mode,
         ok,
         issues,
         /* v8 ignore next 1 -- a signal-killed run cannot be driven deterministically in tests */
-        ...(run.exitCode !== null ? { exitCode: run.exitCode } : {}),
+        ...(exitCode !== null ? { exitCode } : {}),
+        ...(diagnostics.length > 0 ? { diagnostics } : {}),
         issuesTruncated,
-        stdoutTruncated: run.stdoutTruncated,
-        stderrTruncated: run.stderrTruncated,
+        stdoutTruncated: runs.some(run => run.stdoutTruncated),
+        stderrTruncated: runs.some(run => run.stderrTruncated),
       }
     },
     presentCall: presentValidateCall,

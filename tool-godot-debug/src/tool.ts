@@ -98,7 +98,7 @@ export interface DebugRunOptions {
   executableArgs: string[]
   /** The project root (must contain project.godot). */
   projectRoot: string
-  /** Scene to run; omitted = the project's main scene. launch only. */
+  /** Scene to run; omitted = the project's main scene. Launch mode only. */
   scene?: string
   /** Breakpoints: launch = `--breakpoints` CLI form (single-colon `res://f:l`);
    *  attach = dynamic `breakpoint` commands sent after `set_pid`. */
@@ -124,14 +124,14 @@ export interface DebugRunOptions {
   signal: AbortSignal
   /** The subprocess seam (or a test double). */
   subprocess: SubprocessLike
-  /** Extra argv passed to the game after `--`. launch only. */
+  /** Extra argv passed to the game after `--`. Launch mode only. */
   args?: string[]
   /** How the run connects; `'launch'` when omitted. */
   mode?: DebugRunMode
-  /** attach only: pause the game immediately once connected (`break`), for a
+  /** Attach mode only: pause the game immediately once connected (`break`), for a
    *  "what is the game doing right now" probe stop. */
   pauseOnAttach?: boolean
-  /** Max objects expanded via `scene:inspect_object` on the first frame-bearing
+  /** Max objects expanded through `scene:inspect_object` on the first frame-bearing
    *  stop (0 = disabled). */
   maxExpandedObjects: number
   /** Max property rows kept per expanded object. */
@@ -157,7 +157,7 @@ export interface DebugRunOptions {
    *  excluded); requires `maxTreeNodes > 0`. Unresolvable paths are skipped
    *  like timed-out objects. */
   nodePaths?: string[]
-  /** launch only: pass `--single-threaded-scene` to the game (source-plugin
+  /** Launch mode only: pass `--single-threaded-scene` to the game (source-plugin
    *  parity; the engine runs its scene on the main thread only). */
   singleThreadedScene?: boolean
   /** Render-override hooks (config-driven display knobs like
@@ -186,7 +186,10 @@ function stderrTail(handle: SubprocessHandle): string {
  *  Guards: `res://` escapes (`/../` in either slash direction) and — for
  *  absolute input on Windows — cross-drive paths, where `path.relative`
  *  returns an absolute path instead of a `..`-prefixed one and would
- *  silently produce a breakpoint that never matches. */
+ *  silently produce a breakpoint that never matches.
+ * @param file - the breakpoint file path (`res://`, absolute, or relative).
+ * @param projectRoot - the project root that `res://` maps to.
+ * @returns the breakpoint path in `res://` form. */
 export function toResPath(file: string, projectRoot: string): string {
   if (file.startsWith('res://')) {
     if (file.replace(/\\/g, '/').includes('/../')) {
@@ -445,7 +448,13 @@ async function attachRun(options: DebugRunOptions, projectRoot: string): Promise
 }
 
 /** Run `godot --version` through the seam (with the deployment wrapper argv).
- *  Shared with the interactive session's launch mode (T21.8). */
+ *  Shared with the interactive session's launch mode (T21.8).
+ * @param executable - the godot executable to run.
+ * @param executableArgs - wrapper argv inserted after the executable.
+ * @param graceMs - terminate-escalation grace after the process exits.
+ * @param signal - caller cancellation.
+ * @param subprocess - the subprocess seam.
+ * @returns the `--version` output. */
 export async function probeVersion(
   executable: string,
   executableArgs: readonly string[],
@@ -534,7 +543,7 @@ async function collectStops(
   let sceneTreeTruncated = false
   const runStart = Date.now()
   // The stop-render bounds: package defaults overlaid with config-driven
-  // display knobs (e.g. fullPrecisionNumbers, T22).
+  // display knobs (for example, fullPrecisionNumbers, T22).
   const render = { ...RENDER_OPTIONS, ...(options.renderOptions ?? {}) }
   // The current stop's parsed tree (T15: nodePaths resolve against it).
   let stopTreeRoot: SceneTreeNode | null = null

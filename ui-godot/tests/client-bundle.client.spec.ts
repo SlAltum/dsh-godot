@@ -73,7 +73,7 @@ describe('tsdown client artifact', () => {
     // declares it directly.
     slots.register({
       name: 'root',
-      children: { 'plugins.item': { kind: 'list', scope: 'root' } },
+      children: { 'plugins.bundle.config': { kind: 'keyed', scope: 'root' } },
     }, (_p: { renderSlot?: unknown }) => null)
     ctx.provide('connection', { api: { settings: {} }, isLoopback: false } as never)
     ctx.provide('remote', { $on: () => () => {} } as never)
@@ -90,9 +90,9 @@ describe('tsdown client artifact', () => {
     const fiber = ctx.plugin(exports as { apply: (ctx: Context) => void; inject: string[] })
     await fiber.await()
 
-    expect(slots.entries('plugins.item').map(entry => entry.options.id)).toEqual(['tool-godot'])
+    expect(slots.entries('plugins.bundle.config').map(entry => entry.options.key)).toEqual(['@deepseek-ai/dsh-godot-bundle'])
     await fiber.dispose()
-    expect(slots.entries('plugins.item')).toHaveLength(0)
+    expect(slots.entries('plugins.bundle.config')).toHaveLength(0)
   })
 
   it.skipIf(code === undefined)('injects plugin-tagged module CSS during factory execution', async () => {
