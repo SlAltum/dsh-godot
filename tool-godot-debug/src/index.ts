@@ -23,7 +23,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, GenericResultView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { resolve } from 'node:path'
-import { validateConfig } from './config.ts'
+import { Config, validateConfig } from './config.ts'
 import type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
 import { structuredDebugView } from './debug-view.ts'
 import type { StructuredDebugInput } from './debug-view.ts'
@@ -275,11 +275,11 @@ export function presentDebugResult(_args: { maxStops?: number }, result: ToolRes
  * call time, never at load time.
  *
  * @param ctx - plugin context; registrations are effects scoped to this plugin.
- * @param config - resolved plugin configuration from schemastery.
+ * @param config - deployment config; schema defaults are filled here.
  */
-export function apply(ctx: Context, config: GodotDebugConfig): void {
-  // schemastery (Config) has already filled every defaulted field.
-  const resolved = config as ResolvedGodotDebugConfig
+export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
+  // A row may be mounted without a config key; resolve the schema here.
+  const resolved = Config(config) as ResolvedGodotDebugConfig
   validateConfig(resolved)
 
   ctx.effect(() => {

@@ -69,6 +69,19 @@ export const Config: z<GodotLspConfig> = z.object({
 })
 
 /**
+ * Fill schema defaults and validate one deployment config. Missing input is a
+ * valid deployment: the loader may mount the plugin without a `config` key.
+ * @param input - the deployment config (every key optional).
+ * @returns the resolved config.
+ * @throws Error naming the offending field.
+ */
+export function resolveConfig(input: GodotLspConfig = {}): ResolvedGodotLspConfig {
+  const resolved = Config(input) as ResolvedGodotLspConfig
+  validateConfig(resolved)
+  return resolved
+}
+
+/**
  * Load-time validation of a resolved config; throws with a field-named message
  * on the first violation so misconfiguration fails at load, never mid-query.
  * @param config - the schemastery-resolved config (defaults already filled).

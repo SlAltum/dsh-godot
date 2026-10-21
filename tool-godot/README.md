@@ -21,7 +21,7 @@ The tools require a godot executable (any 4.x build; `--headless` must be suppor
 
 ## Settings
 
-The package registers the `godot` settings namespace (`GODOT_SETTINGS_NAMESPACE`), which the Web UI's plugin configuration section exposes as the Godot card. `executable` and `gdformatExecutable` are editable there; a saved value applies to the **next tool call** — the authoritative config (settings section over the composition entry) is re-read on every execute, so no reload is needed. Clearing a field re-inherits the composition entry. The remaining caps stay composition-level by design: the timeout declaration on a registered tool cannot be re-read per call.
+The package registers the `godot` settings namespace (`GODOT_SETTINGS_NAMESPACE`), which the Web UI's plugin configuration section exposes as the Godot card. `executable` and `gdformatExecutable` are editable there; a saved value applies to the **next tool call** — the authoritative config (settings section over the composition entry) is re-read on every execute, so no reload is needed. Clearing a field re-inherits the composition entry. The live executable and wrapper args are also published as the `godot.toolchain` service; the visual sandbox reads them when its own `executable` is empty, so the card remains the single place to configure the path. The remaining caps stay composition-level by design: the timeout declaration on a registered tool cannot be re-read per call.
 
 ## Config
 

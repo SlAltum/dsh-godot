@@ -21,7 +21,7 @@ await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 
 ## 设置
 
-本包注册 `godot` settings 命名空间（`GODOT_SETTINGS_NAMESPACE`），在 Web UI 的插件配置区显示为 Godot 卡片。`executable` 与 `gdformatExecutable` 可在其中编辑；保存的值对**下一次工具调用**即生效——每次执行时重新读取权威配置（设置层覆盖组合条目），无需重载。清空字段会重新继承组合条目。其余上限按设计留在组合层：工具注册时声明的超时无法按调用重新读取。
+本包注册 `godot` settings 命名空间（`GODOT_SETTINGS_NAMESPACE`），在 Web UI 的插件配置区显示为 Godot 卡片。`executable` 与 `gdformatExecutable` 可在其中编辑；保存的值对**下一次工具调用**即生效——每次执行时重新读取权威配置（设置层覆盖组合条目），无需重载。清空字段会重新继承组合条目。实时可执行文件与包装参数还以 `godot.toolchain` 服务发布；沙盒自身的 `executable` 留空时读取该值，因此路径只需在这张卡片里配置。其余上限按设计留在组合层：工具注册时声明的超时无法按调用重新读取。
 
 ## 配置
 

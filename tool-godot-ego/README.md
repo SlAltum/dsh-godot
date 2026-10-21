@@ -26,6 +26,8 @@ export async function mount(ctx: Context): Promise<void> {
 
 `godot_play` resolves the project root, runs the one-time `--headless --editor --import` pass when `.godot/` is missing, writes two GDScript files to a temporary directory outside the project (`boot.gd`, `bridge.gd`), binds `127.0.0.1:0`, and spawns `godot --path <root> --script <boot.gd> --windowed --resolution 1280x720 [--position -32000,-32000] [--max-fps N | --fixed-fps N]`. The boot script injects the bridge as a child of the root, then changes to the project main scene — or to `DSH_EGO_SCENE` when `godot_play` was given a scene. The bridge connects back, sends `hello` with the session token and protocol version, and answers newline-delimited JSON. It keeps `process_mode = PROCESS_MODE_ALWAYS`, so a game that pauses itself still answers `state` and `shot`.
 
+The game runs in a normal native window, which is the scene window to operate directly; `offscreen: true` moves that window away when only the Web panel is wanted. The sandbox requests a visible window; on Windows the local provider uses its direct Node spawn path for that request because the native Job runner always starts targets hidden. That path keeps process-tree cleanup but not native Job containment. The Web watch panel mirrors the same frame and remains optional.
+
 Frames are captured inside the engine (`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`), encoded to PNG/JPEG/WebP buffers, and returned as base64; the bridge never writes to the game filesystem. `shotdiff` compares the current frame with the previous one using `compute_image_metrics`, so the host needs no image-decoding dependency. Input is injected through `Viewport.push_input` (synchronous and scoped to the game viewport); node reads go through `get_property_list` filtered to stored and script variables, with values serialized by explicit `typeof()` dispatch.
 
 One workspace owns at most one session. `godot_stop` asks the bridge to quit, waits within `graceMs`, escalates to terminate, and reports the real exit code or signal. Disposal runs the same inverse and also removes the temporary scripts; the session registry publishes `godot.egoSessions` and its own inverse disposes every session when the plugin unloads.
@@ -54,7 +56,7 @@ The sandbox observes a real process, so some effects are **compensated, not undo
 
 ## Settings
 
-The package does not register a settings namespace; the executable and caps are composition-level config.
+The package does not register a settings namespace; the executable and caps are composition-level config. Leave `executable` empty to use the live value from the `tool-godot` settings card; set it only to run the sandbox with a different Godot build.
 
 ## Config
 
@@ -62,7 +64,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `executable` | `godot` | Godot executable path or PATH command name. |
+| `executable` | empty (inherit) | Explicit path or command name. Empty inherits the live `tool-godot` value, then falls back to `godot` on `PATH`. |
 | `executableArgs` | `[]` | Fixed argv elements inserted after the godot executable (deployment wrappers). |
 | `allowEval` | `false` | Register `godot_eval` and allow engine `Expression` evaluation in the bridge. |
 | `offscreen` | `false` | Start the window off-screen (`--position -32000,-32000`), for deployments where the user does not need to see it. |
@@ -122,6 +124,8 @@ Failures carry the package-owned `EgoGodotError` (a `HarnessError` subclass), su
 ## Testing
 
 Run the unit suite from the monorepo root: `pnpm exec vitest run packages/godot/tool-godot-ego`. The real-machine smoke is opt-in through `DSH_TEST_GODOT` (the Godot executable path); it plays, observes, reads, operates, and stops the spike project in one chain.
+
+`tests/fixtures/gomoku` is a self-contained two-player project for live checks. Start it with `godot_play`, then use `godot_find` plus `godot_click` on a `Cell_07_07` intersection; five black stones in a row report `Black wins`, and `New game` clears the board. Every intersection is a named Button, so find, click, node reads, and reset are deterministic without image coordinates. The full self-test and user-game procedure is in [English](tests/fixtures/gomoku/TEST_CHARTER.md) · [中文](tests/fixtures/gomoku/TEST_CHARTER.zh.md).
 
 ## Model Experience
 

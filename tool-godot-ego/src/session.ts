@@ -135,6 +135,9 @@ export class GameSession {
       this.state = 'ready'
       return this.snapshot()
     } catch (error: unknown) {
+      // The handshake may not have been awaited yet (a synchronous spawn
+      // failure); keep dispose's rejection from becoming unhandled.
+      void hello.promise.catch(() => {})
       await this.dispose()
       throw error
     }

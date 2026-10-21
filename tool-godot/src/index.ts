@@ -33,7 +33,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveExecutable } from './godot-core.ts'
-import type { ResolvedCaps } from './godot-core.ts'
+import type { GodotExecutable, ResolvedCaps } from './godot-core.ts'
 import { applyValidateTool } from './validate.ts'
 import { applyRunSceneTool } from './run-scene.ts'
 import { applyInspectTool } from './inspect.ts'
@@ -124,6 +124,12 @@ export const Config = z.object({
   timeoutMs: z.number().min(1).step(1).default(60_000).volatile(),
 })
 
+/** Live toolchain values shared with sibling Godot plugins. */
+export interface GodotToolchain {
+  /** The executable and wrapper args currently saved in the `godot` settings namespace. */
+  resolve(): GodotExecutable
+}
+
 /**
  * Register the five godot tools. Registration is unconditional; a missing
  * godot executable surfaces as the structured `GODOT_UNAVAILABLE` error at
@@ -139,6 +145,11 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // A custom card renders this entry's fields in the Plugins page, so the
   // generic generated page is suppressed.
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
+  // Sibling Godot plugins (the visual sandbox) read this live value instead of
+  // declaring a second executable field the settings card cannot reach.
+  ctx.provide('godot.toolchain', {
+    resolve: () => resolveExecutable(config.executable.get(), config.executableArgs, 'godot'),
+  } satisfies GodotToolchain)
 
   const caps = (): ResolvedCaps => {
     const endComment = config.builtinSpacesBeforeEndOfLineComment

@@ -12,7 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolveConfig } from '../src/config.ts'
-import { createPlayFactory, buildSpawnSpec, ensureImported, playTool, startSession } from '../src/play.ts'
+import { createPlayFactory, buildSpawnSpec, ensureImported, playTool, resolveEgoExecutable, startSession } from '../src/play.ts'
 import { GameSessionRegistry } from '../src/session-service.ts'
 import type { EgoPlayOptions } from '../src/session-service.ts'
 import { attachFakeBridge } from './fixtures/fake-bridge.ts'
@@ -97,6 +97,7 @@ describe('buildSpawnSpec', () => {
       '--max-fps', '60',
     ])
     expect(spec.cwd).toBe('C:/project')
+    expect(spec.windowsHide).toBe(false)
     expect(spec.env).toEqual({
       DSH_EGO_PORT: '1234',
       DSH_EGO_TOKEN: 'tok',
@@ -291,6 +292,20 @@ describe('startSession', () => {
     expect(scripts.length).toBe(1)
     expect(existsSync(scripts[0] as string)).toBe(false)
   })
+
+  it('adds the attempted executable and a configuration hint to a spawn failure', async () => {
+    const root = await makeProject(true)
+    const ctx = {
+      subprocess: {
+        spawn: () => { throw new Error('spawn godot ENOENT') },
+      },
+    } as unknown as Context
+    await expect(startSession(ctx, resolveConfig({ executable: 'C:\\Godot\\godot.exe', requestTimeoutMs: 100 }), root, {}))
+      .rejects.toMatchObject({
+        code: 'GODOT_EGO_UNAVAILABLE',
+        message: expect.stringContaining('Tried "C:\\Godot\\godot.exe"'),
+      })
+  })
 })
 
 describe('playTool', () => {
@@ -346,5 +361,27 @@ describe('playTool', () => {
     const exec = { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal }
     await tool.execute({ scene: 'res://levels/test.tscn' }, exec as never)
     expect(seen[0]).toMatchObject({ scene: 'res://levels/test.tscn' })
+  })
+})
+
+describe('resolveEgoExecutable', () => {
+  const toolchain = { resolve: () => ({ executable: 'C:\\Godot\\godot.exe', args: ['--wrapper'] }) }
+
+  it('inherits the live tool-godot value when its own executable is empty', () => {
+    expect(resolveEgoExecutable(resolveConfig({}), toolchain)).toEqual({
+      executable: 'C:\\Godot\\godot.exe',
+      args: ['--wrapper'],
+    })
+  })
+
+  it('keeps an explicit executable and its own args', () => {
+    expect(resolveEgoExecutable(resolveConfig({ executable: 'C:\\Sandbox\\godot.exe', executableArgs: ['--own'] }), toolchain)).toEqual({
+      executable: 'C:\\Sandbox\\godot.exe',
+      args: ['--own'],
+    })
+  })
+
+  it('falls back to PATH when neither source configures an executable', () => {
+    expect(resolveEgoExecutable(resolveConfig({}))).toEqual({ executable: 'godot', args: [] })
   })
 })

@@ -13,7 +13,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { LspError } from '@deepseek-ai/dsh-lsp'
 import type { HostWorkspace } from '@deepseek-ai/dsh-lsp-stdio/src/host.ts'
-import { validateConfig } from './config.ts'
+import { resolveConfig } from './config.ts'
 import type { GodotLspConfig, ResolvedGodotLspConfig } from './config.ts'
 import { connectForWorkspace, type ConnectModeDeps } from './connect-mode.ts'
 import { establishConnection } from './connection.ts'
@@ -45,24 +45,28 @@ export const inject = ['fs', 'lsp', 'subprocess']
  * Register the Godot GDScript LSP provider. The provider is registered under
  * `ctx.lsp` and its connection pool is torn down with the fiber.
  * @param ctx - the plugin context (must inject `fs`, `lsp`, `subprocess`).
- * @param config - the resolved plugin configuration.
+ * @param config - deployment config; schema defaults are filled here.
  */
-export function apply(ctx: Context, config: ResolvedGodotLspConfig): void {
-  validateConfig(config)
-  const deps = createConnectDeps(ctx.subprocess, config)
-  const provider = new GodotLspProvider(
-    ctx.fs,
-    config,
-    (_key: string, workspace: HostWorkspace, signal: AbortSignal) =>
-      connectForWorkspace(config, workspace, signal, deps),
-  )
-  ctx.effect(() => {
-    const dispose = ctx.lsp.registerProvider(provider)
-    return () => {
-      dispose()
-      void provider.disposeAll()
-    }
-  }, 'lsp-godot.registerProvider')
+export function apply(ctx: Context, config: GodotLspConfig = {}): void {
+  const resolved = resolveConfig(config)
+  // The loader may mount this row without the plugin's static inject metadata;
+  // enter an injected child context so service access is always legal.
+  ctx.inject(['fs', 'lsp', 'subprocess'], (child) => {
+    const deps = createConnectDeps(child.subprocess, resolved)
+    const provider = new GodotLspProvider(
+      child.fs,
+      resolved,
+      (_key: string, workspace: HostWorkspace, signal: AbortSignal) =>
+        connectForWorkspace(resolved, workspace, signal, deps),
+    )
+    child.effect(() => {
+      const dispose = child.lsp.registerProvider(provider)
+      return () => {
+        dispose()
+        void provider.disposeAll()
+      }
+    }, 'lsp-godot.registerProvider')
+  })
 }
 
 /**

@@ -1,0 +1,17 @@
+Gomoku fixture fonts
+====================
+
+Instrument Serif (Regular)
+Instrument Sans (Regular)
+Geist Mono (Regular)
+
+All three font families are licensed under the SIL Open Font License, Version 1.1.
+The license texts are copied next to the font files:
+
+- assets/fonts/InstrumentSerif-OFL.txt
+- assets/fonts/InstrumentSans-OFL.txt
+- assets/fonts/GeistMono-OFL.txt
+
+Source: the canvas-fonts collection bundled with the canvas-design skill.
+These files are used only by the test fixture; they are not part of the
+model-facing Godot tools.

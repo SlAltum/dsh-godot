@@ -12,7 +12,7 @@ import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
 /** Plugin configuration as a deployment provides it (every key optional). */
 export interface EgoConfig {
-  /** Godot executable path or PATH-resolved command name (default `godot`). */
+  /** Godot executable path or PATH command name; empty inherits `tool-godot`'s live value. */
   executable?: string
   /** Fixed argv elements inserted after the executable (deployment wrappers). */
   executableArgs?: string[]
@@ -44,7 +44,7 @@ export interface EgoConfig {
 export type ResolvedEgoConfig = Required<EgoConfig>
 
 export const Config: z<EgoConfig> = z.object({
-  executable: z.string().default('godot'),
+  executable: z.string().default(''),
   executableArgs: z.array(z.string()).default([]),
   allowEval: z.boolean().default(false),
   offscreen: z.boolean().default(false),
@@ -77,8 +77,8 @@ export function resolveConfig(input: EgoConfig = {}): ResolvedEgoConfig {
  * @throws Error naming the first violation.
  */
 export function validateConfig(config: ResolvedEgoConfig): void {
-  if (config.executable.trim().length === 0) {
-    throw new Error('tool-godot-ego: executable must be a non-empty string')
+  if (config.executable !== '' && config.executable.trim().length === 0) {
+    throw new Error('tool-godot-ego: executable must be a path, a command name, or empty to inherit tool-godot')
   }
   assertRange('maxFps', config.maxFps, 0, 1000)
   assertRange('fixedFps', config.fixedFps, 0, 1000)

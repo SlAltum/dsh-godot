@@ -10,7 +10,7 @@ import { resolveConfig, validateConfig } from '../src/config.ts'
 describe('resolveConfig', () => {
   it('fills every default', () => {
     const c = resolveConfig({})
-    expect(c.executable).toBe('godot')
+    expect(c.executable).toBe('')
     expect(c.executableArgs).toEqual([])
     expect(c.allowEval).toBe(false)
     expect(c.offscreen).toBe(false)
@@ -33,7 +33,11 @@ describe('resolveConfig', () => {
     expect(c.maxFps).toBe(0)
   })
 
-  it('rejects a blank executable', () => {
+  it('accepts an empty executable as inherit', () => {
+    expect(resolveConfig({ executable: '' }).executable).toBe('')
+  })
+
+  it('rejects a whitespace-only executable', () => {
     expect(() => resolveConfig({ executable: '   ' })).toThrow(/executable/)
   })
 

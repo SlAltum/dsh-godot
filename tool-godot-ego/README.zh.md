@@ -26,6 +26,8 @@ export async function mount(ctx: Context): Promise<void> {
 
 `godot_play` 解析项目根；`.godot/` 缺失时先跑一次 `--headless --editor --import`；把两个 GDScript 文件（`boot.gd`、`bridge.gd`）写到项目外的临时目录；绑定 `127.0.0.1:0`；再 spawn `godot --path <root> --script <boot.gd> --windowed --resolution 1280x720 [--position -32000,-32000] [--max-fps N | --fixed-fps N]`。boot 脚本把桥接注入根节点，然后切到项目主场景——`godot_play` 传入场景时，改切到 `DSH_EGO_SCENE`。桥接回连，带会话口令与协议版本发 `hello`，此后应答换行分隔 JSON。桥接保持 `process_mode = PROCESS_MODE_ALWAYS`，因此自行暂停的游戏仍能应答 `state` 与 `shot`。
 
+游戏在正常的原生窗口里运行，这个窗口就是可直接操作的场景窗口；只想看 Web 面板时用 `offscreen: true` 把它移出屏幕。沙盒请求可见窗口；在 Windows 上，本地提供方对这种请求改走直接的 Node spawn 路径，因为原生 Job runner 总是隐藏目标窗口。该路径保留进程树清理，但不使用原生 Job 约束。Web 观察窗镜像同一帧画面，仍然可选。
+
 画面在引擎内截取（`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`），编码成 PNG/JPEG/WebP buffer 后以 base64 回传；桥接从不写游戏文件系统。`shotdiff` 用 `compute_image_metrics` 把当前帧与上一帧比较，宿主因此不需要图片解码依赖。输入通过 `Viewport.push_input` 注入（同步且限定在游戏视口）；节点读取走 `get_property_list`，只保留存储属性与脚本变量，值用显式 `typeof()` 分派序列化。
 
 一个 workspace 至多一个会话。`godot_stop` 让桥接退出，在 `graceMs` 内等待，超时后升级为终止，并报告真实退出码或信号。dispose 执行同一套反向清理，并删除临时脚本；会话注册表以 `godot.egoSessions` 发布，它自身的清理逻辑在插件卸载时销毁全部会话。
@@ -54,7 +56,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 
 ## 设置
 
-本包不注册设置命名空间；可执行文件与各项上限是组合层配置。
+本包不注册设置命名空间；可执行文件与各项上限是组合层配置。`executable` 留空即使用 `tool-godot` 设置卡里的实时值；只有需要用另一个 Godot 构建运行沙盒时才显式设置。
 
 ## 配置
 
@@ -62,7 +64,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
-| `executable` | `godot` | Godot 可执行文件路径或 PATH 命令名。 |
+| `executable` | 空（继承） | 显式路径或命令名。留空继承 `tool-godot` 的实时值，最后回退 `PATH` 上的 `godot`。 |
 | `executableArgs` | `[]` | 插在 godot 可执行文件之后的固定 argv 元素（部署包装）。 |
 | `allowEval` | `false` | 注册 `godot_eval` 并允许桥接内 `Expression` 求值。 |
 | `offscreen` | `false` | 把窗口放到屏幕外（`--position -32000,-32000`），用于不需要用户看到窗口的部署。 |
@@ -122,6 +124,8 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 ## 测试
 
 在 monorepo 根运行单元套件：`pnpm exec vitest run packages/godot/tool-godot-ego`。真机冒烟经 `DSH_TEST_GODOT`（Godot 可执行文件路径）按需启用；它用一条链路完成 play、观察、读取、操作与 stop。
+
+`tests/fixtures/gomoku` 是自带的两入五子棋工程，供真机检查使用。用 `godot_play` 启动后，通过 `godot_find` 与 `godot_click` 操作 `Cell_07_07` 交叉点；黑棋连成五子会显示 `Black wins`，`New game` 清空棋盘。每个交叉点都是具名 Button，因此 find、click、node 读取与重置都不依赖图像坐标。完整自测与对弈流程见 [English](tests/fixtures/gomoku/TEST_CHARTER.md) · [中文](tests/fixtures/gomoku/TEST_CHARTER.zh.md)。
 
 ## Model Experience
 

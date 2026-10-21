@@ -7,9 +7,15 @@
 
 import { describe, expect, it } from 'vitest'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { Config, validateConfig, type ConnectMode } from '../src/config.ts'
+import { Config, resolveConfig, validateConfig, type ConnectMode } from '../src/config.ts'
 
 describe('lsp-godot Config schema', () => {
+  it('resolves a missing deployment config to the defaults', () => {
+    const resolved = resolveConfig()
+    expect(resolved.ports).toEqual([6005])
+    expect(resolved.connectMode).toBe('auto')
+  })
+
   it('fills defaults for every optional key', () => {
     const resolved = Config({})
     expect(resolved.host).toBe('127.0.0.1')

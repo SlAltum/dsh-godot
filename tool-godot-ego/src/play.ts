@@ -20,7 +20,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { resolveExecutable, resolveProjectRoot } from '@deepseek-ai/dsh-tool-godot'
-import type { GodotExecutable } from '@deepseek-ai/dsh-tool-godot'
+import type { GodotExecutable, GodotToolchain } from '@deepseek-ai/dsh-tool-godot'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { bootstrapSource, bridgeSource } from './bridge-source.ts'
@@ -73,6 +73,9 @@ export function buildSpawnSpec(input: SpawnSpecInput): SubprocessSpawnSpec {
   return {
     argv,
     cwd: input.projectRoot,
+    // The user operates the running scene in its native window; the generic
+    // subprocess default hides GUI windows, so ask for a visible one.
+    windowsHide: false,
     stdio: {
       stdin: 'ignore',
       stdout: { maxBytes: STREAM_MAX_BYTES },
@@ -153,6 +156,24 @@ export async function ensureImported(
 }
 
 /**
+ * Resolve the sandbox executable. An explicit `executable` wins; an empty one
+ * inherits the live `tool-godot` value, so the settings card stays the single
+ * place to configure the Godot path. Without a toolchain, fall back to `godot`.
+ * @param config - resolved sandbox config.
+ * @param toolchain - the sibling tool-godot service, when mounted.
+ * @returns the executable and wrapper args.
+ */
+export function resolveEgoExecutable(config: ResolvedEgoConfig, toolchain?: GodotToolchain): GodotExecutable {
+  const explicit = config.executable.trim() !== ''
+  const inherited = explicit ? undefined : toolchain?.resolve()
+  return resolveExecutable(
+    explicit ? config.executable : inherited?.executable,
+    config.executableArgs.length > 0 ? config.executableArgs : inherited?.args,
+    'godot',
+  )
+}
+
+/**
  * Start one session for a workspace.
  * @param ctx - plugin context (uses the `subprocess` seam).
  * @param config - resolved plugin config.
@@ -167,7 +188,8 @@ export async function startSession(
   options: EgoPlayOptions,
 ): Promise<EgoSessionHandle> {
   const projectRoot = await resolveProjectRoot(options.path, workspace)
-  const executable = resolveExecutable(config.executable, config.executableArgs, 'godot')
+  const toolchain = (ctx as { get?: (name: string) => unknown }).get?.('godot.toolchain') as GodotToolchain | undefined
+  const executable = resolveEgoExecutable(config, toolchain)
   const imported = await ensureImported(ctx, executable, projectRoot, config.importTimeoutMs, config.graceMs)
   const directory = await mkdtemp(join(tmpdir(), 'dsh-godot-ego-'))
   const bridgePath = join(directory, 'bridge.gd')
@@ -236,6 +258,13 @@ export async function startSession(
     }
   } catch (error: unknown) {
     await removeTempDir(directory)
+    if (error instanceof Error && error.message.includes('ENOENT')) {
+      throw new EgoGodotError(
+        `${error.message}. Tried "${executable.executable}". Configure the Godot path in the tool-godot settings card, or set tool-godot-ego.executable.`,
+        'GODOT_EGO_UNAVAILABLE',
+        { cause: error },
+      )
+    }
     throw error
   }
 }
@@ -295,6 +324,8 @@ export function playTool(registry: GameSessionRegistry): ToolDefinition {
     description: 'Start a persistent running instance of a Godot project and return a session id. '
       + 'The game keeps running between calls: use godot_see to look at it, godot_state to read the scene, '
       + 'godot_click / godot_key to operate it, and godot_stop to end it. '
+      + 'The game opens in a normal native window by default so the user can operate it directly; '
+      + 'pass offscreen: true to keep the window off-screen for the Web watch panel. '
       + 'The project is launched without modifying project.godot or res:// files. '
       + 'Without restart, an already running session for this workspace is reused.',
     parameters: {
