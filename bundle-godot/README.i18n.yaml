@@ -2,15 +2,24 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/bundle-godot/README.md
+/:
+  en: 59ea69e61d938f73
+  zh: 1e5cab00b92e2bb4
 /deepseek-ai-dsh-godot-bundle:
   en: 2a3afcdd8e7f0d0b
   zh: d40107e1473484bb
+/deepseek-ai-dsh-godot-bundle/summary:
+  en: cdde52500624cbec
+  zh: e8169dde25ad9b0a
+/deepseek-ai-dsh-godot-bundle/table-of-contents:
+  en: 71c96f0f9470ae3b
+  zh: 8577ed1f2b52c78e
 /deepseek-ai-dsh-godot-bundle/what-it-adds:
-  en: 69b1c4c8043a339a
-  zh: de0a84388f60bbf2
+  en: f086025f8f4f19bb
+  zh: 877c899e92daabe2
 /deepseek-ai-dsh-godot-bundle/install:
-  en: 10af9aa3db3c5789
-  zh: 885554b1bb824fb7
+  en: 8521c61ff1ab4ae3
+  zh: d7d524b489c80487
 /deepseek-ai-dsh-godot-bundle/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,5 +36,8 @@
   en: a7f612a53eb5c07f
   zh: 3a22af1c1281e060
 /deepseek-ai-dsh-godot-bundle/known-limitations-and-deferred-work:
-  en: e4d98239b75c4da4
-  zh: 9601022ae02f7b02
+  en: 4bc9a4f8af44d50e
+  zh: 2d8ed502087fc70b
+/deepseek-ai-dsh-godot-bundle/known-limitations-and-deferred-work/dev-note:
+  en: 4f1b5366c58d1fe5
+  zh: a1a1a3cd43d717b3

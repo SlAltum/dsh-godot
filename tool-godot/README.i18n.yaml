@@ -2,27 +2,36 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot/README.md
+/:
+  en: 328f81a4478a23d0
+  zh: 8a591184d8c49e22
 /deepseek-ai-dsh-tool-godot:
   en: 5ae8930dc4efdffb
   zh: 77cea68076b76c08
+/deepseek-ai-dsh-tool-godot/summary:
+  en: 036876cbb08c799b
+  zh: f74d9e3177fd3cb3
+/deepseek-ai-dsh-tool-godot/table-of-contents:
+  en: 5cd87eded3902920
+  zh: f56049fed49a860b
 /deepseek-ai-dsh-tool-godot/deployment-requirement-host-godot-and-optionally-gdformat:
-  en: 81a0cba2a6ca666e
-  zh: 1fef44d96148fe1e
+  en: 1192ca88f00f7de4
+  zh: f3fa91d5566d4418
 /deepseek-ai-dsh-tool-godot/settings:
-  en: a6445c081ad24dd5
-  zh: 4c19d2ee9b796c8d
+  en: 8980d9826ea88029
+  zh: cb93c8686961bc71
 /deepseek-ai-dsh-tool-godot/config:
-  en: 764436437b52021e
-  zh: 4838df5af01a9351
+  en: d0ba60006eec3b2f
+  zh: 4b59765184656f98
 /deepseek-ai-dsh-tool-godot/tools:
-  en: b24b6bb7de0d64bb
-  zh: 63e90c800b63e0b7
+  en: d14e87d70be50339
+  zh: fe7f17602c8cc62b
 /deepseek-ai-dsh-tool-godot/execution-design:
-  en: 165b11f230223b48
-  zh: e196546086215bab
+  en: ae4f840835f15001
+  zh: 044aaedcbc4e9a61
 /deepseek-ai-dsh-tool-godot/errors:
-  en: eccdbf3a1a58e1ff
-  zh: 9db46cc58fce29fe
+  en: ae15dd33d573acb4
+  zh: f6b687e3c7100cbd
 /deepseek-ai-dsh-tool-godot/model-experience:
   en: 215e7ba838619b7b
   zh: 215e7ba838619b7b
@@ -78,5 +87,8 @@
   en: f5d5f97a153f7c70
   zh: 691124d181767c5e
 /deepseek-ai-dsh-tool-godot/known-limitations-and-deferred-work:
-  en: ad2cbb6cc1d52396
-  zh: a4a9194751a71375
+  en: ca74ab0a182ea810
+  zh: c9aa2fbb15ff35d2
+/deepseek-ai-dsh-tool-godot/known-limitations-and-deferred-work/dev-note:
+  en: afe4b6fa1163f93d
+  zh: 588e7156e9644f63

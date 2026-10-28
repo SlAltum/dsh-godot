@@ -1,9 +1,35 @@
+---
+description: "The Godot package group: headless project tools, the GDScript LSP provider, a scripted debugger, a visual sandbox, and the browser surface, delivered as one optional bundle."
+kind: "package-group"
+---
+
 # dsh-godot — Godot capability family for DeepSeek Harness
 
 English | [中文](README.zh.md)
 
 A family of Godot Engine plugins for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) agent harness: headless project tooling, GDScript semantic navigation, a scripted debugger, and a visual sandbox for a running game. Maintained as an independent repository; the packages build inside the harness monorepo workspace.
 
+## Summary
+
+Point the agent at a Godot project and it can validate scripts, run a scene headless, format GDScript, inspect project files, debug a scripted run, and drive a running game it can see. One optional bundle installs the whole family; `dsh-base` and `dsh-web-app` stay free of Godot rows, so a project that never uses Godot pays nothing. Each package declares its own host requirement — a Godot 4.2+ binary, and optionally gdformat — and reports a missing executable at call time, never at load.
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Model-facing tools](#model-facing-tools)
+- [How it works](#how-it-works)
+- [Deployment notes](#deployment-notes)
+- [Building from source](#building-from-source)
+- [Repository layout](#repository-layout)
+- [Testing](#testing)
+- [Known limitations and deferred work](#known-limitations-and-deferred-work)
+- [License](#license)
+- [Dev Note](#dev-note)
+
+<a id="features"></a>
 ## Features
 
 | Package | Role | DSH seam |
@@ -17,6 +43,7 @@ A family of Godot Engine plugins for the [DeepSeek Harness](https://github.com/d
 
 The capabilities were migrated from **godot-vscode-plugin** (Godot Tools v2.7.1, ~700k installs), keeping the pure-logic cores; the migration is pinned by protocol facts recorded against a real Godot 4.7 instance. See [docs/architecture.md](docs/architecture.md) for the module map and protocol-fact pointers.
 
+<a id="prerequisites"></a>
 ## Prerequisites
 
 - **Godot 4.2+.** The CLI tools and the debugger require a Godot 4.2 or newer build with `--headless` support (spawn-mode LSP's version gate also accepts 3.6+).
@@ -24,6 +51,7 @@ The capabilities were migrated from **godot-vscode-plugin** (Godot Tools v2.7.1,
 - **One-time project import.** Headless game mode does not auto-import; run `godot --headless --editor --path <root> --import --quit` once per project, or expect a slower first run.
 - **Writable game user data.** The game's `user://` directory must be writable; game mode otherwise crashes with signal 11.
 
+<a id="installation"></a>
 ## Installation
 
 Godot is **optional**: `dsh-base` and `dsh-web-app` mount none of these packages. The supported path is the capability bundle, which inserts the five rows together and appears under **Installed plugins** in the Plugins page:
@@ -54,6 +82,7 @@ export async function mount(ctx: Context): Promise<void> {
 }
 ```
 
+<a id="configuration"></a>
 ## Configuration
 
 Every key has a default; per-package details live in each package's README.
@@ -65,6 +94,7 @@ Every key has a default; per-package details live in each package's README.
 | `tool-godot-debug` | `executable`, `debugPort` (0 = auto-pick), `connectWaitMs`, `idleTimeoutMs`, `maxOutputBytes` | `debugPort: 0`; `connectWaitMs: 20000`; `maxStops` capped at 50 per call |
 | `tool-godot-ego` | `executable`, `allowEval`, `offscreen`, `maxFps` / `fixedFps`, `maxWidth`, `maxNodes`, `maxProps`, `requestTimeoutMs`, `graceMs` | `allowEval: false`; `maxFps: 60`; `maxWidth: 1280`; `requestTimeoutMs: 20000` |
 
+<a id="model-facing-tools"></a>
 ## Model-facing tools
 
 | Tool | Package | Purpose |
@@ -80,6 +110,7 @@ Every key has a default; per-package details live in each package's README.
 | `godot_see` / `godot_state` / `godot_node` / `godot_find` / `godot_diff` / `godot_logs` / `godot_actions` | tool-godot-ego | See the frame, read the scene tree and clickable Controls, read properties, measure visual change, read logs, list InputMap actions. |
 | `godot_click` / `godot_key` / `godot_type` / `godot_fill` / `godot_check` / `godot_hover` / `godot_drag` / `godot_scroll` / `godot_wait` / `godot_wait_for` | tool-godot-ego | Operate the running game (including setting a field and toggling a Control) and wait for frames or a value condition. |
 
+<a id="how-it-works"></a>
 ## How it works
 
 - **LSP.** Godot ships a TCP language server (EditorSettings `network/language_server/remote_port`, default 6005). `lsp-godot` attaches to a running editor, or spawns a headless one (`--lsp-port`) and pools providers per workspace; `.gd` queries (`goToDefinition` / `findReferences` / `hover`) are served through the harness `ctx.lsp` seam.
@@ -87,23 +118,27 @@ Every key has a default; per-package details live in each package's README.
 - **Visual sandbox.** A temporary `SceneTree` replaces the project's main loop and loads a bridge from outside the project, so `project.godot` is never edited. The bridge answers newline-delimited JSON over loopback (port and token travel through the environment), captures frames into memory, and injects input through `Viewport.push_input`. The game keeps running between calls; `godot_see` delivers a frame into the conversation.
 - **Scope.** `godot_debug` v1 is a launch-only scripted run that owns its game process; attach-mode debugging and stateful sessions are future work.
 
+<a id="deployment-notes"></a>
 ## Deployment notes
 
 - Spawn modes write `.godot/` import artifacts and may exceed the 60 s tool budget on large-project cold start (raise `timeoutMs` / `spawnReadyTimeoutMs`).
 - Attach modes require the matching project open in a running Godot editor (LSP: the editor's language server on `127.0.0.1:6005`).
 - `godot_debug` terminates its game process on every path; a crashed harness can still orphan it.
 
+<a id="building-from-source"></a>
 ## Building from source
 
 - The packages depend on `@deepseek-ai/dsh-*` workspace packages and build/test against the harness monorepo workspace (Node.js ^22.19 or >= 24, pnpm).
 - To build fully standalone, switch those dependencies to the published npm versions (all required packages are public on npm) and provide your own test/lint/tsconfig setup.
 
+<a id="repository-layout"></a>
 ## Repository layout
 
 - `bundle-godot/` — the optional capability bundle (rows, icon, install docs).
 - `tool-godot/`, `lsp-godot/`, `tool-godot-debug/`, `tool-godot-ego/`, `ui-godot/` — the five packages above (see [architecture](docs/architecture.md) for the module map).
 - `docs/` — architecture documentation.
 
+<a id="testing"></a>
 ## Testing
 
 Tested on:
@@ -118,6 +153,8 @@ Run the unit suites from the monorepo root: `pnpm exec vitest run packages/godot
 
 ## Known limitations and deferred work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - Attach-mode debugging, dynamic breakpoints, scene-tree snapshots, multi-thread stops, lazy object expansion and variable editing are future work (the pinned protocol facts keep those paths open).
 - The builtin formatter's whitespace rules follow godot-vscode-plugin, not gdformat.
 - `godot_format` is read-only by design; the model applies changes through the file-policy surface.
@@ -125,6 +162,17 @@ Run the unit suites from the monorepo root: `pnpm exec vitest run packages/godot
 - A crashed harness can orphan a spawned godot process.
 - Variable rendering follows the source plugin's display precision (`toFixed(1)` math types, `toFixed(5)` floats).
 
+<a id="license"></a>
 ## License
 
 Released under the MIT License. See [LICENSE](LICENSE) for the full text.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+Protocol facts (LSP framing, the remote-debugger binary format, Godot version gates) are recorded against a real Godot 4.7 instance under `docs/`; recheck them before changing a wire claim. The packages live in their own repository and are mounted here as the `packages/godot` submodule, so a change lands in the submodule first and the parent records the new commit.
+
+</details>

@@ -2,42 +2,54 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/README.md
+/:
+  en: a107b7a5c43e9d80
+  zh: f8e9b3889f94143e
 /dsh-godot-godot-capability-family-for-deepseek-harness:
   en: e39fe81fd630dab4
   zh: 573368f07f862a85
+/dsh-godot-godot-capability-family-for-deepseek-harness/summary:
+  en: b4189dc7ac45d6b6
+  zh: bf45fe79798e051c
+/dsh-godot-godot-capability-family-for-deepseek-harness/table-of-contents:
+  en: f9223b529fc23548
+  zh: 88affde2f45da7fb
 /dsh-godot-godot-capability-family-for-deepseek-harness/features:
-  en: d3fae214cd6dbf0f
-  zh: 5a2b2dc8b8d965be
+  en: 49211f60c5f05c47
+  zh: f806cdb8bc445995
 /dsh-godot-godot-capability-family-for-deepseek-harness/prerequisites:
-  en: 53c941c4e14e2534
-  zh: 84c5522ab50f2c61
+  en: b6d49a46b326cfb0
+  zh: afa28a1aad35e8d3
 /dsh-godot-godot-capability-family-for-deepseek-harness/installation:
-  en: 85cc3bab78c967f8
-  zh: c821cd81eec2fdfe
+  en: cf00483791c1b475
+  zh: 465e1f9b4eec07d6
 /dsh-godot-godot-capability-family-for-deepseek-harness/configuration:
-  en: 43f6364a806f9163
-  zh: 9975dd249e8b74c6
+  en: 69dfed999497ed87
+  zh: 1ef8fe78da31826c
 /dsh-godot-godot-capability-family-for-deepseek-harness/model-facing-tools:
-  en: a03e0cd5ee114d84
-  zh: 58a5804038cdfd6e
+  en: 321441bddcf0e68f
+  zh: ec172231b8a40d51
 /dsh-godot-godot-capability-family-for-deepseek-harness/how-it-works:
-  en: 4fc29f5dc05d6083
-  zh: 1439ed7cff6b67a1
+  en: 33b90342c6586dd6
+  zh: ee6c6690933c85b2
 /dsh-godot-godot-capability-family-for-deepseek-harness/deployment-notes:
-  en: dbcc5484830b2c93
-  zh: 82eaf608a03429d2
+  en: a5ff431c20928cf6
+  zh: 27d37d6719224d70
 /dsh-godot-godot-capability-family-for-deepseek-harness/building-from-source:
-  en: 536eae6b1931f477
-  zh: 0200e3c4e70d2b42
+  en: dd3591939ea40c88
+  zh: f8a1ae4486d0fe4f
 /dsh-godot-godot-capability-family-for-deepseek-harness/repository-layout:
-  en: 600a254ffe0c926d
-  zh: c461c32706111ad7
+  en: 6ffab095a6e72c97
+  zh: 886e18cb30e7d907
 /dsh-godot-godot-capability-family-for-deepseek-harness/testing:
   en: 7524a730b85bc3cf
   zh: ed0c0223629c28c3
 /dsh-godot-godot-capability-family-for-deepseek-harness/known-limitations-and-deferred-work:
-  en: eb3acbf305192365
-  zh: 48fa677636a03172
+  en: 25491caeb94628e0
+  zh: 7205fa46053cbb32
 /dsh-godot-godot-capability-family-for-deepseek-harness/license:
-  en: 07368bc4443473b7
-  zh: df12cdeffacc820f
+  en: 45c56da01b2f528b
+  zh: 4f29f4a5a1a9c957
+/dsh-godot-godot-capability-family-for-deepseek-harness/license/dev-note:
+  en: 128ddfd779d1a7d0
+  zh: bbfadfe3f5e8a70e

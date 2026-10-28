@@ -1,3 +1,8 @@
+---
+description: "The GDScript language-server provider for `ctx.lsp`: go-to-definition, references, and hover against Godot’s built-in TCP server, attach or spawn."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-lsp-godot
 
 English | [中文](README.zh.md)
@@ -14,15 +19,31 @@ await ctx.plugin(ToolGodotLsp, { connectMode: 'attach', ports: [6005] })
 await ctx.plugin(ToolGodotLsp, { connectMode: 'spawn', spawnExecutable: 'C:\\Godot\\godot.exe' })
 ```
 
+## Summary
+
+Give the model GDScript navigation in a Godot project: jump to a definition, find every reference, and read hover documentation for `.gd` files through the same `lsp` tool it already uses for other languages. It attaches to a running editor’s language server by default, or spawns a headless editor when none is open. Godot-specific cleanup — hover markdown and URI form — happens here; framing and capability negotiation come from the generic stdio provider.
+
+## Table of Contents
+
+- [Deployment requirement](#deployment-requirement)
+- [Settings](#settings)
+- [Config](#config)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="deployment-requirement"></a>
 ## Deployment requirement
 
 - **attach mode** needs a running Godot editor with its LSP enabled (Editor → Editor Settings → Network → Language Server; the editor listens on `127.0.0.1:6005` by default, configurable). The opened project must match the queried workspace (same root or a parent of it) — Godot's LSP only indexes the project it opened, and the server announces a mismatch through `gdscript_client/changeWorkspace` during the initialize handshake, which the provider honors by failing the query with `LSP_UNAVAILABLE`.
 - **spawn mode** needs a Godot 4.2+ (or 3.6+) executable (headless LSP has a version gate); the provider resolves it lazily at first spawn and verifies `--version`. Spawned editors write `.godot/` import artifacts and take over a port the provider pre-picks; cold start plus first import can exceed the `lsp` tool's 60 s default budget on large projects (raise `timeoutMs` on `tool-lsp` or pre-warm).
 
+<a id="settings"></a>
 ## Settings
 
 The package does not register a settings namespace; `host`, `ports`, `connectMode`, and the spawn options live in the plugin config (composition entry). The `godot` settings namespace belongs to `@deepseek-ai/dsh-tool-godot`.
 
+<a id="config"></a>
 ## Config
 
 Every key has a default; a deployment only overrides what its environment needs.
@@ -44,6 +65,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `killGraceMs` | `2000` | Cancel-grace and terminate-escalation budget for spawned processes. |
 | `spawnRetryCooldownMs` | `60000` | Cooldown after a FAILED spawn: further spawn attempts for the same workspace fail fast with `LSP_UNAVAILABLE` until it elapses (a broken project may never start its LSP — the server does not initialize when the project has errors); a successful spawn clears it. `0` disables the cooldown. |
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -96,6 +118,8 @@ Append-only.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **attach requires a matching running editor** — Godot's LSP indexes only the project it opened; the provider fails queries when the server's `changeWorkspace` path does not match the query workspace (same root or parent). There is no attach-side way to switch Godot's project.
 - **Godot ignores `$/cancelRequest`** — an aborted query is canceled by disconnecting; the next query establishes a fresh connection (the server does not recognize a reconnected client, source plugin issue #844).
 - **An abrupt disconnect may leave a stale open document on the server** — the provider sends a best-effort `didClose` before dropping an aborted connection; the next `didOpen` overwrites server-side state.
@@ -105,3 +129,13 @@ Append-only.
 - **A spawned editor cold start writes `.godot/` import artifacts** and can exceed the `lsp` tool's 60 s budget on large projects.
 - **`gdscript/capabilities` notifications are ignored** — the native-class table is large and not part of the seam's four operations.
 - **No formatting or rename** — the seam exposes only the four semantic operations; Godot's LSP formatting/rename surface is out of scope (see `tool-godot` for headless formatting).
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+Godot’s server is a TCP service, not stdio, so the provider owns the connect modes (`attach`, `spawn`, `auto`) and reuses one provider per workspace. `goToImplementation` stays rejected because Godot never advertises it; the recorded 4.7 capability facts are the authority before widening the operation set.
+
+</details>

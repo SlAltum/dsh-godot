@@ -1,3 +1,8 @@
+---
+description: "面向模型的 Godot 可视化沙盒：一个可通过二十二个工具查看、读取与操作的常驻游戏，且不改动工程文件。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-godot-ego
 
 [English](README.md) | 中文
@@ -22,6 +27,25 @@ export async function mount(ctx: Context): Promise<void> {
 }
 ```
 
+## 概述
+
+启动一个 Godot 游戏并在多次调用之间保持运行，然后查看画面、读取场景树与实时属性值、按 Control 路径点击／输入／拖拽／滚动，并在下一次观察前等待若干帧或某个值条件。沙盒让工程保持字节不变：临时 `SceneTree` 替换主循环，桥接代码从工程外部加载。代价是每个会话一个游戏进程；画面工具需要 `attachments` 与 `llm`，观窗需要 `webServer`。
+
+## 目录
+
+- [工作原理](#how-it-works)
+- [宿主端点](#host-endpoints)
+- [系统边界](#system-boundary)
+- [设置](#settings)
+- [配置](#config)
+- [工具](#tools)
+- [错误](#errors)
+- [测试](#testing)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+<a id="how-it-works"></a>
 ## 工作原理
 
 `godot_play` 解析项目根；`.godot/` 缺失时先跑一次 `--headless --editor --import`；把两个 GDScript 文件（`boot.gd`、`bridge.gd`）写到项目外的临时目录；绑定 `127.0.0.1:0`；再 spawn `godot --path <root> --script <boot.gd> --windowed --resolution 1280x720 [--position -32000,-32000] [--max-fps N | --fixed-fps N]`。boot 脚本把桥接注入根节点，然后切到项目主场景——`godot_play` 传入场景时，改切到 `DSH_EGO_SCENE`。桥接回连，带会话口令与协议版本发 `hello`，此后应答换行分隔 JSON。桥接保持 `process_mode = PROCESS_MODE_ALWAYS`，因此自行暂停的游戏仍能应答 `state` 与 `shot`。
@@ -36,6 +60,7 @@ export async function mount(ctx: Context): Promise<void> {
 
 一个 workspace 至多一个会话。`godot_stop` 让桥接退出，在 `graceMs` 内等待，超时后升级为终止，并报告真实退出码或信号。dispose 执行同一套反向清理，并删除临时脚本；会话注册表以 `godot.egoSessions` 发布，它自身的清理逻辑在插件卸载时销毁全部会话。
 
+<a id="host-endpoints"></a>
 ## 宿主端点
 
 `webServer` 挂载时，插件在 `/api/godot` 下为观察窗提供服务：
@@ -48,6 +73,7 @@ export async function mount(ctx: Context): Promise<void> {
 
 web server 自身没有鉴权层，因此端点在本地校验：请求必须来自回环地址且不是跨站请求（`Sec-Fetch-Site` / `Origin`），或者携带部署配置的固定 `token` 查询参数。[`ui-godot`](../ui-godot/README.zh.md) 里的观察窗是同源的，无需 token。
 
+<a id="system-boundary"></a>
 ## 系统边界
 
 沙盒观察的是真实进程，因此部分效果只能**补偿，无法撤销**：
@@ -58,10 +84,12 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 - **外部前提是环境，不是效果。** Godot 二进制、工程文件与显卡驱动是部署事实；缺失或不兼容会以结构化错误码失败。
 - **`allowEval: false` 不是安全边界。** 它去掉一个误用面——agent 仍能写 `.gd` 文件——降低的是误伤概率，不是有意的逃逸。
 
+<a id="settings"></a>
 ## 设置
 
 本包不注册设置命名空间；可执行文件与各项上限是组合层配置。`executable` 留空即使用 `tool-godot` 设置卡里的实时值；只有需要用另一个 Godot 构建运行沙盒时才显式设置。
 
+<a id="config"></a>
 ## 配置
 
 每个键都有默认值；部署只覆盖环境需要的那几项。
@@ -82,6 +110,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 | `maxProps` | `40` | `godot_node` 的属性行预算。 |
 | `maxWidth` | `1280` | 预览截图宽度（像素）；`0` 关闭缩放。 |
 
+<a id="tools"></a>
 ## 工具
 
 | 工具 | 参数 | 行为 |
@@ -111,6 +140,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 
 `godot_eval`（`expression`）仅在 `allowEval: true` 时注册。
 
+<a id="errors"></a>
 ## 错误
 
 失败携带本包自有的 `EgoGodotError`（`HarnessError` 子类），以 `{ name, code }` 呈现：
@@ -126,12 +156,14 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 | `GODOT_EGO_STALE_FRAME` | 请求的帧不比已投递的帧新。 |
 | `GODOT_EGO_LOST` | 游戏退出、断开或破坏协议；会话不可再用。 |
 
+<a id="testing"></a>
 ## 测试
 
 在 monorepo 根运行单元套件：`pnpm exec vitest run packages/godot/tool-godot-ego`。真机冒烟经 `DSH_TEST_GODOT`（Godot 可执行文件路径）按需启用；它用一条链路完成 play、观察、读取、操作与 stop。
 
 `tests/fixtures/gomoku` 是自带的两入五子棋工程，供真机检查使用。用 `godot_play` 启动后，通过 `godot_find` 与 `godot_click` 操作 `Cell_07_07` 交叉点；黑棋连成五子会显示 `Black wins`，`New game` 清空棋盘。每个交叉点都是具名 Button，因此 find、click、node 读取与重置都不依赖图像坐标。完整自测与对弈流程见 [English](tests/fixtures/gomoku/TEST_CHARTER.md) · [中文](tests/fixtures/gomoku/TEST_CHARTER.zh.md)。
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -198,6 +230,8 @@ Godot visual sandbox: call godot_play to start the project, godot_see to look at
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **子窗口不在取帧范围内** —— 根视口纹理不含 `Window` 子节点，因此弹窗或第二个窗口对 `godot_see` 不可见。
 - **最小化或完全遮挡时可能不渲染** —— 帧会停在旧画面；`godot_see` 报告帧号，`godot_diff` 与上一张已取帧比较。
 - **切换场景不重放启动逻辑** —— `godot_scene` 与 `godot_play.scene` 调用 `change_scene_to_file`，不等价于项目自身的启动路径。
@@ -211,3 +245,13 @@ Godot visual sandbox: call godot_play to start the project, godot_see to look at
 - **`godot_fill` 依赖全选快捷键** —— 它点击输入框、发 Ctrl+A、输入并校验；忽略 Ctrl+A 的自定义输入控件会报告不匹配而不是替换文本（这类控件用 `godot_click` + `godot_key` + `godot_type`）。
 - **`godot_select` 未实现** —— 在 `OptionButton`/`PopupMenu` 里选择选项需要引擎侧改值并触发信号，属于推迟的属性写入阶段。
 - **没有原始命令逃生口** —— 与浏览器 CDP 工具不同，桥接只暴露固定命令集；`godot_eval`（需 `allowEval`）是表达式级的逃生口。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+坐标是最易碎的部分：窗口缩放、`canvas_items` 拉伸与裁剪帧可能彼此不一致，因此沙盒在运行时测量几何，`stretch-repro` 夹具就是这些恒等式的基线。测试与工具描述中优先使用 Control 路径点击；新增工具需要同时扩展桥接、工具 schema 与画面或状态渲染器。
+
+</details>

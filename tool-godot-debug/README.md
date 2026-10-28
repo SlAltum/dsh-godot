@@ -1,3 +1,8 @@
+---
+description: "One scripted Godot debug run for a model: breakpoints, headless launch or attach, per-stop stack and variable snapshots, and a structured report."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-godot-debug
 
 English | [中文](README.zh.md)
@@ -20,16 +25,34 @@ export async function mount(ctx: Context): Promise<void> {
 }
 ```
 
+## Summary
+
+Ask one question about runtime state and get an answer without print statements: set breakpoints, run the project headless (or attach to a game already started with `--remote-debug`), and receive the stack plus locals, members, and globals at every stop, with object variables expanded in place. The model can also edit object properties while paused, and each write is verified against the engine and reported. A run always ends — on exit, cooperative timeout, abort, or failure — so no background game is left behind.
+
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Settings](#settings)
+- [Config](#config)
+- [Tool](#tool)
+- [Errors](#errors)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="how-it-works"></a>
 ## How it works
 
 The Godot 4 debugger protocol is a **custom binary protocol** (not DAP): this side binds a pre-picked free port, spawns `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`, and the game connects in as the TCP client. Each frame is a `[u32 LE length][variant-encoded array]` where the array is `[command, threadId, params]` (Godot 4.2+). On every stop the tool requests the stack dump and frame variables, snapshots them (bounded depth), and continues. Protocol facts are pinned in `.context/t3/facts.md` (real-Godot 4.7 measurements).
 
 In **attach mode** the tool only binds the port and waits: the user starts the game themselves (`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`), the tool sends the breakpoints dynamically after `set_pid` (the only attach source — CLI `--breakpoints` is launch-only), optionally pauses once with `break` (`pauseOnAttach`), runs the same stop loop, then detaches: best-effort breakpoint removal + continue + disconnect. The game is never killed and keeps running; the report carries `detached: true` and no `exit` facts. Pinned attach facts (`.context/t4/facts.md`): a game already paused when it connects re-sends `debug_enter`; a `break` pause reports an empty reason with `isUserBreakpoint=true` and an empty engine stack; detaching never leaves the game paused (it resumes) and leftover breakpoints are ignored without a debugger; **Godot does not retry a failed connection** — the game must start AFTER the tool call (or the port must already be listening). Editor-debugger coexistence is pinned (`.context/t11/facts.md`): an idle Godot editor binds **no** debug port — a game started externally with `--remote-debug` pointing at the editor's default port (6007) prints `Remote Debugger: Unable to connect` once and runs on — and attach alongside an idle editor is completely unaffected (full stop loop + detach, the editor keeps running untouched). A game has exactly ONE debug target: when several `--remote-debug` arguments are passed the LAST one wins, and a game already dialing another target never connects to the attach port — the run times out with the start-order guidance above. Games the editor itself launches (F5) are debugged by the editor's own server and cannot be attached.
 
+<a id="settings"></a>
 ## Settings
 
 The package does **not** register a settings namespace (tool-godot owns the `godot` namespace); the executable and caps are composition-level config.
 
+<a id="config"></a>
 ## Config
 
 Every key has a default; a deployment only overrides what its environment needs.
@@ -53,6 +76,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `maxTreeNodes` | `200` | Max scene-tree nodes parsed/rendered per frame-bearing stop; `0` disables scene-tree snapshots. |
 | `fullPrecisionNumbers` | `false` | Render numbers at FULL float64 precision (JS shortest round-trip form) instead of the 7-significant-digit cap — a float32 wire artifact like `0.10000000149011612` then displays verbatim instead of normalizing to `0.1` (T22). |
 
+<a id="tool"></a>
 ## Tool
 
 | Tool | Arguments | Behavior |
@@ -66,10 +90,12 @@ Every key has a default; a deployment only overrides what its environment needs.
 
 The tool's `presentationMeta` carries a replayable card view: the compact `DebugMeta` (stop positions + counts) plus a versioned, JSON-safe `view` — per-stop frames, the first frame-bearing stop's rendered scope lines, the expansion tree, edit outcomes, per-stop scene trees, and bounded output/error tails. The shipped dynamic UI plugin (`docs/ui-plugin-godot.js`) renders this as collapsible per-stop sections with a summary chips row; when the view is absent or malformed the card falls back to the plain text report. The view stays size-parity with the text: scope lines render only on the first frame-bearing stop, and a 256 KiB serialized budget cuts scope lines first, then scene-tree lines, flagging `viewTruncated`.
 
+<a id="errors"></a>
 ## Errors
 
 Failures carry the package-owned `GodotError` (a `HarnessError` subclass), surfaced as `{ name, code }` on `isError` results: `GODOT_UNAVAILABLE` (executable/version/launch/connect failures, with the version or stderr tail), `GODOT_PARSE_ERROR` (unreadable project, breakpoint outside the project, or a malformed/oversized protocol frame), and `GODOT_ABORTED` (cooperative timeout or caller cancellation). A run that completes without any stop is a successful partial result (`stops: []` with output and errors), not an error.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -136,6 +162,8 @@ Append-only.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **godot is a host install** — no binary ships with the package; a missing executable fails calls at call time (`GODOT_UNAVAILABLE`), never at load time.
 - **Headless debug requires a project that was imported once** — game mode does not auto-import, and a missing `.godot` global-class cache raises a Parser Error stop instead of running; run `godot --headless --editor --path <root> --import --quit` first, or expect the first run to report it.
 - **Breakpoints need a debug-capable binary** — exported games keep working breakpoints only when exported with the DEBUG template: the debug template retains the full remote debugger (breakpoints deliver stops), while the RELEASE template retains only the connection layer — the game still dials and answers `set_pid`, but the GDScript breakpoint engine is compiled out and stops never arrive (deterministic, pinned `.context/t12/facts.md`, Godot 4.5.1). Standard builds behave like the debug template.
@@ -154,3 +182,13 @@ Append-only.
 - **one debugger per game — attach and the Godot editor debugger do not share a game** — a game dials exactly one debug server at startup (`--remote-debug`; the last argument wins when several are passed). An idle Godot editor binds no debug port, so attach alongside it is unaffected (pinned, `.context/t11/facts.md`); a game pointed at the editor's default port (6007) prints `Remote Debugger: Unable to connect` once and runs on. Only games the editor itself launches (F5) are debugged by it, and those cannot be attached. Attaching on a port another server holds fails fast with `GODOT_UNAVAILABLE` (`could not bind port …: EADDRINUSE`).
 - **multi-thread stops are deferred** — launch/attach cover the scripted per-stop snapshot; the raw protocol facts (`.context/t3/facts.md`) keep those paths open.
 - **A crashed harness may leave an orphaned godot process** — the tool terminates the process tree on teardown; an abrupt harness death can still orphan the spawned game. In attach mode an abrupt death only detaches: the game resumes automatically (a disconnect never leaves it paused, pinned).
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+Godot’s remote debugger is a custom binary protocol (`[u32 LE length][variant-encoded array]`), not DAP; the pinned 4.7 facts live in the module docs and the tests replay them. Attach mode shares the launch path’s stop pipeline, so a stop-shape change must be verified in both modes.
+
+</details>

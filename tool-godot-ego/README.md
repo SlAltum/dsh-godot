@@ -1,3 +1,8 @@
+---
+description: "The Godot visual sandbox for a model: a persistent game it can see, read, and operate through twenty-two tools without touching project files."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-godot-ego
 
 English | [中文](README.zh.md)
@@ -22,6 +27,25 @@ export async function mount(ctx: Context): Promise<void> {
 }
 ```
 
+## Summary
+
+Start a Godot game and keep it running between calls, then look at a frame, read the scene tree and live property values, click, type, drag, and scroll by Control path, and wait for a frame or a value condition before the next look. The sandbox leaves the project byte-identical: a temporary `SceneTree` replaces the main loop and the bridge loads from outside the project. It costs one game process per session; the frame tool needs `attachments` and `llm`, and the viewer needs `webServer`.
+
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Host endpoints](#host-endpoints)
+- [System boundary](#system-boundary)
+- [Settings](#settings)
+- [Config](#config)
+- [Tools](#tools)
+- [Errors](#errors)
+- [Testing](#testing)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="how-it-works"></a>
 ## How it works
 
 `godot_play` resolves the project root, runs the one-time `--headless --editor --import` pass when `.godot/` is missing, writes two GDScript files to a temporary directory outside the project (`boot.gd`, `bridge.gd`), binds `127.0.0.1:0`, and spawns `godot --path <root> --script <boot.gd> --windowed --resolution 1280x720 [--position -32000,-32000] [--max-fps N | --fixed-fps N]`. The boot script injects the bridge as a child of the root, then changes to the project main scene — or to `DSH_EGO_SCENE` when `godot_play` was given a scene. The bridge connects back, sends `hello` with the session token and protocol version, and answers newline-delimited JSON. It keeps `process_mode = PROCESS_MODE_ALWAYS`, so a game that pauses itself still answers `state` and `shot`.
@@ -36,6 +60,7 @@ Node reads go through `get_property_list` filtered to stored and script variable
 
 One workspace owns at most one session. `godot_stop` asks the bridge to quit, waits within `graceMs`, escalates to terminate, and reports the real exit code or signal. Disposal runs the same inverse and also removes the temporary scripts; the session registry publishes `godot.egoSessions` and its own inverse disposes every session when the plugin unloads.
 
+<a id="host-endpoints"></a>
 ## Host endpoints
 
 When `webServer` is mounted, the plugin serves the watch panel under `/api/godot`:
@@ -48,6 +73,7 @@ When `webServer` is mounted, the plugin serves the watch panel under `/api/godot
 
 The web server has no auth layer of its own, so the endpoints guard themselves: a request must come from loopback and must not be cross-site (`Sec-Fetch-Site` / `Origin`), or it must carry the pinned `token` query parameter when a deployment configures one. The watch panel in [`ui-godot`](../ui-godot/README.md) is same-origin and needs no token.
 
+<a id="system-boundary"></a>
 ## System boundary
 
 The sandbox observes a real process, so some effects are **compensated, not undone**:
@@ -58,10 +84,12 @@ The sandbox observes a real process, so some effects are **compensated, not undo
 - **External prerequisites are environment, not effects.** The Godot binary, the project files, and the graphics driver are deployment facts; a missing or incompatible one fails the call with a structured code.
 - **`allowEval: false` is not a security boundary.** It removes a misuse surface — the agent can still write a `.gd` file — so it lowers accidental damage, not intentional escape.
 
+<a id="settings"></a>
 ## Settings
 
 The package does not register a settings namespace; the executable and caps are composition-level config. Leave `executable` empty to use the live value from the `tool-godot` settings card; set it only to run the sandbox with a different Godot build.
 
+<a id="config"></a>
 ## Config
 
 Every key has a default; a deployment only overrides what its environment needs.
@@ -82,6 +110,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `maxProps` | `40` | Property-row budget for `godot_node`. |
 | `maxWidth` | `1280` | Preview screenshot width in pixels; `0` disables downscaling. |
 
+<a id="tools"></a>
 ## Tools
 
 | Tool | Arguments | Behavior |
@@ -111,6 +140,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 
 `godot_eval` (`expression`) registers only with `allowEval: true`.
 
+<a id="errors"></a>
 ## Errors
 
 Failures carry the package-owned `EgoGodotError` (a `HarnessError` subclass), surfaced as `{ name, code }`:
@@ -126,12 +156,14 @@ Failures carry the package-owned `EgoGodotError` (a `HarnessError` subclass), su
 | `GODOT_EGO_STALE_FRAME` | A requested frame is not newer than the frame already delivered. |
 | `GODOT_EGO_LOST` | The game exited, disconnected, or broke the protocol; the session is unusable. |
 
+<a id="testing"></a>
 ## Testing
 
 Run the unit suite from the monorepo root: `pnpm exec vitest run packages/godot/tool-godot-ego`. The real-machine smoke is opt-in through `DSH_TEST_GODOT` (the Godot executable path); it plays, observes, reads, operates, and stops the spike project in one chain.
 
 `tests/fixtures/gomoku` is a self-contained two-player project for live checks. Start it with `godot_play`, then use `godot_find` plus `godot_click` on a `Cell_07_07` intersection; five black stones in a row report `Black wins`, and `New game` clears the board. Every intersection is a named Button, so find, click, node reads, and reset are deterministic without image coordinates. The full self-test and user-game procedure is in [English](tests/fixtures/gomoku/TEST_CHARTER.md) · [中文](tests/fixtures/gomoku/TEST_CHARTER.zh.md).
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -198,6 +230,8 @@ Append-only.
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **Sub-windows are not in the captured frame** — the root viewport texture excludes `Window` children, so a popup or a second window is not visible to `godot_see`.
 - **A minimized or fully occluded window may not render** — frames stay stale; `godot_see` reports the frame number and `godot_diff` compares against the previous captured frame.
 - **Switching scenes does not replay boot logic** — `godot_scene` and `godot_play.scene` call `change_scene_to_file`, which is not equivalent to the project's own start-up path.
@@ -211,3 +245,13 @@ Append-only.
 - **`godot_fill` relies on the select-all shortcut** — it clicks the field, sends Ctrl+A, types, and verifies; a custom input Control that ignores Ctrl+A reports the mismatch instead of replacing text (use `godot_click` + `godot_key` + `godot_type` there).
 - **`godot_select` is not implemented** — choosing an option in an `OptionButton`/`PopupMenu` needs engine-side selection and a signal, which belongs to the deferred property-write phase.
 - **No raw-command escape hatch** — unlike a browser CDP tool, the bridge exposes only its fixed command set; `godot_eval` (with `allowEval`) is the expression-level escape hatch.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+Coordinates are the fragile part: window scale, `canvas_items` stretch, and cropped frames can disagree, so the sandbox measures geometry at runtime and the `stretch-repro` fixture is the baseline for those identities. Prefer Control-path clicks in tests and tool descriptions; a new tool extends the bridge, the tool schema, and the frame or state renderer together.
+
+</details>

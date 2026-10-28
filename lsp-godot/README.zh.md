@@ -1,3 +1,8 @@
+---
+description: "`ctx.lsp` 的 GDScript 语言服务器提供方：通过 Godot 内置 TCP 服务器提供跳转定义、引用查找与悬停，支持附加或启动模式。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-lsp-godot
 
 [English](README.md) | 中文
@@ -14,15 +19,31 @@ await ctx.plugin(ToolGodotLsp, { connectMode: 'attach', ports: [6005] })
 await ctx.plugin(ToolGodotLsp, { connectMode: 'spawn', spawnExecutable: 'C:\\Godot\\godot.exe' })
 ```
 
+## 概述
+
+让模型在 Godot 工程中获得 GDScript 导航：通过它已在其他语言使用的同一个 `lsp` 工具跳转定义、查找全部引用并读取 `.gd` 的悬停文档。默认附加到运行中编辑器的语言服务器；没有打开编辑器时可启动一个无头编辑器。Godot 特有的清理——悬停 markdown 与 URI 形式——在此处理；分帧与能力协商来自通用 stdio 提供方。
+
+## 目录
+
+- [部署要求](#deployment-requirement)
+- [Settings](#settings)
+- [Config](#config)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+<a id="deployment-requirement"></a>
 ## 部署要求
 
 - **attach 模式**需要正在运行的 Godot 编辑器并启用其 LSP（编辑器 → 编辑器设置 → 网络 → Language Server；默认监听 `127.0.0.1:6005`，可配置）。打开的项目必须与查询工作区匹配（相同或为其父目录）——Godot LSP 只索引它打开的项目，服务器会在 initialize 握手期间通过 `gdscript_client/changeWorkspace` 通告不匹配，provider 据此以 `LSP_UNAVAILABLE` 拒绝查询。
 - **spawn 模式**需要 Godot 4.2+（或 3.6+）可执行文件（无头 LSP 有版本门槛）；provider 在首次实际 spawn 时惰性解析并校验 `--version`。自起编辑器会写 `.godot/` 导入产物并使用 provider 预选的端口；冷启动加首次导入在大项目上可能超过 `lsp` 工具的 60s 默认预算（可调高 `tool-lsp` 的 `timeoutMs` 或预热）。
 
+<a id="settings"></a>
 ## Settings
 
 本包不注册 settings 命名空间；`host`、`ports`、`connectMode` 与 spawn 选项均在插件配置（composition 条目）中。`godot` settings 命名空间属于 `@deepseek-ai/dsh-tool-godot`。
 
+<a id="config"></a>
 ## Config
 
 每个键都有默认值；部署只需覆盖环境需要的部分。
@@ -44,6 +65,7 @@ await ctx.plugin(ToolGodotLsp, { connectMode: 'spawn', spawnExecutable: 'C:\\God
 | `killGraceMs` | `2000` | 取消宽限与进程终止升级预算。 |
 | `spawnRetryCooldownMs` | `60000` | spawn 失败后的冷却：同一工作区在冷却期内再次 spawn 会以 `LSP_UNAVAILABLE` 快速失败（项目有错误时服务器可能不初始化——LSP 无法启动）；一次成功的 spawn 会清除冷却。`0` = 禁用冷却。 |
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### System prompt
@@ -96,6 +118,8 @@ No provider guidance: the lsp tool's operation semantics are covered by tool-lsp
 
 ## 已知限制与延期工作
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **attach 需要匹配的已运行编辑器**——Godot LSP 只索引它打开的项目；服务器 `changeWorkspace` 路径与查询工作区不匹配（相同或父目录）时 provider 拒绝查询。attach 侧无法切换 Godot 的项目。
 - **Godot 忽略 `$/cancelRequest`**——中止的查询通过断开连接取消；下一次查询建立全新连接（服务器不识别重连的客户端，源插件 issue #844）。
 - **异常断开可能在服务器端残留 open 文档**——provider 在放弃中止连接前尽力发送 `didClose`；下一次 `didOpen` 会覆盖服务器端状态。
@@ -105,3 +129,13 @@ No provider guidance: the lsp tool's operation semantics are covered by tool-lsp
 - **自起编辑器冷启动会写 `.godot/` 导入产物**，大项目上可能超过 `lsp` 工具的 60s 预算。
 - **忽略 `gdscript/capabilities` 通知**——native 类表很大，且不属于接缝的四个操作。
 - **无格式化与重命名**——接缝只暴露四个语义操作；Godot LSP 的格式化/重命名面超出范围（无头格式化见 `tool-godot`）。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+Godot 的服务器是 TCP 服务而非 stdio，因此提供方负责连接模式（`attach`、`spawn`、`auto`）并按工作区复用提供方。`goToImplementation` 仍被拒绝，因为 Godot 从不声明该能力；在扩展操作集之前，以记录的 4.7 能力事实为准。
+
+</details>

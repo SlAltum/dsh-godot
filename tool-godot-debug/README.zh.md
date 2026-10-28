@@ -1,3 +1,8 @@
+---
+description: "面向模型的一次脚本化 Godot 调试运行：断点、无头启动或附加、逐停栈与变量快照，以及结构化报告。"
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-godot-debug
 
 [English](README.md) | 中文
@@ -20,16 +25,34 @@ export async function mount(ctx: Context): Promise<void> {
 }
 ```
 
+## 概述
+
+不必插入 print 就能回答一个运行期状态问题：设置断点、无头运行工程（或附加到已用 `--remote-debug` 启动的游戏），并在每次停止时拿到栈帧与局部变量、成员变量、全局变量，对象变量会就地展开。模型还可以在暂停时修改对象属性，每次写入都会经引擎校验并回报结果。一次运行总会结束——正常退出、协作式超时、中止或失败——不会留下后台游戏进程。
+
+## 目录
+
+- [工作原理](#how-it-works)
+- [Settings](#settings)
+- [Config](#config)
+- [工具](#tool)
+- [错误](#errors)
+- [模型体验](#model-experience)
+- [已知限制与延后工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+<a id="how-it-works"></a>
 ## 工作原理
 
 Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定预选空闲端口，spawn `godot --path <root> --headless --remote-debug "tcp://127.0.0.1:<port>" [--breakpoints "res://f:l,..."] [scene] [-- args]`，游戏进程作为 TCP 客户端连入。每帧为 `[u32 LE 长度][variant 编码数组]`，数组为 `[command, threadId, params]`（Godot 4.2+）。每次停顿工具请求堆栈转储与帧变量、快照（有界深度）并继续。协议事实已固定在 `.context/t3/facts.md`（Godot 4.7 实测）。
 
 **attach 模式**下工具只绑定端口并等待：用户自行启动游戏（`godot --path <root> --remote-debug tcp://127.0.0.1:<port>`），工具在 `set_pid` 后动态发送断点（attach 的唯一断点来源——CLI `--breakpoints` 仅 launch 可用），可选 `pauseOnAttach` 发 `break` 立即暂停一次，执行同样的停顿循环，然后 detach：best-effort 断点移除 + continue + 断开。游戏不会被杀死，并继续运行；报告携带 `detached: true`，无 `exit` 事实。已固定 的 attach 事实（`.context/t4/facts.md`）：连接时已暂停的游戏会补发 `debug_enter`；`break` 暂停的 reason 为空字符串、`isUserBreakpoint=true`、引擎栈为空；detach 从不把游戏留在暂停态（自动恢复），无调试器时，工具忽略残留断点；**Godot 不重试失败的连接**——游戏必须在工具调用之后启动（或端口已先处于监听状态）。编辑器调试器共存已固定（`.context/t11/facts.md`）：空闲的 Godot 编辑器**不**绑定任何调试端口——外部启动的游戏以 `--remote-debug` 指向编辑器默认端口（6007）时会打印一次 `Remote Debugger: Unable to connect` 并照常运行——因此编辑器运行时 attach 完全不受影响（完整停顿循环 + detach，编辑器无感知地继续运行）。一个游戏**只有一个调试目标**：传入多个 `--remote-debug` 参数时**最后一个生效**；已在拨号其他目标的游戏永远不会连入 attach 端口——运行以上述启动顺序指引超时。编辑器自己启动（F5）的游戏由编辑器自身的服务器调试，无法 attach。
 
+<a id="settings"></a>
 ## Settings
 
 本包**不注册** settings 命名空间（`godot` 命名空间归 tool-godot 所有）；可执行文件与上限均为 composition 级配置。
 
+<a id="config"></a>
 ## Config
 
 每个键都有默认值；部署只需覆盖环境需要的部分。
@@ -53,6 +76,7 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 | `maxTreeNodes` | `200` | 每个有帧停顿解析/渲染的场景树节点数上限；`0` = 禁用场景树快照。 |
 | `fullPrecisionNumbers` | `false` | 数字渲染使用 float64 **完整精度**（JS 最短往返表示），替代 7 位有效数字上限——float32 线上伪影（如 `0.10000000149011612`）将原样显示，不再归一化为 `0.1`（T22）。 |
 
+<a id="tool"></a>
 ## 工具
 
 | 工具 | 参数 | 行为 |
@@ -66,10 +90,12 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 
 工具的 `presentationMeta` 携带可回放卡片视图：紧凑的 `DebugMeta`（停顿位置 + 计数）外加带版本、JSON-safe 的 `view`——逐停顿帧列表、首个有帧停顿的渲染变量行、展开树、编辑结果、逐停顿场景树与有界输出/错误尾部。随附动态 UI 插件（`docs/ui-plugin-godot.js`）将其渲染为可折叠的逐停顿分区与摘要 chips 行；view 缺失或损坏时卡片回退整段文本报告。视图与文本保持体积对等：变量行只渲染在首个有帧停顿，256 KiB 序列化预算先裁变量行、再裁场景树行，并置 `viewTruncated` 标记。
 
+<a id="errors"></a>
 ## 错误
 
 失败携带包属 `GodotError`（`HarnessError` 子类），在 `isError` 结果上以 `{ name, code }` 呈现：`GODOT_UNAVAILABLE`（可执行文件/版本/启动/连接失败，附版本或 stderr 尾部）、`GODOT_PARSE_ERROR`（项目不可读、断点在项目外、协议帧畸形或超长）、`GODOT_ABORTED`（协作式超时或调用方取消）。无任何停顿即完成的运行是成功的部分结果（`stops: []` + 输出与错误），不是错误。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### System prompt
@@ -136,6 +162,8 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 
 ## 已知限制与延后工作
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **godot 是宿主安装**——包内不随附二进制；缺少可执行文件在调用时失败（`GODOT_UNAVAILABLE`），绝不在加载时。
 - **无头调试要求项目至少导入过一次**——游戏模式不自动导入，缺少 `.godot` 全局类缓存会触发 Parser Error 停顿而非正常运行；先执行 `godot --headless --editor --path <root> --import --quit`，或接受首次运行报告该问题。
 - **断点需要可调试构建**——导出游戏只有用 DEBUG 模板导出时才保留可用断点：debug 模板保留完整远程调试器（断点可命中），release 模板只保留连接层——游戏照常拨号并应答 set_pid，但编译时排除了 GDScript 断点引擎，停顿永不出现（确定性行为，已固定 `.context/t12/facts.md`，Godot 4.5.1）。标准构建与 debug 模板行为一致。
@@ -154,3 +182,13 @@ Use godot_debug to run a Godot scene under the debugger: set breakpoints (res://
 - **一个游戏一个调试器——attach 与 Godot 编辑器调试器不能共享游戏**——游戏启动时只拨一个调试服务器（`--remote-debug`；传多个参数时最后一个生效）。空闲的 Godot 编辑器不绑定任何调试端口，因此编辑器运行时 attach 不受影响（已固定，`.context/t11/facts.md`）；指向编辑器默认端口（6007）的游戏会打印一次 `Remote Debugger: Unable to connect` 并照常运行。只有编辑器自己启动（F5）的游戏才由它调试，而这些游戏无法 attach。attach 到其他服务器已占用的端口会快速失败并返回 `GODOT_UNAVAILABLE`（`could not bind port …: EADDRINUSE`）。
 - **多线程停顿延后**——launch/attach 覆盖脚本化逐停顿快照；原始协议事实（`.context/t3/facts.md`）为这些路径保留依据。
 - **harness 崩溃可能遗留孤儿 godot 进程**——工具在 teardown 时终止进程树；harness 骤然死亡仍可能遗留自起游戏进程。attach 模式下骤然死亡只是 detach：游戏自动恢复运行（断开从不使其保持暂停，已固定）。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+Godot 的远程调试器是自定义二进制协议（`[u32 LE 长度][variant 编码数组]`），不是 DAP；固定下来的 4.7 事实记录在模块文档中，测试会重放它们。附加模式与启动路径共用停止流水线，因此改变停止数据的结构必须在两种模式下都验证。
+
+</details>

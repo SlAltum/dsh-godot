@@ -2,33 +2,42 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot-ego/README.md
+/:
+  en: 5f2688be83344762
+  zh: 67b59bd074b69d1a
 /deepseek-ai-dsh-tool-godot-ego:
   en: e5f77d5bdc28696b
   zh: 655a299c0da1d1b7
+/deepseek-ai-dsh-tool-godot-ego/summary:
+  en: 617d40fac632744d
+  zh: a7ee00207c6554eb
+/deepseek-ai-dsh-tool-godot-ego/table-of-contents:
+  en: 86f88ce8d73e5039
+  zh: d556247b99d7f5ee
 /deepseek-ai-dsh-tool-godot-ego/how-it-works:
-  en: c1fba69767cbf8c9
-  zh: eb11fcedc5e5f5cb
+  en: 2bcaf20c75724fe5
+  zh: 8aa560c99890c8a1
 /deepseek-ai-dsh-tool-godot-ego/host-endpoints:
-  en: c6a03c45e5d06d67
-  zh: 9e5b66a4188dd697
+  en: b53b00f8801605e0
+  zh: 84c71ed46790fd69
 /deepseek-ai-dsh-tool-godot-ego/system-boundary:
-  en: 51898964e94be71f
-  zh: 392066e71a574ae2
+  en: ec1498834e1939d0
+  zh: b96b62f943b059ff
 /deepseek-ai-dsh-tool-godot-ego/settings:
-  en: f02c6db6b0fccde6
-  zh: 7b5873a987c4d5c4
+  en: 2702fee2b066e184
+  zh: 52775e56b483e447
 /deepseek-ai-dsh-tool-godot-ego/config:
-  en: 75f7d9dc56a610da
-  zh: 2c6269d585e4d4e3
+  en: e32df4117aa03704
+  zh: 2a895705f100df1f
 /deepseek-ai-dsh-tool-godot-ego/tools:
-  en: 91d0c1bb06023d6e
-  zh: 03b4452ca80bfd62
+  en: c4fb1ecb684ee143
+  zh: 148b7eafe5d4240e
 /deepseek-ai-dsh-tool-godot-ego/errors:
-  en: 32707c2ee1a9fb18
-  zh: ba83d6680c03f8bf
+  en: 55779a49dbebb9aa
+  zh: eb8eff3f6f0d14a6
 /deepseek-ai-dsh-tool-godot-ego/testing:
-  en: ae34304db0090fc7
-  zh: 8983596f5195f9df
+  en: 6dce14bb4fa6be50
+  zh: 04a8475b06f859aa
 /deepseek-ai-dsh-tool-godot-ego/model-experience:
   en: 215e7ba838619b7b
   zh: 215e7ba838619b7b
@@ -84,5 +93,8 @@
   en: 3241295f9591f589
   zh: 4956fc6e16dfa507
 /deepseek-ai-dsh-tool-godot-ego/known-limitations-and-deferred-work:
-  en: 33cbef1bcb1a12d1
-  zh: 6713fa7a47c1662c
+  en: 83e14aeb3dbca811
+  zh: 58ef66e08b7429e7
+/deepseek-ai-dsh-tool-godot-ego/known-limitations-and-deferred-work/dev-note:
+  en: cce02b45b001aebe
+  zh: 3875fb26bfefc2c7

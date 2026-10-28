@@ -1,3 +1,8 @@
+---
+description: "Headless Godot project tools for a model: validate scripts, run a scene, format GDScript, inspect project files, and run an editor script."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-tool-godot
 
 English | [中文](README.zh.md)
@@ -15,14 +20,33 @@ await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 
 Why spawn-backed: Godot validation and headless running are naturally CLI workflows, and there is no stable in-process Godot API for a harness to bind. The subprocess seam owns spawn execution, process-tree termination, environment scrubbing, and bounded output capture; this package owns schemas, argument validation, argv construction, diagnostics parsing, retention, and timeout declaration. The tools never expose a background job — the call returns only after the process exits, is terminated by the cooperative timeout, is aborted, or fails.
 
+## Summary
+
+Hand the model a Godot project and it can check that scripts and scenes load, run a scene headless and read its output, format a `.gd` file and get the text back, parse `project.godot`/`.tscn`/`.tres` structure, and run a `res://` editor script. Every call spawns the host `godot` (and `gdformat` for the default formatter) through the subprocess seam, so no binary ships with the package and nothing runs until a tool is called. A missing executable returns a structured `GODOT_UNAVAILABLE` error instead of failing at load.
+
+## Table of Contents
+
+- [Deployment requirement: host godot and (optionally) gdformat](#deployment-requirement-host-godot-and-optionally-gdformat)
+- [Settings](#settings)
+- [Config](#config)
+- [Tools](#tools)
+- [Execution design](#execution-design)
+- [Errors](#errors)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="deployment-requirement-host-godot-and-optionally-gdformat"></a>
 ## Deployment requirement: host godot and (optionally) gdformat
 
 The tools require a godot executable (any 4.x build; `--headless` must be supported). `godot_format` runs `gdformat` from [gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit) by default, or the **builtin backend** (`formatBackend: 'builtin'`) — an embedded TextMate-based formatter migrated from godot-vscode-plugin that needs no Python. Both resolve through the `executable`/`gdformatExecutable` config, which may be a full path or a PATH command name. Returned paths are displayed relative to the resolved workdir (the calling agent's session cwd when present, else `process.cwd()`) and are follow-up-readable with `read` only when that workdir and the filesystem root are the same workspace — the same co-location requirement the search suite documents.
 
+<a id="settings"></a>
 ## Settings
 
 The package registers the `godot` settings namespace (`GODOT_SETTINGS_NAMESPACE`), which the Web UI's plugin configuration section exposes as the Godot card. `executable` and `gdformatExecutable` are editable there; a saved value applies to the **next tool call** — the authoritative config (settings section over the composition entry) is re-read on every execute, so no reload is needed. Clearing a field re-inherits the composition entry. The live executable and wrapper args are also published as the `godot.toolchain` service; the visual sandbox reads them when its own `executable` is empty, so the card remains the single place to configure the path. The remaining caps stay composition-level by design: the timeout declaration on a registered tool cannot be re-read per call.
 
+<a id="config"></a>
 ## Config
 
 Every key has a default; a deployment only overrides what its environment needs.
@@ -43,6 +67,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `graceMs` | `5000` | Positive terminate-escalation grace the subprocess seam grants before an aborted run settles; cannot exceed [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md). |
 | `timeoutMs` | `60000` | Cooperative tool-call budget on all five tools, enforced by `@deepseek-ai/dsh-tool-call-timeout-policy` through `exec.signal`. First-run project validation boots the headless editor and imports assets; large projects may need a larger budget. |
 
+<a id="tools"></a>
 ## Tools
 
 | Tool | Arguments | Behavior |
@@ -53,14 +78,17 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `godot_inspect` | `path` | Pure file parsing of Godot's text formats: a project root yields name/main scene/autoloads/sections; a `.tscn` yields format/uid/ext_resources/nodes; a `.tres` yields sections/ext_resources. No godot subprocess runs. |
 | `godot_editor_script` | `script` (`res://`), `path?`, `args?` | Writes a generated `SceneTree` bootstrap outside the project and runs `godot --headless --editor --path <root> --script <bootstrap> [-- <args>]`; the bootstrap loads the `res://` EditorScript, instantiates it under the editor, and calls its `_run()`. Godot's `--script` accepts only `SceneTree`/`MainLoop` scripts, which is why the EditorScript cannot be passed directly. Returns stdout and stderr, with stdout parsed as JSON when the script printed JSON. The escape hatch for project-specific checks that need editor access; the script is project code with full editor access (the user's own trust boundary). A non-zero exit is a domain outcome. |
 
+<a id="execution-design"></a>
 ## Execution design
 
 Every run is an ordinary foreground spawn through `ctx.subprocess` with the session cwd as the working directory and `exec.signal` forwarded, so the cooperative timeout and caller cancellation terminate the process tree. Captured output is bounded by `stdoutMaxBytes`/`stderrMaxBytes`; truncation is reported in the result (never silently dropped from the model's view). Exit semantics are tool-owned: non-zero exits and signal kills are domain outcomes with `ok: false` — the only typed failures are launch/infrastructure failures (`GODOT_UNAVAILABLE`, `GODOT_FORMAT_UNAVAILABLE`), unreadable/unparseable inputs (`GODOT_PARSE_ERROR`), and cancellation (`GODOT_ABORTED`). Headless godot runs write `.godot/` import artifacts; that is expected Godot behavior, stated in the system-prompt guidance. The generated bootstrap scripts of `godot_validate` project mode and `godot_editor_script` are written to the OS temp directory, never into the user's project.
 
+<a id="errors"></a>
 ## Errors
 
 Failures carry the package-owned `GodotError` (a `HarnessError` subclass), surfaced as `{ name, code }` on `isError` results: `GODOT_UNAVAILABLE` (the godot/gdformat executable could not be resolved or launched, or produced no collected output), `GODOT_FORMAT_UNAVAILABLE` (the gdformat invocation itself failed — traceback, missing module), `GODOT_PARSE_ERROR` (unreadable/missing/unsupported project, scene, or resource input, or gdformat rejecting the file's syntax), and `GODOT_ABORTED` (cooperative tool timeout or caller cancellation). Model argument mistakes (blank paths, a non-`res://` script, a non-positive `frames`) stay ordinary tool argument errors.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### System prompt
@@ -127,6 +155,8 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 ## Known Limitations and Deferred Work
 
+<a id="known-limitations-and-deferred-work"></a>
+
 - **godot is a host install; gdformat only for the default backend** — no binary ships with the package; a missing executable fails calls at call time (`GODOT_UNAVAILABLE` / `GODOT_FORMAT_UNAVAILABLE`), never at load time. The `builtin` `godot_format` backend (`formatBackend: 'builtin'`) needs neither gdformat nor Python — only the embedded TextMate grammar and the `vscode-oniguruma` WASM from its own dependencies.
 - **The builtin formatter follows godot-vscode-plugin rules, not gdformat's** — its whitespace decisions (parameter lists, blank-line caps, comment spacing) are pinned by the migrated snapshot suite; switching backends changes output for the same file. `gdformat` remains the default for gdtoolkit parity.
 - **godot_format is read-only by design** — it returns text; the model must apply changes with `write`/`edit` so file policy applies. A very large file's diff-card metadata is capped at 64 KiB per side (the canonical result still carries the full text).
@@ -135,3 +165,13 @@ Append-only; newly visible content follows the reusable request prefix and does 
 - **Headless runs write the project cache** — validate/run/editor_script write `.godot/` import artifacts; expected Godot behavior, stated in the system-prompt guidance.
 - **Godot 4.4+ built-in formatter has no stable CLI** — the `gdformat` backend relies on gdtoolkit; the builtin backend embeds the godot-vscode-plugin formatter instead. The editor's built-in formatter is out of scope.
 - **Semantic navigation lives in `lsp-godot`** — the DSH `ctx.lsp` seam's four navigation operations against Godot's TCP language server are provided by the sibling [`lsp-godot`](../lsp-godot/README.md) package (attach to a running editor or spawn a headless one); this package covers the headless CLI workflows only.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+The tools are spawn-backed because Godot exposes no stable in-process API: the subprocess seam owns argv execution, process-tree termination, environment scrubbing, and bounded output, while this package owns schemas, argv construction, diagnostics parsing, and retention. Add a tool by declaring its schema and argv builder beside the existing ones; the tool catalog is generated, so never hand-edit `docs/tool-catalog.md`.
+
+</details>
