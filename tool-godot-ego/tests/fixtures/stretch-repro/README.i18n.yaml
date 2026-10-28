@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/godot/tool-godot-ego/tests/fixtures/stretch-repro/README.md
+/stretch-repro-fixture:
+  en: 4e54c8580a8337fc
+  zh: 966714396fee09f0
+/stretch-repro-fixture/protocol:
+  en: bb9e119eaba1f317
+  zh: d81f2ca69c4bfb0c
+/stretch-repro-fixture/layout:
+  en: 70da8b2c9ecd91d1
+  zh: 1d7a62ce80ad0126
+/stretch-repro-fixture/running-the-repro:
+  en: 333ca788c934539a
+  zh: 6de03de6cc297825

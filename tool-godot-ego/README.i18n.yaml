@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/godot/tool-godot-ego/README.md
 /deepseek-ai-dsh-tool-godot-ego:
-  en: 57ecc2eee6f842cc
-  zh: 3006798173662dcc
+  en: e5f77d5bdc28696b
+  zh: 655a299c0da1d1b7
 /deepseek-ai-dsh-tool-godot-ego/how-it-works:
-  en: b003f023caa0c71e
-  zh: 4e538b1df85c353d
+  en: c1fba69767cbf8c9
+  zh: eb11fcedc5e5f5cb
 /deepseek-ai-dsh-tool-godot-ego/host-endpoints:
   en: c6a03c45e5d06d67
   zh: 9e5b66a4188dd697
@@ -21,8 +21,8 @@
   en: 75f7d9dc56a610da
   zh: 2c6269d585e4d4e3
 /deepseek-ai-dsh-tool-godot-ego/tools:
-  en: f0e8d9e43a476045
-  zh: 1f405810b035637a
+  en: 91d0c1bb06023d6e
+  zh: 03b4452ca80bfd62
 /deepseek-ai-dsh-tool-godot-ego/errors:
   en: 32707c2ee1a9fb18
   zh: ba83d6680c03f8bf
@@ -43,7 +43,7 @@
   zh: 0bfb5467b9351c05
 /deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/token-effect:
   en: 79ce2f6fbe781faa
-  zh: 9fad897d4aa43db3
+  zh: 2c0646efa909e6a5
 /deepseek-ai-dsh-tool-godot-ego/model-experience/system-prompt/kv-cache-effect:
   en: f857dfb15e1af45a
   zh: 1c808b3a141d5ce7

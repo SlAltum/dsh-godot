@@ -93,6 +93,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 | `godot_see` | `format?`、`quality?`、`maxWidth?`、`target?`、`region?`、`ifUnchanged?` | 把一帧取进对话；可裁一个 Control 或一个区域；可按需跳过帧号未变的图。 |
 | `godot_state` | `tree?`、`targets?`、`maxNodes?`、`maxTargets?`、`offset?`、`name?`、`class?`、`text?`、`diff?` | 场景路径、fps、帧号、节点数、暂停标志、当前画布/窗口几何（`screen` 比例与偏移，坐标不必再猜）、有界场景树、可点击控件（可按 name/class/text 过滤、用 `offset` 分页）与变化清单。控件列表被截断时会写明总数与到达其余部分的方法。 |
 | `godot_node` | `path`、`props?`、`maxProps?`、`depth?` | 单个节点的存储属性与脚本变量，支持通配过滤与行预算。 |
+| `godot_call` | `path`、`method`、`args?` | 在活动节点上调用一个方法并返回其结果值；方法不存在时给出候选名称。 |
 | `godot_find` | `name?`、`class?`、`text?` | 对控件清单做大小写不敏感子串搜索；每个条件都必须命中。 |
 | `godot_diff` | `useLuma?` | 引擎内帧比较的 `{ mean, mean_squared, peak_snr, frame }`。 |
 | `godot_logs` | `since?`、`maxBytes?`、`stream?` | 增量读取 stdout/stderr，并返回下一个游标。 |

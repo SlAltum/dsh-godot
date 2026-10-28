@@ -1,5 +1,7 @@
 # stretch-repro fixture
 
+English | [中文](README.zh.md)
+
 The geometry the visual sandbox was never exercised in: a **1440×900 canvas**
 with `canvas_items` stretch, rendered into a window the launcher forces to
 **1280×720** (`--resolution` is hardcoded in `play.ts`). Measured:
