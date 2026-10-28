@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-godot-bundle",
   "description": "Godot capability bundle: headless tools, GDScript LSP, the debugger, the visual sandbox, and the browser surface",
-  "version": "0.1.0-rc.5",
+  "version": "0.2.2-alpha.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

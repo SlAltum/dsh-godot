@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-ui-godot",
   "description": "Godot browser surface for the Web client: the settings card for the godot namespace and the sandbox watch panel (floating ball, live MJPEG frame, click-to-drive)",
-  "version": "0.1.0-rc.5",
+  "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-godot-ego",
   "description": "Model-facing Godot visual sandbox (godot_play / stop / scene / status / see / state / node / find / diff / logs / actions / click / key / type / fill / check / hover / drag / scroll / wait / wait_for): a persistent running game as an agent-observable object, injected without touching the user's project",
-  "version": "0.1.0-rc.0",
+  "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },
