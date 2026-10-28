@@ -1,0 +1,8 @@
+# The parent DeepSeek Harness repo's text policy: LF is canonical and is what
+# checkout produces, so byte-level gates (paired-record hashing, heading
+# comparisons) see one form on every host. Windows command scripts keep CRLF in
+# the working tree because cmd.exe requires it.
+* text=auto eol=lf
+*.cmd text eol=crlf
+
+*.pdf binary
