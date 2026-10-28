@@ -21,6 +21,12 @@ describe('parseRunSceneArgs', () => {
     })
   })
 
+  it('accepts a per-call budget and rejects one below a second', () => {
+    expect(parseRunSceneArgs({ scene: 's', timeoutMs: 90_000 })).toMatchObject({ timeoutMs: 90_000 })
+    expect(() => parseRunSceneArgs({ scene: 's', timeoutMs: 10 })).toThrow('timeoutMs must be an integer of at least 1000')
+    expect(() => parseRunSceneArgs({ scene: 's', timeoutMs: 1.5 })).toThrow('timeoutMs')
+  })
+
   it('rejects a blank scene, a non-positive frames, and a blank path', () => {
     expect(() => parseRunSceneArgs({ scene: '  ' })).toThrow('scene must be a non-empty string')
     expect(() => parseRunSceneArgs({ scene: 's', frames: 0 })).toThrow('frames must be a positive integer')
@@ -68,6 +74,7 @@ describe('renderRunSceneOutput', () => {
     output: 'hello\n',
     stderr: '',
     ok: true,
+    timedOut: false,
     stdoutTruncated: false,
     stderrTruncated: false,
   }
@@ -76,6 +83,13 @@ describe('renderRunSceneOutput', () => {
     const text = renderRunSceneOutput(base)
     expect(text).toContain('exited with code 0')
     expect(text).toContain('hello')
+  })
+
+  it('renders a timeout as a budget hit that still shows the output', () => {
+    const text = renderRunSceneOutput({ ...base, ok: false, timedOut: true, output: 'test 1 ok\ntest 2 failed\n' })
+    expect(text).toContain('hit the run budget and was terminated')
+    expect(text).toContain('test 2 failed')
+    expect(text).not.toContain('exited with')
   })
 
   it('renders a signal kill, stderr tail, and truncation notes', () => {

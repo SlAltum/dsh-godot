@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-Godot 项目的**可视化沙盒**：`godot_play` 启动一个持续运行的游戏进程，并在两次工具调用之间保持存活，因此模型可以**看见**一帧画面、**读取**场景与实时属性、用鼠标、键盘与等待**操作**游戏，最后**停止**它。默认注册 21 个工具；只有 `allowEval` 打开时 `godot_eval` 才加入。
+Godot 项目的**可视化沙盒**：`godot_play` 启动一个持续运行的游戏进程，并在两次工具调用之间保持存活，因此模型可以**看见**一帧画面、**读取**场景与实时属性、用鼠标、键盘与等待**操作**游戏，最后**停止**它。默认注册 22 个工具；只有 `allowEval` 打开时 `godot_eval` 才加入。
 
 源码入口：[`src/index.ts`](src/index.ts)——插件入口（服务、工具、提示段落、观察窗路由）。
 
@@ -28,7 +28,11 @@ export async function mount(ctx: Context): Promise<void> {
 
 游戏在正常的原生窗口里运行，这个窗口就是可直接操作的场景窗口；只想看 Web 面板时用 `offscreen: true` 把它移出屏幕。沙盒请求可见窗口；在 Windows 上，本地提供方对这种请求改走直接的 Node spawn 路径，因为原生 Job runner 总是隐藏目标窗口。该路径保留进程树清理，但不使用原生 Job 约束。Web 观察窗镜像同一帧画面，仍然可选。
 
-画面在引擎内截取（`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`），编码成 PNG/JPEG/WebP buffer 后以 base64 回传；桥接从不写游戏文件系统。`shotdiff` 用 `compute_image_metrics` 把当前帧与上一帧比较，宿主因此不需要图片解码依赖。输入通过 `Viewport.push_input` 注入（同步且限定在游戏视口）；节点读取走 `get_property_list`，只保留存储属性与脚本变量，值用显式 `typeof()` 分派序列化。
+画面在引擎内截取（`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`），编码成 PNG/JPEG/WebP buffer 后以 base64 回传；桥接从不写游戏文件系统。每次截取同时回报与上一帧的平均像素差（`meanDiff`，进而 `changed`），所以“画面没动”是量出来的，不是从帧号推出来的；`shotdiff` 复用同一次 `compute_image_metrics`。
+
+**坐标契约。** 工具接受与返回的每个点、每个矩形都在视口自己的 **canvas** 空间（`get_visible_rect()`），Control 的矩形也在这个空间。指针事件用 `push_input(event, true)` 注入；少了这个标志，Godot 会把位置当屏幕坐标再乘一次窗口变换，工程一旦缩放画布，指针就落到别的 Control 上。裁剪把 canvas 矩形换算成截图像素时，比例**取自截到的那张图**（`img.get_size() / visible_rect.size`）。缩放的窗口下，`get_texture().get_size()` 与 `get_image().get_size()` 并不一致（实测 922×576 与 1152×720）。裁不到区域就报错，不静默返回整帧。
+
+节点读取走 `get_property_list`，只保留存储属性与脚本变量，值用显式 `typeof()` 分派序列化。节点路径按工具给出的所有形式依次解析：`/root/Main/Child`、`<场景根>/Child`、场景相对的 `Child`。解析失败时，列出尝试过的每种形式以及最近的已存在祖先。每个改状态的工具都回报从引擎读回的证据：`godot_hover` 报出指针下的 Control、目标没被命中就失败，`godot_click` 报出收到点击的 Control，`godot_fill` 回读 `text`，`godot_check` 回读 `button_pressed`。
 
 一个 workspace 至多一个会话。`godot_stop` 让桥接退出，在 `graceMs` 内等待，超时后升级为终止，并报告真实退出码或信号。dispose 执行同一套反向清理，并删除临时脚本；会话注册表以 `godot.egoSessions` 发布，它自身的清理逻辑在插件卸载时销毁全部会话。
 
@@ -87,7 +91,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 | `godot_scene` | `path?` | 报告当前场景，或用 `change_scene_to_file` 切换；`{ scene, changed, frames? }`。 |
 | `godot_status` | — | 宿主侧快照：`{ state, pid?, window?, lostReason?, projectRoot?, imported? }`；从不联系游戏。 |
 | `godot_see` | `format?`、`quality?`、`maxWidth?`、`target?`、`region?`、`ifUnchanged?` | 把一帧取进对话；可裁一个 Control 或一个区域；可按需跳过帧号未变的图。 |
-| `godot_state` | `tree?`、`targets?`、`maxNodes?`、`diff?` | 场景路径、fps、帧号、节点数、暂停标志、有界场景树、可点击控件与变化清单。 |
+| `godot_state` | `tree?`、`targets?`、`maxNodes?`、`maxTargets?`、`offset?`、`name?`、`class?`、`text?`、`diff?` | 场景路径、fps、帧号、节点数、暂停标志、当前画布/窗口几何（`screen` 比例与偏移，坐标不必再猜）、有界场景树、可点击控件（可按 name/class/text 过滤、用 `offset` 分页）与变化清单。控件列表被截断时会写明总数与到达其余部分的方法。 |
 | `godot_node` | `path`、`props?`、`maxProps?`、`depth?` | 单个节点的存储属性与脚本变量，支持通配过滤与行预算。 |
 | `godot_find` | `name?`、`class?`、`text?` | 对控件清单做大小写不敏感子串搜索；每个条件都必须命中。 |
 | `godot_diff` | `useLuma?` | 引擎内帧比较的 `{ mean, mean_squared, peak_snr, frame }`。 |
@@ -138,12 +142,12 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 ##### Godot visual sandbox guidance (tool:godot-ego)
 
 ```markdown
-Godot visual sandbox: call godot_play to start the project, godot_see to look at the current frame (crop with target for detail), godot_state for the scene tree and clickable Control paths, godot_click / godot_key / godot_type / godot_fill / godot_check / godot_hover / godot_drag / godot_scroll to operate it, godot_wait or godot_wait_for before the next capture, godot_node for live property values, godot_find to locate a Control by name/class/text, godot_actions for InputMap action names, godot_scene to report or switch scenes, godot_diff to measure visual change, godot_status for the session, godot_logs for print and error output, and godot_stop when done. Prefer clicking by Control path: it is deterministic, while coordinates depend on the window scale.
+Godot visual sandbox: call godot_play to start the project, godot_see to look at the current frame (crop with target for detail), godot_state for the scene tree and clickable Control paths, godot_click / godot_key / godot_type / godot_fill / godot_check / godot_hover / godot_drag / godot_scroll to operate it, godot_wait or godot_wait_for before the next capture, godot_node for live property values, godot_call to invoke a node method, godot_find to locate a Control by name/class/text, godot_actions for InputMap action names, godot_scene to report or switch scenes, godot_diff to measure visual change, godot_status for the session, godot_logs for print and error output, and godot_stop when done. Prefer clicking by Control path: it is deterministic, while coordinates depend on the window scale.
 ```
 
 #### Token effect
 
-插件作用域内每个请求一段固定段落；它一次说清 21 个工具与首选的点击通道，模型不必每回合重新发现。
+插件作用域内每个请求一段固定段落；它一次说清 22 个工具与首选的点击通道，模型不必每回合重新发现。
 
 #### KV Cache effect
 

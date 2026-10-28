@@ -14,6 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { actionsTool } from './actions.ts'
+import { callTool } from './call.ts'
 import { resolveConfig } from './config.ts'
 import type { EgoConfig } from './config.ts'
 import { diffTool } from './diff.ts'
@@ -88,6 +89,7 @@ export function applyWith(ctx: Context, config: EgoConfig, deps: EgoPluginDeps):
     toolCtx.tools.register(seeTool(toolCtx, registry, resolved))
     toolCtx.tools.register(diffTool(registry))
     toolCtx.tools.register(nodeTool(registry, resolved))
+    toolCtx.tools.register(callTool(registry))
     toolCtx.tools.register(findTool(registry))
     toolCtx.tools.register(logsTool(registry))
     toolCtx.tools.register(actionsTool(registry))
@@ -115,10 +117,13 @@ export function applyWith(ctx: Context, config: EgoConfig, deps: EgoPluginDeps):
         + '(crop with target for detail), godot_state for the scene tree and clickable Control paths, '
         + 'godot_click / godot_key / godot_type / godot_fill / godot_check / godot_hover / godot_drag / godot_scroll to operate it, '
         + 'godot_wait or godot_wait_for before the next capture, godot_node for live property values, '
+        + 'godot_call to invoke one node method and read its return value, '
         + 'godot_find to locate a Control by name/class/text, godot_actions for InputMap action names, '
         + 'godot_scene to report or switch scenes, godot_diff to measure visual change, godot_status for the session, '
         + 'godot_logs for print and error output, and godot_stop when done. '
-        + 'Prefer clicking by Control path: it is deterministic, while coordinates depend on the window scale.',
+        + 'Prefer clicking by Control path: it is deterministic. '
+        + 'Every point you pass or read back is in the game viewport\'s own canvas space, not window pixels; '
+        + 'godot_hover fails instead of reporting success when the requested Control was not reached.',
     })
   })
 }

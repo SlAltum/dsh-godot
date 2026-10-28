@@ -151,22 +151,45 @@ function textOf(blocks: Array<{ type: string; text?: string }>): string {
 }
 
 describe('godot_hover', () => {
-  it('moves the pointer and renders the coordinates', async () => {
-    const { tools, calls } = await setup(() => ({ frames: 21 }))
+  it('moves the pointer and names the Control it landed on', async () => {
+    const { tools, calls } = await setup(() => ({ frames: 21, over: 'Main/Btn' }))
     const value = await tools.hover.execute({ x: 30, y: 40 }, exec as never)
-    expect(value).toEqual({ x: 30, y: 40, frames: 21 })
+    expect(value).toEqual({ x: 30, y: 40, frames: 21, over: 'Main/Btn' })
     expect(calls[0]).toEqual({ cmd: 'move', params: { x: 30, y: 40 } })
-    expect(textOf(tools.hover.output.render({ x: 30, y: 40 }, value))).toBe('hover at (30, 40) · frame 21')
+    expect(textOf(tools.hover.output.render({ x: 30, y: 40 }, value)))
+      .toBe('hover at (30, 40) → over Main/Btn · frame 21')
   })
 
-  it('resolves a Control path to its center', async () => {
+  it('reports a point that is over nothing', async () => {
+    const { tools } = await setup(() => ({ frames: 3 }))
+    await expect(tools.hover.execute({ x: 1, y: 2 }, exec as never)).resolves.toEqual({ x: 1, y: 2, frames: 3 })
+  })
+
+  it('resolves a Control path to its center and confirms it was reached', async () => {
     const { tools, calls } = await setup((cmd) => {
       if (cmd === 'state') return { targets: [{ path: 'Main/Btn', class: 'Button', rect: [10, 20, 100, 40], text: '' }] }
-      return {}
+      return { over: 'Main/Btn' }
     })
     const value = await tools.hover.execute({ target: 'Btn' }, exec as never)
-    expect(value).toEqual({ x: 60, y: 40, frames: 0 })
+    expect(value).toEqual({ x: 60, y: 40, frames: 0, over: 'Main/Btn' })
     expect(calls[1]).toEqual({ cmd: 'move', params: { x: 60, y: 40 } })
+  })
+
+  it('fails when the requested Control is not under the point', async () => {
+    const { tools } = await setup((cmd) => {
+      if (cmd === 'state') return { targets: [{ path: 'Main/Btn', class: 'Button', rect: [10, 20, 100, 40], text: '' }] }
+      return { over: 'Main/Panel' }
+    })
+    await expect(tools.hover.execute({ target: 'Btn' }, exec as never))
+      .rejects.toMatchObject({ code: 'GODOT_EGO_REJECTED' })
+  })
+
+  it('fails when nothing is under the point', async () => {
+    const { tools } = await setup((cmd) => {
+      if (cmd === 'state') return { targets: [{ path: 'Main/Btn', class: 'Button', rect: [10, 20, 100, 40], text: '' }] }
+      return { frames: 5 }
+    })
+    await expect(tools.hover.execute({ target: 'Btn' }, exec as never)).rejects.toThrow(/no Control/)
   })
 
   it('rejects ambiguous or missing coordinates', async () => {

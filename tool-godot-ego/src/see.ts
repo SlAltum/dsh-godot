@@ -41,7 +41,17 @@ export interface SeeResult {
   readonly path?: string
   readonly image?: SeeImageValue
   readonly note?: string
+  /** Mean absolute pixel difference against the previous capture (0 = identical). */
+  readonly meanDiff?: number
+  /** Whether this capture differs from the previous one, by pixels rather than frame numbers. */
+  readonly changed?: boolean
 }
+
+/**
+ * Mean absolute pixel difference below which two captures count as identical.
+ * The metric is 0..255 per channel, so this is well under one 8-bit step.
+ */
+const UNCHANGED_MEAN_DIFF = 0.01
 
 /** `godot_see` arguments. */
 export interface SeeArgs {
@@ -98,7 +108,10 @@ async function imageCapable(ctx: Context, exec: { agent?: unknown; signal: Abort
 function formatSee(value: SeeResult): string {
   const saved = value.path === undefined ? '' : ` · saved to ${value.path}`
   const note = value.note === undefined ? '' : ` · ${value.note}`
-  return `${value.width}x${value.height} · ${value.bytes} B · frame ${value.frame}${saved}${note}`
+  const change = value.changed === undefined
+    ? ''
+    : value.changed ? ' · changed' : ' · unchanged'
+  return `${value.width}x${value.height} · ${value.bytes} B · frame ${value.frame}${change}${saved}${note}`
 }
 
 /**
@@ -109,18 +122,19 @@ function formatSee(value: SeeResult): string {
  * @returns the tool definition.
  */
 export function seeTool(ctx: Context, registry: GameSessionRegistry, config: ResolvedEgoConfig): ToolDefinition {
-  const lastFrame = new Map<string, number>()
   return defineTool({
     name: 'godot_see',
     description: 'Capture the current frame of the running game and return it as an image. '
       + 'The default preview is a WebP downscaled to the configured width; pass format: "png" for pixel-exact checks. '
-      + 'Use target to crop one Control (cheaper and sharper than the whole frame) and ifUnchanged: "skip" to avoid resending an identical frame.',
+      + 'Use target to crop one Control (cheaper and sharper than the whole frame). '
+      + 'The reply says whether the picture changed since the previous capture (compared by pixels, not frame numbers); '
+      + 'ifUnchanged: "skip" omits an unchanged frame entirely.',
     parameters: {
       format: { type: 'string', enum: ['png', 'jpg', 'webp'], description: 'Image encoding: webp (default preview), jpg, or png for pixel-exact work.' },
       quality: { type: 'number', description: 'Lossy quality for jpg/webp, 0.01-1.0 (engine default 0.85).' },
       maxWidth: { type: 'number', description: 'Downscale width in pixels; defaults to the configured preview width.' },
       target: { type: 'string', description: 'Control path to crop to (for example, "Main/HUD/StartButton").' },
-      ifUnchanged: { type: 'string', enum: ['skip'], description: '`skip` returns text only when the frame number did not change.' },
+      ifUnchanged: { type: 'string', enum: ['skip'], description: '`skip` returns text only when the pixels did not change since the previous capture.' },
     },
     timeoutMs: 60_000,
     output: {
@@ -132,6 +146,8 @@ export function seeTool(ctx: Context, registry: GameSessionRegistry, config: Res
           width: { type: 'number', required: true },
           height: { type: 'number', required: true },
           bytes: { type: 'number', required: true },
+          changed: { type: 'boolean' },
+          meanDiff: { type: 'number' },
           path: { type: 'string' },
           note: { type: 'string' },
           image: {
@@ -171,25 +187,31 @@ export function seeTool(ctx: Context, registry: GameSessionRegistry, config: Res
       const height = typeof size[1] === 'number' ? size[1] : 0
       const bytes = typeof payload.bytes === 'number' ? payload.bytes : 0
       const frame = typeof payload.frame === 'number' ? payload.frame : 0
-      const previous = lastFrame.get(workspace)
-      lastFrame.set(workspace, frame)
-      if (args.ifUnchanged === 'skip' && previous === frame) {
-        return { frame, width, height, bytes, note: 'unchanged since the previous capture' }
+      // The engine compares the new frame with the previous one and reports the
+      // mean pixel difference (-1 when it has nothing to compare against).
+      const meanDiff = typeof payload.meanDiff === 'number' && payload.meanDiff >= 0 ? payload.meanDiff : undefined
+      const changed = meanDiff === undefined ? undefined : meanDiff > UNCHANGED_MEAN_DIFF
+      if (args.ifUnchanged === 'skip' && changed === false) {
+        return { frame, width, height, bytes, changed, ...(meanDiff !== undefined ? { meanDiff } : {}), note: 'unchanged since the previous capture' }
       }
       const data = Buffer.from(typeof payload.data === 'string' ? payload.data : '', 'base64')
+      const verdict = {
+        ...(changed !== undefined ? { changed } : {}),
+        ...(meanDiff !== undefined ? { meanDiff } : {}),
+      }
       const mediaType = MEDIA[format]
       const attachments = ctx.get('attachments')
       if (attachments === undefined) {
-        return await fallback(data, format, { frame, width, height, bytes }, 'no attachment store is mounted')
+        return await fallback(data, format, { frame, width, height, bytes, ...verdict }, 'no attachment store is mounted')
       }
       if (!(await imageCapable(ctx, exec))) {
-        return await fallback(data, format, { frame, width, height, bytes }, 'the current model route does not declare image input')
+        return await fallback(data, format, { frame, width, height, bytes, ...verdict }, 'the current model route does not declare image input')
       }
       if (!attachments.imageLimits.mediaTypes.includes(mediaType)) {
-        return await fallback(data, format, { frame, width, height, bytes }, `${mediaType} is not accepted by this deployment`)
+        return await fallback(data, format, { frame, width, height, bytes, ...verdict }, `${mediaType} is not accepted by this deployment`)
       }
       if (data.length > attachments.imageLimits.maxImageBytes) {
-        return await fallback(data, format, { frame, width, height, bytes }, 'the frame exceeds the deployment image byte limit')
+        return await fallback(data, format, { frame, width, height, bytes, ...verdict }, 'the frame exceeds the deployment image byte limit')
       }
       const saved = await attachments.saveImage({ data, mediaType, name: `godot-${frame}.${format}` })
       return {
@@ -197,6 +219,7 @@ export function seeTool(ctx: Context, registry: GameSessionRegistry, config: Res
         width,
         height,
         bytes,
+        ...verdict,
         image: {
           attachmentId: saved.attachmentId,
           mediaType: saved.mediaType,
@@ -213,7 +236,7 @@ export function seeTool(ctx: Context, registry: GameSessionRegistry, config: Res
 async function fallback(
   data: Buffer,
   format: 'png' | 'jpg' | 'webp',
-  base: { frame: number; width: number; height: number; bytes: number },
+  base: { frame: number; width: number; height: number; bytes: number; changed?: boolean; meanDiff?: number },
   reason: string,
 ): Promise<SeeResult> {
   const path = join(tmpdir(), `dsh-godot-ego-${base.frame}.${format}`)

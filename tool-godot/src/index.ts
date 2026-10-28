@@ -53,7 +53,9 @@ export {
   withTempGdScript,
 } from './godot-core.ts'
 export type { GodotCaps, GodotErrorCode, GodotExecutable, GodotRun, ResolvedCaps } from './godot-core.ts'
-export { VALIDATE_DIAGNOSTIC_LINES, applyValidateTool, buildScriptSweepCommand, buildValidateCommand, dropTeardownNoise, failedRunExcerpt, parseGodotDiagnostics, parseValidateArgs, presentValidateCall, presentValidateResult, renderValidateOutput, stripAnsi } from './validate.ts'
+export { validateSceneText, validateSceneFile, parseSceneDocument, collectSceneFiles, isContainer } from './scene-validate.ts'
+export type { SceneNodeEntry, SceneConnection, SceneResource, SceneDocument } from './scene-validate.ts'
+export { VALIDATE_DIAGNOSTIC_LINES, validateScenes, applyValidateTool, buildScriptSweepCommand, buildValidateCommand, dropTeardownNoise, failedRunExcerpt, parseGodotDiagnostics, parseValidateArgs, presentValidateCall, presentValidateResult, renderValidateOutput, stripAnsi } from './validate.ts'
 export type { GodotIssue, ValidateInput, ValidateResult } from './validate.ts'
 export { applyRunSceneTool, buildRunSceneCommand, parseRunSceneArgs, presentRunSceneCall, renderRunSceneOutput } from './run-scene.ts'
 export type { RunSceneInput, RunSceneResult } from './run-scene.ts'
@@ -106,6 +108,12 @@ export interface Config {
   graceMs: number
   /** Cooperative tool-call timeout budget (ms) on all tools, enforced through `exec.signal` (default 60000). */
   timeoutMs: Volatile<number>
+  /**
+   * Budget for one `godot_run_scene` run (ms). The tool enforces it with its own
+   * watchdog, so a timeout still returns the output the run produced.
+   * Default 300000.
+   */
+  runSceneTimeoutMs: number
 }
 
 export const Config = z.object({
@@ -122,6 +130,7 @@ export const Config = z.object({
   validateMaxErrors: z.number().min(1).step(1).default(200),
   graceMs: z.number().min(1).step(1).max(MAX_TIMER_DELAY_MS).default(5_000),
   timeoutMs: z.number().min(1).step(1).default(60_000).volatile(),
+  runSceneTimeoutMs: z.number().min(1).step(1).max(MAX_TIMER_DELAY_MS).default(300_000),
 })
 
 /** Live toolchain values shared with sibling Godot plugins. */
@@ -165,6 +174,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       validateMaxErrors: config.validateMaxErrors,
       graceMs: config.graceMs,
       timeoutMs: config.timeoutMs.get(),
+      runSceneTimeoutMs: config.runSceneTimeoutMs,
     }
   }
 

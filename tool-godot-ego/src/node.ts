@@ -71,7 +71,12 @@ export function nodeTool(registry: GameSessionRegistry, config: ResolvedEgoConfi
         ...(args.props !== undefined ? { props: args.props } : {}),
       }, exec.signal)
       if (typeof reply.payload.error === 'string') {
-        throw new EgoGodotError(`no node at "${args.path}" in the current scene`, 'GODOT_EGO_REJECTED')
+        // The bridge reports every path form it tried plus the nearest ancestor;
+        // repeating a generic message here throws that away.
+        const message = typeof reply.payload.message === 'string'
+          ? reply.payload.message
+          : `no node at "${args.path}" in the current scene`
+        throw new EgoGodotError(message, 'GODOT_EGO_REJECTED')
       }
       const className = typeof reply.payload.class === 'string' ? reply.payload.class : ''
       const scene = typeof reply.payload.scene === 'string' && reply.payload.scene !== '' ? ` ${reply.payload.scene}` : ''

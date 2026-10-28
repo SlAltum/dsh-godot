@@ -125,8 +125,19 @@ describe('renderState', () => {
     }, { maxNodes: 5, maxTargets: 5 })
     expect(text).toContain('scene res://main.tscn · 60 fps · frame 128 · 8 nodes · paused')
     expect(text).toContain('tree (1/5)')
-    expect(text).toContain('targets (1)')
+    expect(text).toContain('targets 1 (showing 1-1)')
     expect(text).toContain('changed: + Main/Btn')
+  })
+
+  it('states the canvas/window geometry so coordinates are never guessed', () => {
+    const text = renderState({
+      geometry: { canvas: [1440, 900], window: [1280, 720], screen: [0.8, 0.8, 64, 0] },
+    })
+    expect(text).toContain('geometry canvas 1440 × 900 · window 1280 × 720 · screen 0.800 +64,0')
+    expect(text).toContain('points and rects are canvas space')
+    // A missing or malformed geometry block renders no line instead of guessing.
+    expect(renderState({})).not.toContain('geometry')
+    expect(renderState({ geometry: { canvas: [1, 2] } })).not.toContain('geometry')
   })
 
   it('falls back to the empty header and omits absent sections', () => {
@@ -141,7 +152,7 @@ describe('renderState', () => {
   it('applies default budgets and reports target truncation', () => {
     const defaults = renderState({ tree: { name: 'Main' }, targets: [] })
     expect(defaults).toContain('tree (1/200)')
-    expect(defaults).toContain('targets (0)')
+    expect(defaults).toContain('targets 0 (showing none)')
     const many = Array.from({ length: 3 }, (_, index) => ({
       path: `Main/T${index}`,
       class: 'Button',
@@ -149,7 +160,7 @@ describe('renderState', () => {
       text: '',
     }))
     const truncated = renderState({ targets: many }, { maxTargets: 1 })
-    expect(truncated).toContain('targets (3, showing 1)')
+    expect(truncated).toContain('targets 3 (showing 1-1); filter by name/class/text or pass offset')
     const treeTruncated = renderState({
       tree: { name: 'Main', children: [{ name: 'Child' }] },
     }, { maxNodes: 1 })

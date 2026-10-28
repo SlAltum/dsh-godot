@@ -23,9 +23,66 @@ describe('bridgeSource', () => {
     expect(source).toContain('Marshalls.raw_to_base64')
   })
 
-  it('injects input through the viewport', () => {
-    expect(source).toContain('get_viewport().push_input')
+  it('injects pointer input in viewport (canvas) space, not screen space', () => {
+    // `push_input(event)` defaults to in_local_coords=false, which makes Godot
+    // apply the window's screen transform to an event whose position already
+    // came from `get_global_transform_with_canvas()`. A 0.8-scaled project then
+    // receives the point 20% away from the Control that was targeted.
+    expect(source).toContain('get_viewport().push_input(event, true)')
+    expect(source).toContain('get_viewport().push_input(up, true)')
+    expect(source).not.toMatch(/push_input\((event|up)\)/)
     expect(source).not.toContain('Input.parse_input_event')
+  })
+
+  it('maps a canvas rect into captured image pixels, not texture pixels', () => {
+    // `get_texture().get_size()` and `get_image().get_size()` disagree on a
+    // scaled window, so the crop ratio must come from the captured image.
+    expect(source).toContain('func _image_rect(')
+    expect(source).toContain('var scale := Vector2(image_size.x / canvas_size.x, image_size.y / canvas_size.y)')
+    expect(source).toContain('var image_size := Vector2(full.get_size())')
+    // A crop that cannot land is an error, never a silent full frame.
+    expect(source).toContain('has no visible area')
+    expect(source).toContain('_resolve_message(target)')
+  })
+
+  it('exposes a method call that reports its return value and refuses a missing method', () => {
+    expect(source).toContain('"call":')
+    expect(source).toContain('func _call(id: int, msg: Dictionary) -> void:')
+    expect(source).toContain('node.callv(method, argv)')
+    // A wrong method name must answer with candidates, not vanish.
+    expect(source).toContain('func _method_hint(')
+  })
+
+  it('bounds the target list by the request, not by a hardcoded 200', () => {
+    // A scene with 122 Controls is ordinary; paging must be able to reach them.
+    expect(source).toContain('func _targets(main: Node, limit: int) -> Array:')
+    expect(source).toContain('int(msg.get("maxTargets", 2000))')
+    expect(source).not.toContain('out, 200)')
+  })
+
+  it('reports the canvas/window geometry with every state reply', () => {
+    expect(source).toContain('"geometry": {')
+    expect(source).toContain('"canvas": [canvas.x, canvas.y]')
+    expect(source).toContain('"window": [window.x, window.y]')
+    expect(source).toContain('"screen": [screen.x.x, screen.y.y, screen.origin.x, screen.origin.y]')
+  })
+
+  it('accepts every path form the tools hand out', () => {
+    // godot_state emits "<scene root>/Child"; a scene-relative "Child" and the
+    // absolute "/root/Main/Child" must all resolve to the same node.
+    expect(source).toContain('func _resolve_candidates(')
+    expect(source).toContain('"/root/" + path')
+    expect(source).toContain('func _resolve_message(')
+  })
+
+  it('reports the Control the pointer is over, using the name the engine exposes', () => {
+    // Godot 4.2+ exposes `gui_get_hovered_control`. The older spelling does not
+    // exist, and a `has_method` guard around it fails silently, which is why
+    // every click reported "no node consumed the click".
+    expect(source).toContain('func _hovered_control()')
+    expect(source).toContain('gui_get_hovered_control')
+    expect(source).toContain('var hit: Variant = _hovered_path()')
+    expect(source).toContain('"over": _hovered_path()')
   })
 
   it('releases the wheel button so the next click reaches its Control', () => {

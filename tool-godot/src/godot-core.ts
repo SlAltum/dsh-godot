@@ -112,6 +112,41 @@ export async function findProjectRoot(startDir: string): Promise<string | null> 
 }
 
 /**
+ * The result of resolving a project root, keeping the discovery outcome so a
+ * caller can name the real cause instead of forwarding a downstream exit code.
+ */
+export interface ProjectRootResolution {
+  /** The directory the tools should run against. */
+  readonly root: string
+  /** Whether that directory actually carries `project.godot`. */
+  readonly found: boolean
+  /** The directory discovery started from (the caller's path or the workdir). */
+  readonly start: string
+}
+
+/**
+ * Resolve the Godot project root for a tool call and report whether one was
+ * found. `resolveProjectRoot` keeps returning just the directory; a caller that
+ * wants to fail with "no project.godot here" uses this instead.
+ *
+ * @param path - the optional `path` argument (project root or file).
+ * @param workdir - the fallback start directory (the session cwd).
+ * @returns the root, whether discovery found a project, and where it started.
+ */
+export async function resolveProjectRootInfo(path: string | undefined, workdir: string): Promise<ProjectRootResolution> {
+  const raw = path !== undefined && path.trim().length > 0 ? path : workdir
+  const target = resolve(workdir, raw)
+  let start = target
+  try {
+    if (!(await stat(target)).isDirectory()) start = dirname(target)
+  } catch {
+    start = dirname(target)
+  }
+  const found = await findProjectRoot(start)
+  return { root: found ?? start, found: found !== null, start }
+}
+
+/**
  * Resolve the Godot project root for a tool call: an explicit `path` argument
  * (a project directory or any file inside the project) or the session cwd,
  * resolved to an absolute path, then discovered upward from there. A path
@@ -124,15 +159,7 @@ export async function findProjectRoot(startDir: string): Promise<string | null> 
  * @returns the resolved project root.
  */
 export async function resolveProjectRoot(path: string | undefined, workdir: string): Promise<string> {
-  const raw = path !== undefined && path.trim().length > 0 ? path : workdir
-  const target = resolve(workdir, raw)
-  let start = target
-  try {
-    if (!(await stat(target)).isDirectory()) start = dirname(target)
-  } catch {
-    start = dirname(target)
-  }
-  return (await findProjectRoot(start)) ?? start
+  return (await resolveProjectRootInfo(path, workdir)).root
 }
 
 /** The capture budgets every godot spawn shares. */
@@ -168,6 +195,8 @@ export interface ResolvedCaps extends GodotCaps {
   validateMaxErrors: number
   /** Cooperative tool-call budget (ms) attached as `ToolDefinition.timeoutMs`. */
   timeoutMs: number
+  /** Budget for one `godot_run_scene` run (ms), enforced by that tool's watchdog. */
+  runSceneTimeoutMs: number
 }
 
 /** The completed acquisition of one run: exit status plus the collected streams. */
@@ -186,6 +215,8 @@ export interface GodotRun {
   stderrTruncated: boolean
   /** The resolved working directory the command ran in (the display-relativization base). */
   workdir: string
+  /** True when the run's own watchdog ended it, leaving only the output captured so far. */
+  timedOut?: boolean
 }
 
 /**
@@ -209,6 +240,10 @@ export interface GodotRun {
  * @param executable - the resolved executable and its fixed argv prefix.
  * @param argv - the command arguments (every value a plain argv element).
  * @param caps - the capture budgets and terminate grace.
+ * @param deadlineMs - budget for this run, enforced here rather than by the
+ *   tool-call guard: the guard replaces the whole result when it fires, which
+ *   would discard the output a long run already produced. On expiry the process
+ *   is terminated and the captured output is returned with `timedOut`.
  * @returns the completed run.
  */
 export async function runGodot(
@@ -218,6 +253,7 @@ export async function runGodot(
   executable: GodotExecutable,
   argv: readonly string[],
   caps: GodotCaps,
+  deadlineMs?: number,
 ): Promise<GodotRun> {
   if (exec.signal.aborted) {
     throw new GodotError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'GODOT_ABORTED')
@@ -253,10 +289,30 @@ export async function runGodot(
     throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
   }
   let outcome: SubprocessOutcome
+  // A property, not a `let`: the watchdog flips it from inside a timer callback,
+  // which the static narrowing of a local would not see.
+  const watchdog = { fired: false }
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined
   try {
-    outcome = await handle.done
+    outcome = deadlineMs === undefined
+      ? await handle.done
+      : await Promise.race([
+        handle.done,
+        new Promise<'timeout'>((resolve) => {
+          deadlineTimer = setTimeout(() => {
+            watchdog.fired = true
+            handle.terminate()
+            resolve('timeout')
+          }, deadlineMs)
+        }),
+      ]).then(async (raced) => {
+        // A terminated run still settles; wait for it so the streams are complete.
+        return raced === 'timeout' ? await handle.done : raced
+      })
   } catch (error: unknown) {
     throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
+  } finally {
+    clearTimeout(deadlineTimer)
   }
   const stdout = handle.collected.stdout?.readFrom(0)
   const stderr = handle.collected.stderr?.readFrom(0)
@@ -281,6 +337,7 @@ export async function runGodot(
     stdoutTruncated: stdout.lossy,
     stderrTruncated: stderr.lossy,
     workdir,
+    ...(watchdog.fired ? { timedOut: true } : {}),
   }
 }
 

@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The **visual sandbox** for Godot projects: `godot_play` starts a persistent game process and keeps it running between tool calls, so the model can **see** a frame, **read** the scene and live properties, **operate** the game with mouse, keyboard, and waits, and **stop** it when done. Twenty-one tools register by default; `godot_eval` joins them only when `allowEval` is on.
+The **visual sandbox** for Godot projects: `godot_play` starts a persistent game process and keeps it running between tool calls, so the model can **see** a frame, **read** the scene and live properties, **operate** the game with mouse, keyboard, and waits, and **stop** it when done. Twenty-two tools register by default; `godot_eval` joins them only when `allowEval` is on.
 
 Source entry: [`src/index.ts`](src/index.ts) — plugin entry (service, tools, prompt section, viewer route).
 
@@ -28,7 +28,11 @@ export async function mount(ctx: Context): Promise<void> {
 
 The game runs in a normal native window, which is the scene window to operate directly; `offscreen: true` moves that window away when only the Web panel is wanted. The sandbox requests a visible window; on Windows the local provider uses its direct Node spawn path for that request because the native Job runner always starts targets hidden. That path keeps process-tree cleanup but not native Job containment. The Web watch panel mirrors the same frame and remains optional.
 
-Frames are captured inside the engine (`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`), encoded to PNG/JPEG/WebP buffers, and returned as base64; the bridge never writes to the game filesystem. `shotdiff` compares the current frame with the previous one using `compute_image_metrics`, so the host needs no image-decoding dependency. Input is injected through `Viewport.push_input` (synchronous and scoped to the game viewport); node reads go through `get_property_list` filtered to stored and script variables, with values serialized by explicit `typeof()` dispatch.
+Frames are captured inside the engine (`RenderingServer.frame_post_draw` → `get_viewport().get_texture().get_image()`), encoded to PNG/JPEG/WebP buffers, and returned as base64; the bridge never writes to the game filesystem. Each capture also reports the mean pixel difference against the previous one (`meanDiff`, hence `changed`), so "the picture did not move" is a measurement rather than an inference from frame numbers; `shotdiff` reuses the same `compute_image_metrics` call.
+
+**Coordinate contract.** Every point and rect the tools accept or return is in the viewport's own **canvas** space (`get_visible_rect()`), which is where Control rects live. Pointer events are injected with `push_input(event, true)`. Without that flag, Godot treats the position as screen space and applies the window transform again, so the pointer lands on a different Control as soon as the project scales its canvas. Crops convert canvas rects into captured-image pixels using a ratio derived **from the captured image** (`img.get_size() / visible_rect.size`), because `get_texture().get_size()` disagrees with `get_image().get_size()` on a scaled window (measured 922 × 576 against 1152 × 720). A crop that cannot land is an error, never a silent full frame.
+
+Node reads go through `get_property_list` filtered to stored and script variables, with values serialized by explicit `typeof()` dispatch. Node paths resolve by trying every form the tools hand out: `/root/Main/Child`, `<scene root>/Child`, and scene-relative `Child`. A miss reports each form tried plus the nearest existing ancestor. Every state-changing tool reports evidence read back from the engine: `godot_hover` names the Control under the pointer and fails when the requested one was not reached, `godot_click` names the Control that consumed the click, `godot_fill` reads `text` back, and `godot_check` reads `button_pressed`.
 
 One workspace owns at most one session. `godot_stop` asks the bridge to quit, waits within `graceMs`, escalates to terminate, and reports the real exit code or signal. Disposal runs the same inverse and also removes the temporary scripts; the session registry publishes `godot.egoSessions` and its own inverse disposes every session when the plugin unloads.
 
@@ -87,8 +91,9 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `godot_scene` | `path?` | Report the current scene, or switch with `change_scene_to_file`; `{ scene, changed, frames? }`. |
 | `godot_status` | — | Host-side snapshot: `{ state, pid?, window?, lostReason?, projectRoot?, imported? }`; never contacts the game. |
 | `godot_see` | `format?`, `quality?`, `maxWidth?`, `target?`, `region?`, `ifUnchanged?` | Capture a frame into the conversation; crop one Control or a region; skip an unchanged frame number on request. |
-| `godot_state` | `tree?`, `targets?`, `maxNodes?`, `diff?` | Scene path, fps, frame, node count, pause flag, bounded tree, clickable Controls, and the changed-target list. |
+| `godot_state` | `tree?`, `targets?`, `maxNodes?`, `maxTargets?`, `offset?`, `name?`, `class?`, `text?`, `diff?` | Scene path, fps, frame, node count, pause flag, the current canvas/window geometry (`screen` scale and offset, so a coordinate never has to be guessed), the bounded tree, clickable Controls (filterable by name/class/text and pageable with `offset`), and the changed-target list. A truncated Control list states the total and how to reach the rest. |
 | `godot_node` | `path`, `props?`, `maxProps?`, `depth?` | Stored and script properties of one node, with glob filters and a row budget. |
+| `godot_call` | `path`, `method`, `args?` | Invoke one method on a live node and report its return value; a missing method answers with candidate names. |
 | `godot_find` | `name?`, `class?`, `text?` | Case-insensitive substring search over the Control list; every filter must match. |
 | `godot_diff` | `useLuma?` | `{ mean, mean_squared, peak_snr, frame }` from the engine's frame comparison. |
 | `godot_logs` | `since?`, `maxBytes?`, `stream?` | Incremental stdout/stderr capture with the next cursor. |
@@ -138,7 +143,7 @@ Every request in the plugin's registration scope carries this guidance. Hiding t
 ##### Godot visual sandbox guidance (tool:godot-ego)
 
 ```markdown
-Godot visual sandbox: call godot_play to start the project, godot_see to look at the current frame (crop with target for detail), godot_state for the scene tree and clickable Control paths, godot_click / godot_key / godot_type / godot_fill / godot_check / godot_hover / godot_drag / godot_scroll to operate it, godot_wait or godot_wait_for before the next capture, godot_node for live property values, godot_find to locate a Control by name/class/text, godot_actions for InputMap action names, godot_scene to report or switch scenes, godot_diff to measure visual change, godot_status for the session, godot_logs for print and error output, and godot_stop when done. Prefer clicking by Control path: it is deterministic, while coordinates depend on the window scale.
+Godot visual sandbox: call godot_play to start the project, godot_see to look at the current frame (crop with target for detail), godot_state for the scene tree and clickable Control paths, godot_click / godot_key / godot_type / godot_fill / godot_check / godot_hover / godot_drag / godot_scroll to operate it, godot_wait or godot_wait_for before the next capture, godot_node for live property values, godot_call to invoke a node method, godot_find to locate a Control by name/class/text, godot_actions for InputMap action names, godot_scene to report or switch scenes, godot_diff to measure visual change, godot_status for the session, godot_logs for print and error output, and godot_stop when done. Prefer clicking by Control path: it is deterministic, while coordinates depend on the window scale.
 ```
 
 #### Token effect

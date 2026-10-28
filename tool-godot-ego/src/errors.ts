@@ -14,6 +14,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 export type EgoGodotErrorCode =
   | 'GODOT_EGO_UNAVAILABLE'
   | 'GODOT_EGO_NO_SESSION'
+  | 'GODOT_EGO_NO_PROJECT'
   | 'GODOT_EGO_TIMEOUT'
   | 'GODOT_EGO_REJECTED'
   | 'GODOT_EGO_NOT_IMPORTED'

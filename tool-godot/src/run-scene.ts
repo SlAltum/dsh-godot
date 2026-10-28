@@ -21,6 +21,8 @@ export interface RunSceneInput {
   path?: string
   frames?: number
   args?: string[]
+  /** Budget for this run in ms; clamped to the configured `runSceneTimeoutMs`. */
+  timeoutMs?: number
 }
 
 /**
@@ -31,14 +33,24 @@ export interface RunSceneInput {
  * @param args - the schema-validated arguments.
  * @returns the accepted input.
  */
-export function parseRunSceneArgs(args: { scene: string; path?: string; frames?: number; args?: string[] }): RunSceneInput {
+export function parseRunSceneArgs(args: {
+  scene: string
+  path?: string
+  frames?: number
+  args?: string[]
+  timeoutMs?: number
+}): RunSceneInput {
   if (args.scene.trim().length === 0) throw new Error('scene must be a non-empty string')
   if (args.frames !== undefined && (!Number.isInteger(args.frames) || args.frames < 1)) throw new Error('frames must be a positive integer')
   if (args.path !== undefined && args.path.trim().length === 0) throw new Error('path must be a non-empty string when given')
+  if (args.timeoutMs !== undefined && (!Number.isInteger(args.timeoutMs) || args.timeoutMs < 1000)) {
+    throw new Error('timeoutMs must be an integer of at least 1000')
+  }
   return {
     scene: args.scene,
     ...(args.path !== undefined ? { path: args.path } : {}),
     ...(args.frames !== undefined ? { frames: args.frames } : {}),
+    ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
     args: args.args ?? [],
   }
 }
@@ -82,6 +94,8 @@ export interface RunSceneResult {
   stderr: string
   /** True when the run exited cleanly. */
   ok: boolean
+  /** True when the runner's own budget ended it; `output` holds what it produced. */
+  timedOut: boolean
   /** True when the subprocess seam dropped stdout bytes past the budget. */
   stdoutTruncated: boolean
   /** True when the subprocess seam dropped stderr bytes past the budget. */
@@ -96,13 +110,19 @@ export interface RunSceneResult {
  * @returns the model-facing text.
  */
 export function renderRunSceneOutput(value: RunSceneResult): string {
-  const exit = value.signal !== undefined ? `signal ${value.signal}` : `code ${value.exitCode}`
   const notes: string[] = []
   if (value.stdoutTruncated) notes.push('(stdout truncated)')
   if (value.stderrTruncated) notes.push('(stderr truncated)')
   const note = notes.length > 0 ? ` ${notes.join(' ')}` : ''
   const body = value.output.length > 0 ? value.output : '(no output)'
   const stderr = value.stderr.length > 0 ? `\nstderr:\n${value.stderr}` : ''
+  // A killed run still produced evidence; lead with the budget hit so a
+  // timeout is never read as "nothing happened".
+  if (value.timedOut) {
+    return `Godot scene ${value.scene} hit the run budget and was terminated${note}; `
+      + `showing the output it produced before that\n${body}${stderr}`
+  }
+  const exit = value.signal !== undefined ? `signal ${value.signal}` : `code ${value.exitCode}`
   return `Godot scene ${value.scene} exited with ${exit}${note}\n${body}${stderr}`
 }
 
@@ -150,8 +170,15 @@ export function applyRunSceneTool(ctx: Context, caps: () => ResolvedCaps): void 
         description: 'User arguments passed after -- (OS.get_cmdline_user_args()).',
         items: { type: 'string' },
       },
+      timeoutMs: {
+        type: 'number',
+        description: 'Budget for this run in milliseconds (default and ceiling: the configured runSceneTimeoutMs). '
+          + 'On expiry the run is terminated and its output so far is returned with timedOut: true.',
+      },
     },
-    timeoutMs: caps().timeoutMs,
+    // The tool-call guard must not fire first: it replaces the whole result,
+    // discarding the output this tool is designed to hand back on a timeout.
+    timeoutMs: caps().runSceneTimeoutMs + 15_000,
     output: {
       schema: {
         type: 'object',
@@ -164,6 +191,7 @@ export function applyRunSceneTool(ctx: Context, caps: () => ResolvedCaps): void 
           output: { type: 'string', required: true },
           stderr: { type: 'string', required: true },
           ok: { type: 'boolean', required: true },
+          timedOut: { type: 'boolean', required: true },
           stdoutTruncated: { type: 'boolean', required: true },
           stderrTruncated: { type: 'boolean', required: true },
         },
@@ -175,7 +203,13 @@ export function applyRunSceneTool(ctx: Context, caps: () => ResolvedCaps): void 
       const input = parseRunSceneArgs(args)
       const workdir = exec.agent?.session.header.cwd ?? process.cwd()
       const projectRoot = await resolveProjectRoot(input.path, workdir)
-      const run = await runGodot(ctx, exec, 'godot_run_scene', c.godot, buildRunSceneCommand(projectRoot, input.scene, input.frames, input.args), c)
+      const budget = Math.min(input.timeoutMs ?? c.runSceneTimeoutMs, c.runSceneTimeoutMs)
+      const run = await runGodot(
+        ctx, exec, 'godot_run_scene', c.godot,
+        buildRunSceneCommand(projectRoot, input.scene, input.frames, input.args),
+        c, budget,
+      )
+      const timedOut = run.timedOut === true
       return {
         projectRoot,
         scene: input.scene,
@@ -183,7 +217,8 @@ export function applyRunSceneTool(ctx: Context, caps: () => ResolvedCaps): void 
         ...(run.signal !== null ? { signal: run.signal } : run.exitCode !== null ? { exitCode: run.exitCode } : {}),
         output: run.stdout,
         stderr: run.stderr,
-        ok: run.exitCode === 0 && run.signal === null,
+        ok: !timedOut && run.exitCode === 0 && run.signal === null,
+        timedOut,
         stdoutTruncated: run.stdoutTruncated,
         stderrTruncated: run.stderrTruncated,
       }

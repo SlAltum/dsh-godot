@@ -32,6 +32,36 @@ export interface SceneTreeNode {
 export interface StateRenderOptions {
   readonly maxNodes?: number
   readonly maxTargets?: number
+  /** Targets to skip before rendering the page (for a listing that outgrew one reply). */
+  readonly offset?: number
+  /** Case-insensitive substrings a target must all contain. */
+  readonly filter?: TargetFilter
+}
+
+/** Substring filters over the three fields a caller can recognize a Control by. */
+export interface TargetFilter {
+  /** Substring of the Control path. */
+  readonly name?: string
+  /** Substring of the Control class. */
+  readonly className?: string
+  /** Substring of the visible text. */
+  readonly text?: string
+}
+
+/**
+ * Keep the targets matching every given substring (case-insensitive; an empty
+ * or absent filter keeps everything).
+ * @param targets - parsed targets.
+ * @param filter - the substrings to match.
+ * @returns the matching targets, in input order.
+ */
+export function filterTargets(targets: readonly TargetEntry[], filter: TargetFilter): TargetEntry[] {
+  const contains = (value: string, needle: string | undefined): boolean =>
+    needle === undefined || needle === '' || value.toLowerCase().includes(needle.toLowerCase())
+  return targets.filter(target =>
+    contains(target.path, filter.name)
+    && contains(target.className, filter.className)
+    && contains(target.text, filter.text))
 }
 
 /**
@@ -119,16 +149,22 @@ export function renderTree(tree: SceneTreeNode | null, maxNodes = 200): { lines:
  * Render targets as one line each.
  * @param targets - parsed targets.
  * @param maxTargets - line budget.
+ * @param offset - lines to skip, for paging a listing that outgrew one reply.
  * @returns the lines and the truncation flag.
  */
-export function renderTargets(targets: readonly TargetEntry[], maxTargets = 60): { lines: string[]; truncated: boolean } {
-  const kept = targets.slice(0, Math.max(maxTargets, 0))
+export function renderTargets(
+  targets: readonly TargetEntry[],
+  maxTargets = 60,
+  offset = 0,
+): { lines: string[]; truncated: boolean } {
+  const start = Math.min(Math.max(offset, 0), targets.length)
+  const kept = targets.slice(start, start + Math.max(maxTargets, 0))
   const lines = kept.map((target) => {
     const [x, y, width, height] = target.rect
     const disabled = target.disabled === true ? ' disabled' : ''
     return `  ${target.path} [${target.className}] rect=(${x},${y},${width},${height}) text="${target.text}"${disabled}`
   })
-  return { lines, truncated: targets.length > kept.length }
+  return { lines, truncated: targets.length > start + kept.length }
 }
 
 /**
@@ -151,6 +187,35 @@ export function renderChanged(raw: unknown): string[] {
 }
 
 /**
+/**
+ * Render the bridge's `geometry` block as one line.
+ * @param raw - the `geometry` payload (`canvas`, `window`, `screen`).
+ * @returns the line, or `undefined` when the payload is absent or malformed.
+ */
+export function renderGeometry(raw: unknown): string | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const record = raw as Record<string, unknown>
+  const pair = (value: unknown): [number, number] | undefined =>
+    Array.isArray(value) && value.length === 2 && value.every(item => typeof item === 'number')
+      ? value as [number, number]
+      : undefined
+  const canvas = pair(record.canvas)
+  const window = pair(record.window)
+  const screen = Array.isArray(record.screen) && record.screen.length === 4 && record.screen.every(item => typeof item === 'number')
+    ? record.screen as [number, number, number, number]
+    : undefined
+  if (canvas === undefined || window === undefined || screen === undefined) return undefined
+  const [scaleX, scaleY, offsetX, offsetY] = screen
+  const scale = scaleX === scaleY ? scaleX.toFixed(3) : `${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`
+  // Stated on the header the model reads first: the points it passes are canvas
+  // points, and the window may not share that size.
+  return `geometry canvas ${String(canvas[0])} × ${String(canvas[1])}`
+    + ` · window ${String(window[0])} × ${String(window[1])}`
+    + ` · screen ${scale} ${offsetX >= 0 ? '+' : ''}${String(offsetX)},${String(offsetY)}`
+    + ' (points and rects are canvas space)'
+}
+
+/**
  * Render the whole `state` reply into model-facing text.
  * @param state - the bridge reply payload.
  * @param options - node/target budgets.
@@ -163,6 +228,8 @@ export function renderState(state: Readonly<Record<string, unknown>>, options: S
   const nodeCount = typeof state.nodeCount === 'number' ? state.nodeCount : 0
   const paused = state.paused === true ? ' · paused' : ''
   const lines = [`scene ${scene} · ${fps} fps · frame ${frames} · ${nodeCount} nodes${paused}`]
+  const geometry = renderGeometry(state.geometry)
+  if (geometry !== undefined) lines.push(geometry)
 
   if (state.tree !== undefined) {
     const tree = parseTree(state.tree)
@@ -171,9 +238,20 @@ export function renderState(state: Readonly<Record<string, unknown>>, options: S
     lines.push(...rendered.lines)
   }
   if (state.targets !== undefined) {
-    const targets = parseTargets(state.targets)
-    const rendered = renderTargets(targets, options.maxTargets ?? 60)
-    lines.push(`targets (${targets.length}${rendered.truncated ? `, showing ${rendered.lines.length}` : ''})`)
+    const all = parseTargets(state.targets)
+    const matched = filterTargets(all, options.filter ?? {})
+    const offset = options.offset ?? 0
+    const rendered = renderTargets(matched, options.maxTargets ?? 60, offset)
+    const total = matched.length === all.length
+      ? String(matched.length)
+      : `${String(matched.length)} of ${String(all.length)}`
+    const page = rendered.lines.length === 0
+      ? 'showing none'
+      : `showing ${String(offset + 1)}-${String(offset + rendered.lines.length)}`
+    // A truncated listing must say how to reach the rest: a scene with 122
+    // Controls is ordinary, and paging by hand is the only way to find one.
+    const hint = rendered.truncated ? '; filter by name/class/text or pass offset to reach the rest' : ''
+    lines.push(`targets ${total} (${page})${hint}`)
     lines.push(...rendered.lines)
   }
   if (state.changed !== undefined) {

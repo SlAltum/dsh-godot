@@ -26,6 +26,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericResultView, GenericCallView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { resToRelative, resolveProjectRoot, runGodot, withTempGdScript } from './godot-core.ts'
+import { collectSceneFiles, validateSceneFile } from './scene-validate.ts'
 import type { GodotRun, ResolvedCaps } from './godot-core.ts'
 import { validateMeta, validateViewFromMeta } from './presentation.ts'
 import type { ValidateMeta } from './presentation.ts'
@@ -48,7 +49,7 @@ export type GodotIssue = {
 /** Validated `godot_validate` arguments. */
 export interface ValidateInput {
   path?: string
-  mode: 'project' | 'file'
+  mode: 'project' | 'file' | 'scene'
 }
 
 /**
@@ -59,9 +60,11 @@ export interface ValidateInput {
  * @param args - the schema-validated arguments.
  * @returns the accepted input.
  */
-export function parseValidateArgs(args: { path?: string; mode?: 'project' | 'file' }): ValidateInput {
+export function parseValidateArgs(args: { path?: string; mode?: 'project' | 'file' | 'scene' }): ValidateInput {
   if (args.path !== undefined && args.path.trim().length === 0) throw new Error('path must be a non-empty string when given')
-  return { ...(args.path !== undefined ? { path: args.path } : {}), mode: args.mode ?? 'project' }
+  const mode = args.mode ?? 'project'
+  if (mode === 'scene' && args.path === undefined) throw new Error('scene mode requires a path (a .tscn file or a directory)')
+  return { ...(args.path !== undefined ? { path: args.path } : {}), mode }
 }
 
 /**
@@ -250,7 +253,7 @@ export interface ValidateResult {
   /** The resolved project root the validation ran against. */
   projectRoot: string
   /** Which mode the run used. */
-  mode: 'project' | 'file'
+  mode: 'project' | 'file' | 'scene'
   /** True when the run exited cleanly with no error-kind issues. */
   ok: boolean
   /** The parsed issues, display-mapped and retained within the inline cap. */
@@ -276,7 +279,9 @@ export interface ValidateResult {
  * @returns the model-facing text.
  */
 export function renderValidateOutput(value: ValidateResult): string {
-  const head = `Godot ${value.mode} validation at ${value.projectRoot}: ${value.ok ? 'passed' : 'failed'} (exit ${value.exitCode ?? 'killed'})`
+  const head = value.mode === 'scene'
+    ? `Godot scene validation at ${value.projectRoot}: ${value.ok ? 'passed' : 'failed'}`
+    : `Godot ${value.mode} validation at ${value.projectRoot}: ${value.ok ? 'passed' : 'failed'} (exit ${value.exitCode ?? 'killed'})`
   if (value.issues.length === 0) {
     const diagnostics = value.diagnostics !== undefined && value.diagnostics.length > 0 ? `\n${value.diagnostics}` : ''
     return `${head}\nNo issues reported.${diagnostics}`
@@ -296,12 +301,42 @@ export function renderValidateOutput(value: ValidateResult): string {
 }
 
 /**
+ * Validate scenes without starting the engine.
+ * @param path - a `.tscn` file or a directory, as `res://` or a filesystem path.
+ * @param workdir - the session cwd a relative path resolves against.
+ * @returns the aggregated result, one issue list across every scene read.
+ */
+export async function validateScenes(path: string, workdir: string): Promise<ValidateResult> {
+  const projectRoot = await resolveProjectRoot(path.startsWith('res://') ? undefined : path, workdir)
+  const target = path.startsWith('res://') ? resolve(projectRoot, path.slice('res://'.length)) : resolve(workdir, path)
+  const scenes = await collectSceneFiles(target, projectRoot)
+  const issues: GodotIssue[] = []
+  for (const scene of scenes) {
+    try {
+      issues.push(...await validateSceneFile(scene.file, { path: scene.path, projectRoot }))
+    } catch (error: unknown) {
+      issues.push({ kind: 'error', message: `could not read the scene: ${(error as Error).message}`, path: scene.path })
+    }
+  }
+  const retained = issues.slice(0, VALIDATE_MAX_ERRORS)
+  return {
+    projectRoot,
+    mode: 'scene',
+    ok: issues.every(issue => issue.kind !== 'error'),
+    issues: retained,
+    issuesTruncated: issues.length > retained.length,
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  }
+}
+
+/**
  * Pending-call presentation: a generic card titled by the mode and target.
  *
  * @param args - the raw tool arguments.
  * @returns the generic card view shown while the call runs.
  */
-export function presentValidateCall(args: { path?: string; mode?: 'project' | 'file' }): GenericCallView {
+export function presentValidateCall(args: { path?: string; mode?: 'project' | 'file' | 'scene' }): GenericCallView {
   const mode = args.mode ?? 'project'
   const where = args.path !== undefined ? ` ${args.path}` : ' workspace'
   return { card: 'generic', title: `Validate Godot ${mode}${where}` }
@@ -317,7 +352,7 @@ export function presentValidateCall(args: { path?: string; mode?: 'project' | 'f
  * @param result - the final model-facing tool result carrying the projected metadata.
  * @returns the generic card view, or `undefined` for the fallback.
  */
-export function presentValidateResult(_args: { path?: string; mode?: 'project' | 'file' }, result: ToolResult): GenericResultView | undefined {
+export function presentValidateResult(_args: { path?: string; mode?: 'project' | 'file' | 'scene' }, result: ToolResult): GenericResultView | undefined {
   if (result.isError) return undefined
   return validateViewFromMeta(result.meta)
 }
@@ -341,9 +376,12 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
   const tool = defineTool({
     name: 'godot_validate',
     description:
-      'Validate a Godot project or a single GDScript file with the headless Godot editor and return structured parse errors. '
-      + 'project mode imports and parses the whole project (slower, catches scene/resource errors too); file mode parses one script with --check-only. '
-      + 'Returns issues with file, line, column, kind (error/warning), and message. Requires a godot executable configured or on PATH.',
+      'Validate a Godot project, a single GDScript file, or a scene, and return structured diagnostics. '
+      + 'project mode imports and parses the whole project (slower, catches scene/resource errors too); file mode parses one script with --check-only; '
+      + 'scene mode reads a .tscn (or every .tscn under a directory) without starting the engine and reports structural mistakes: '
+      + 'a Control laid out with anchors inside a Container, a missing parent, a duplicate node path, a missing ext_resource, '
+      + 'or a [connection] calling a method the target script does not declare. '
+      + 'Returns issues with file, line, column, kind (error/warning), and message. project/file modes require a godot executable configured or on PATH.',
     parameters: {
       path: {
         type: 'string',
@@ -351,8 +389,9 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
       },
       mode: {
         type: 'string',
-        description: '`project` validates the whole project through the headless editor; `file` validates one script.',
-        enum: ['project', 'file'],
+        description: '`project` validates the whole project through the headless editor; `file` validates one script; '
+          + '`scene` checks one .tscn (or every scene under a directory) structurally without the engine.',
+        enum: ['project', 'file', 'scene'],
       },
     },
     timeoutMs: caps().timeoutMs,
@@ -362,7 +401,7 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
         additionalProperties: false,
         properties: {
           projectRoot: { type: 'string', required: true },
-          mode: { type: 'string', enum: ['project', 'file'], required: true },
+          mode: { type: 'string', enum: ['project', 'file', 'scene'], required: true },
           ok: { type: 'boolean', required: true },
           issues: {
             type: 'array',
@@ -393,6 +432,9 @@ export function applyValidateTool(ctx: Context, caps: () => ResolvedCaps): void 
       const c = caps()
       const input = parseValidateArgs(args)
       const workdir = exec.agent?.session.header.cwd ?? process.cwd()
+      if (input.mode === 'scene') {
+        return await validateScenes(input.path as string, workdir)
+      }
       let file = ''
       if (input.mode === 'file') {
         if (input.path === undefined) throw new Error('file mode requires a path')

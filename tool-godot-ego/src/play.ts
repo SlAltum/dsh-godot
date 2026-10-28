@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -188,6 +189,16 @@ export async function startSession(
   options: EgoPlayOptions,
 ): Promise<EgoSessionHandle> {
   const projectRoot = await resolveProjectRoot(options.path, workspace)
+  if (!existsSync(join(projectRoot, 'project.godot'))) {
+    // Say the real cause here. Otherwise godot fails the import pass and the
+    // caller reads "Godot import exited with code 1", which is why first-time
+    // users went looking for a broken import cache.
+    throw new EgoGodotError(
+      `no Godot project at "${projectRoot}": no project.godot in that directory or its parents. `
+      + 'Pass path= the project directory, or start the session inside the project.',
+      'GODOT_EGO_NO_PROJECT',
+    )
+  }
   const toolchain = (ctx as { get?: (name: string) => unknown }).get?.('godot.toolchain') as GodotToolchain | undefined
   const executable = resolveEgoExecutable(config, toolchain)
   const imported = await ensureImported(ctx, executable, projectRoot, config.importTimeoutMs, config.graceMs)

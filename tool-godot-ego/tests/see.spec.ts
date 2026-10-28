@@ -37,6 +37,8 @@ interface SessionOptions {
   readonly width?: number
   readonly height?: number
   readonly bytes?: number
+  /** Engine-reported mean pixel difference against the previous capture (-1 = none). */
+  readonly meanDiff?: number
 }
 
 function sessionWith(options: SessionOptions = {}): EgoSessionHandle & { request: ReturnType<typeof vi.fn> } {
@@ -48,6 +50,7 @@ function sessionWith(options: SessionOptions = {}): EgoSessionHandle & { request
       frame: options.frame ?? 7,
       size: [options.width ?? 320, options.height ?? 200],
       bytes: options.bytes ?? Buffer.byteLength(DATA, 'base64'),
+      meanDiff: options.meanDiff ?? -1,
     },
   }))
   const session: EgoSessionHandle & { request: ReturnType<typeof vi.fn> } = {
@@ -134,16 +137,29 @@ describe('godot_see', () => {
     expect(blocks[1]).toMatchObject({ type: 'image', attachment: { attachmentId: 'att-1' } })
   })
 
-  it('skips an unchanged frame only when asked', async () => {
-    const session = sessionWith({ frame: 3 })
+  it('skips an unchanged frame only when asked, judged by pixels', async () => {
+    // Frame numbers always advance; only the pixel difference can say the
+    // picture did not change. The engine reports it as `meanDiff`.
+    const session = sessionWith({ frame: 3, meanDiff: 0 })
     const store = attachmentStore()
     const tool = seeTool(contextWith({ attachments: store, llm: visionLlm(['image']) }), await registryWith(session), resolveConfig({}))
-    await tool.execute({}, exec as never)
+    const first = await tool.execute({}, exec as never)
+    expect(first.changed).toBe(false)
+    expect(first.meanDiff).toBe(0)
     const skipped = await tool.execute({ ifUnchanged: 'skip' }, exec as never)
     expect(skipped.note).toContain('unchanged')
     expect(skipped.image).toBeUndefined()
     const resent = await tool.execute({}, exec as never)
     expect(resent.image).toBeDefined()
+  })
+
+  it('reports a changed frame even when the frame number repeats', async () => {
+    const session = sessionWith({ frame: 9, meanDiff: 12.5 })
+    const tool = seeTool(contextWith({ attachments: attachmentStore(), llm: visionLlm(['image']) }), await registryWith(session), resolveConfig({}))
+    const value = await tool.execute({ ifUnchanged: 'skip' }, exec as never)
+    expect(value).toMatchObject({ changed: true, meanDiff: 12.5 })
+    expect(value.image).toBeDefined()
+    expect(value.note).toBeUndefined()
   })
 
   it('falls back to a temp file for each refusal reason', async () => {

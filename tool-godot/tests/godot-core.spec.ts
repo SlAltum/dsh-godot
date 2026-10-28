@@ -204,6 +204,17 @@ describe('runGodot', () => {
     expect(run.stderrTruncated).toBe(true)
   })
 
+  it('terminates a run that exceeds its own deadline and keeps the output it produced', async () => {
+    // A test scene that runs past its budget must still report what it printed:
+    // the tool-call guard would replace the whole result instead. The budget
+    // leaves room for Node to start and print under a loaded test runner.
+    const slow = join(dir, 'slow.mjs')
+    await writeFile(slow, 'process.stdout.write("started\\n"); setTimeout(() => {}, 10000)')
+    const run = await runGodot(ctx, execFor(new AbortController().signal), 'godot_run_scene', { executable: process.execPath, args: [] }, [slow], CAPS, 2000)
+    expect(run.timedOut).toBe(true)
+    expect(run.stdout).toContain('started')
+  })
+
   it('throws GODOT_ABORTED when the signal is already aborted', async () => {
     const controller = new AbortController()
     controller.abort()

@@ -99,14 +99,14 @@ function pointOf(value: number[], label: string): [number, number] {
  * @param session - the running session.
  * @param target - an exact path or a trailing path segment.
  * @param signal - caller cancellation.
- * @returns the center coordinates.
+ * @returns the center coordinates and the canonical path that matched.
  * @throws EgoGodotError `GODOT_EGO_REJECTED` when no Control matches.
  */
-async function targetCenter(
+async function resolveTarget(
   session: EgoSessionHandle,
   target: string,
   signal: AbortSignal | undefined,
-): Promise<[number, number]> {
+): Promise<{ x: number; y: number; path: string }> {
   const state = await session.request('state', { tree: false, targets: true, diff: false }, signal)
   const entry = parseTargets(state.payload.targets)
     .find(candidate => candidate.path === target || candidate.path.endsWith(`/${target}`))
@@ -114,7 +114,7 @@ async function targetCenter(
     throw new EgoGodotError(`no Control matched "${target}"; read godot_state for the available targets`, 'GODOT_EGO_REJECTED')
   }
   const [left, top, width, height] = entry.rect
-  return [left + width / 2, top + height / 2]
+  return { x: left + width / 2, y: top + height / 2, path: entry.path }
 }
 
 /**
@@ -134,7 +134,10 @@ async function nodeProps(
 ): Promise<Map<string, unknown>> {
   const reply = await session.request('node', { path, props: names, maxProps: names.length }, signal)
   if (typeof reply.payload.error === 'string') {
-    throw new EgoGodotError(`no node at "${path}" in the current scene`, 'GODOT_EGO_REJECTED')
+    const message = typeof reply.payload.message === 'string'
+      ? reply.payload.message
+      : `no node at "${path}" in the current scene`
+    throw new EgoGodotError(message, 'GODOT_EGO_REJECTED')
   }
   const rows = new Map<string, unknown>()
   for (const row of Array.isArray(reply.payload.props) ? reply.payload.props : []) {
@@ -220,9 +223,9 @@ export function inputTools(registry: GameSessionRegistry): InputTools {
       let y = args.y
       if (args.target !== undefined) {
         if (x !== undefined || y !== undefined) throw new Error('click takes either target or x/y, not both')
-        const [centerX, centerY] = await targetCenter(session, args.target, exec.signal)
-        x = centerX
-        y = centerY
+        const point = await resolveTarget(session, args.target, exec.signal)
+        x = point.x
+        y = point.y
       }
       if (typeof x !== 'number' || typeof y !== 'number') throw new Error('click requires x and y, or target')
       const reply = await session.request('click', {
@@ -338,26 +341,40 @@ export function inputTools(registry: GameSessionRegistry): InputTools {
           x: { type: 'number', required: true },
           y: { type: 'number', required: true },
           frames: { type: 'number', required: true },
+          over: { type: 'string' },
         },
       },
-      render: (_args, value: { x: number; y: number; frames: number }) => [{
+      render: (_args, value: { x: number; y: number; frames: number; over?: string }) => [{
         type: 'text',
-        text: `hover at (${String(value.x)}, ${String(value.y)}) · frame ${value.frames}`,
+        text: `hover at (${String(value.x)}, ${String(value.y)})`
+          + (value.over === undefined ? ' → no Control there' : ` → over ${value.over}`)
+          + ` · frame ${value.frames}`,
       }],
     },
     async execute(args: HoverArgs, exec) {
       const session = sessionFor(registry, exec)
       let x = args.x
       let y = args.y
+      let wanted: string | undefined
       if (args.target !== undefined) {
         if (x !== undefined || y !== undefined) throw new Error('hover takes either target or x/y, not both')
-        const [centerX, centerY] = await targetCenter(session, args.target, exec.signal)
-        x = centerX
-        y = centerY
+        const point = await resolveTarget(session, args.target, exec.signal)
+        x = point.x
+        y = point.y
+        wanted = point.path
       }
       if (typeof x !== 'number' || typeof y !== 'number') throw new Error('hover requires x and y, or target')
       const reply = await session.request('move', { x, y }, exec.signal)
-      return { x, y, frames: typeof reply.payload.frames === 'number' ? reply.payload.frames : 0 }
+      const over = typeof reply.payload.over === 'string' ? reply.payload.over : undefined
+      const frames = typeof reply.payload.frames === 'number' ? reply.payload.frames : 0
+      if (wanted !== undefined && !(over === wanted || over?.startsWith(`${wanted}/`) === true)) {
+        throw new EgoGodotError(
+          `hover at (${String(x)}, ${String(y)}) landed on ${over === undefined ? 'no Control' : `"${over}"`} instead of "${wanted}"`
+          + '; the point may be clipped, covered, or outside the Control',
+          'GODOT_EGO_REJECTED',
+        )
+      }
+      return { x, y, frames, ...(over !== undefined ? { over } : {}) }
     },
   })
 
@@ -426,9 +443,9 @@ export function inputTools(registry: GameSessionRegistry): InputTools {
       let y = args.y ?? 0
       if (args.target !== undefined) {
         if (args.x !== undefined || args.y !== undefined) throw new Error('scroll takes either target or x/y, not both')
-        const [centerX, centerY] = await targetCenter(session, args.target, exec.signal)
-        x = centerX
-        y = centerY
+        const point = await resolveTarget(session, args.target, exec.signal)
+        x = point.x
+        y = point.y
       }
       const reply = await session.request('wheel', { x, y, delta: args.delta }, exec.signal)
       return { x, y, frames: typeof reply.payload.frames === 'number' ? reply.payload.frames : 0 }
@@ -503,8 +520,8 @@ export function inputTools(registry: GameSessionRegistry): InputTools {
       }
       const current = before.get('button_pressed') === true
       if (current === desired) return { checked: current, changed: false }
-      const [x, y] = await targetCenter(session, args.target, exec.signal)
-      const reply = await session.request('click', { x, y, button: 'left', double: false }, exec.signal)
+      const point = await resolveTarget(session, args.target, exec.signal)
+      const reply = await session.request('click', { x: point.x, y: point.y, button: 'left', double: false }, exec.signal)
       const after = await nodeProps(session, args.target, ['button_pressed'], exec.signal)
       const checked = after.get('button_pressed') === true
       return {
@@ -540,8 +557,8 @@ export function inputTools(registry: GameSessionRegistry): InputTools {
     },
     async execute(args: FillArgs, exec) {
       const session = sessionFor(registry, exec)
-      const [x, y] = await targetCenter(session, args.target, exec.signal)
-      await session.request('click', { x, y, button: 'left', double: false }, exec.signal)
+      const point = await resolveTarget(session, args.target, exec.signal)
+      await session.request('click', { x: point.x, y: point.y, button: 'left', double: false }, exec.signal)
       await tapKey(session, KEY_A, { ...NO_MODIFIERS, ctrl: true }, exec.signal)
       let frames = args.text.length === 0
         ? await tapKey(session, BACKSPACE, NO_MODIFIERS, exec.signal)
