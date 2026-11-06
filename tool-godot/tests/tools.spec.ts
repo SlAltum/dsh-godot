@@ -17,7 +17,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH, type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolGodot from '@deepseek-ai/dsh-tool-godot'
 
@@ -28,14 +29,19 @@ let dir: string
 let ctx: Context
 
 let callCounter = 0
-function call(name: string, args: unknown, agentObj?: object) {
+function call(name: string, args: unknown, agentObj?: object): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: ToolCallId(`it-${++callCounter}`),
-    name,
-    arguments: args,
+    calls: [{ type: 'tool-call', id: ToolCallId(`it-${++callCounter}`), name, arguments: JSON.stringify(args) }],
     ...(agentObj ? { agent: agentObj as never } : {}),
-  })
+  }).then(settle)
+}
+
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
 }
 
 function text(result: { content: { type: string; text?: string }[] }): string {
@@ -92,6 +98,7 @@ async function boot(overrides?: Record<string, unknown>): Promise<Context> {
   const context = new Context()
   await context.plugin(SystemPrompt)
   await context.plugin(ToolRuntime)
+  await context.plugin(NativeToolExecutor)
   await context.plugin(LocalSubprocessRuntime)
   await context.plugin(ToolGodot, {
     executable: process.execPath,
@@ -228,13 +235,11 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
 
     it('classifies a missing executable as GODOT_UNAVAILABLE', async () => {
       const context = await boot({ executable: 'no-such-binary-xyz-123' })
-      const result = await context.tools.execute({
+      const result = settle(await context.tools.execute({
         signal: testToolSignal,
-        callId: ToolCallId('it-godot-unavailable'),
-        name: 'godot_validate',
-        arguments: {},
+        calls: [{ type: 'tool-call', id: ToolCallId('it-godot-unavailable'), name: 'godot_validate', arguments: '{}' }],
         agent: agent() as never,
-      })
+      }))
       expect(result.isError).toBe(true)
       expect(result.error).toMatchObject({ info: { name: 'GodotError', code: 'GODOT_UNAVAILABLE' } })
     })
@@ -242,12 +247,10 @@ describe('godot tools over the real subprocess service + the fake godot stub', (
     it('a pre-aborted registry call is ABORTED_BEFORE_DISPATCH', async () => {
       const controller = new AbortController()
       controller.abort()
-      const result = await ctx.tools.execute({
-        callId: ToolCallId('it-preaborted'),
-        name: 'godot_validate',
-        arguments: {},
+      const result = settle(await ctx.tools.execute({
         signal: controller.signal,
-      })
+        calls: [{ type: 'tool-call', id: ToolCallId('it-preaborted'), name: 'godot_validate', arguments: '{}' }],
+      }))
       expect(result.isError).toBe(true)
       expect(result.error).toMatchObject({ info: { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH } })
     })

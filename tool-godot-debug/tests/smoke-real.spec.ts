@@ -16,8 +16,10 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as TimeoutPolicy from '@deepseek-ai/dsh-tool-call-timeout-policy'
 import { Config } from '../src/index.ts'
@@ -35,6 +37,13 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => {
   setTimeout(resolve, ms)
 })
 
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
+}
+
 describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
   it('runs a real debug session with two breakpoints', async () => {
     const appdata = await mkdtemp(join(tmpdir(), 'godot-debug-smoke-'))
@@ -44,6 +53,7 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(TimeoutPolicy)
       await ctx.plugin(ToolGodotDebug, Config({
@@ -53,28 +63,31 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
         graceMs: 5_000,
         timeoutMs: 120_000,
       }))
-      const result = await ctx.tools.execute({
+      const result = settle(await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: 'smoke-real' as never,
-        name: 'godot_debug',
-        arguments: {
-          path: project,
-          scene: 'res://main.tscn',
-          breakpoints: [
-            { file: 'res://player.gd', line: 10 },
-            { file: 'res://player.gd', line: 19 },
-          ],
-          // Phase 6: edit a script member of self on the first stop, while
-          // paused, and assert the engine accepts the write (verified via
-          // re-inspect). Only `counter` is edited — the other Player members
-          // are StringName/Vector2 (conversion semantics not pinned).
-          edits: [
-            { target: 'self', property: 'counter', value: '777', type: 'int' },
-          ],
-          maxStops: 10,
-        },
+        calls: [{
+          type: 'tool-call',
+          id: ToolCallId('smoke-real'),
+          name: 'godot_debug',
+          arguments: JSON.stringify({
+            path: project,
+            scene: 'res://main.tscn',
+            breakpoints: [
+              { file: 'res://player.gd', line: 10 },
+              { file: 'res://player.gd', line: 19 },
+            ],
+            // Phase 6: edit a script member of self on the first stop, while
+            // paused, and assert the engine accepts the write (verified via
+            // re-inspect). Only `counter` is edited — the other Player members
+            // are StringName/Vector2 (conversion semantics not pinned).
+            edits: [
+              { target: 'self', property: 'counter', value: '777', type: 'int' },
+            ],
+            maxStops: 10,
+          }),
+        }],
         agent: { session: { header: { cwd: project } } } as never,
-      })
+      }))
       expect(result.isError).toBe(false)
       const value = result.value as {
         stops: {
@@ -147,6 +160,7 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(TimeoutPolicy)
       await ctx.plugin(ToolGodotDebug, Config({
@@ -161,18 +175,21 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
       // the async listen a beat (bind is synchronous-fast, <50ms).
       const run = ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: 'smoke-real-attach' as never,
-        name: 'godot_debug',
-        arguments: {
-          path: attachProject,
-          mode: 'attach',
-          port,
-          breakpoints: [{ file: 'res://main.gd', line: 11 }],
-          pauseOnAttach: true,
-          maxStops: 3,
-        },
+        calls: [{
+          type: 'tool-call',
+          id: ToolCallId('smoke-real-attach'),
+          name: 'godot_debug',
+          arguments: JSON.stringify({
+            path: attachProject,
+            mode: 'attach',
+            port,
+            breakpoints: [{ file: 'res://main.gd', line: 11 }],
+            pauseOnAttach: true,
+            maxStops: 3,
+          }),
+        }],
         agent: { session: { header: { cwd: attachProject } } } as never,
-      })
+      }).then(settle)
       await sleep(800)
       game = spawn(process.env.GODOT_EXE as string, [
         '--headless',
@@ -217,6 +234,7 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(TimeoutPolicy)
       await ctx.plugin(ToolGodotDebug, Config({
@@ -226,18 +244,21 @@ describe.skipIf(process.env.GODOT_EXE === undefined)('real-Godot smoke', () => {
         graceMs: 5_000,
         timeoutMs: 120_000,
       }))
-      const result = await ctx.tools.execute({
+      const result = settle(await ctx.tools.execute({
         signal: new AbortController().signal,
-        callId: 'smoke-real-threads' as never,
-        name: 'godot_debug',
-        arguments: {
-          path: threadsProject,
-          scene: 'res://main.tscn',
-          breakpoints: [{ file: 'res://main.gd', line: 18 }],
-          maxStops: 2,
-        },
+        calls: [{
+          type: 'tool-call',
+          id: ToolCallId('smoke-real-threads'),
+          name: 'godot_debug',
+          arguments: JSON.stringify({
+            path: threadsProject,
+            scene: 'res://main.tscn',
+            breakpoints: [{ file: 'res://main.gd', line: 18 }],
+            maxStops: 2,
+          }),
+        }],
         agent: { session: { header: { cwd: threadsProject } } } as never,
-      })
+      }))
       expect(result.isError).toBe(false)
       type ThreadedStop = { threadId: number; reason: string; snapshot: { frames: { file: string; line: number; func: string }[] } }
       const value = result.value as { stops: ThreadedStop[] }

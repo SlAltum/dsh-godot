@@ -41,7 +41,7 @@ async function setup(handler: Handler) {
 describe('godot_find', () => {
   it('filters by path substring, case-insensitively', async () => {
     const { tool, calls } = await setup(() => ({ targets }))
-    const value = await tool.execute({ name: 'start' }, exec as never)
+    const value = await tool.execute({ name: 'start' }, exec as never) as { text: string }
     expect(calls[0]).toEqual({ cmd: 'state', params: { tree: false, targets: true, diff: false } })
     expect(value.text).toContain('1 of 3 Controls match')
     expect(value.text).toContain('Main/HUD/StartButton [Button]')
@@ -51,24 +51,24 @@ describe('godot_find', () => {
 
   it('filters by class and text', async () => {
     const { tool } = await setup(() => ({ targets }))
-    const byClass = await tool.execute({ class: 'button' }, exec as never)
+    const byClass = await tool.execute({ class: 'button' }, exec as never) as { text: string }
     expect(byClass.text).toContain('2 of 3 Controls match')
-    const byText = await tool.execute({ text: 'HELLO' }, exec as never)
+    const byText = await tool.execute({ text: 'HELLO' }, exec as never) as { text: string }
     expect(byText.text).toContain('1 of 3 Controls match')
     expect(byText.text).toContain('Main/HUD/Title [Label]')
   })
 
   it('requires every provided filter to match', async () => {
     const { tool } = await setup(() => ({ targets }))
-    const combined = await tool.execute({ name: 'Button', class: 'Label' }, exec as never)
+    const combined = await tool.execute({ name: 'Button', class: 'Label' }, exec as never) as { text: string }
     expect(combined.text).toContain('no Control matched name="Button", class="Label" (3 targets in the current scene)')
-    const both = await tool.execute({ class: 'Button', text: 'quit' }, exec as never)
+    const both = await tool.execute({ class: 'Button', text: 'quit' }, exec as never) as { text: string }
     expect(both.text).toContain('1 of 3 Controls match')
   })
 
   it('lists every target when no filter is given', async () => {
     const { tool } = await setup(() => ({ targets }))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { text: string }
     expect(value.text).toContain('3 of 3 Controls match')
   })
 
@@ -90,7 +90,7 @@ describe('godot_find', () => {
       text: '',
     }))
     const { tool } = await setup(() => ({ targets: many }))
-    const value = await tool.execute({ class: 'Button' }, exec as never)
+    const value = await tool.execute({ class: 'Button' }, exec as never) as { text: string }
     expect(value.text).toContain('61 of 61 Controls match')
     expect(value.text).toContain('1 more matched (narrow the filters)')
   })

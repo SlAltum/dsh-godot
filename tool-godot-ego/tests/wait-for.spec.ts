@@ -13,6 +13,13 @@ const exec = {
   signal: new AbortController().signal,
 }
 
+/** The JSON value `godot_wait_for` returns; `ToolDefinition.execute` erases it to `unknown`. */
+type WaitForValue = {
+  property: string
+  value: string | number | boolean
+  elapsedMs: number
+}
+
 type Handler = (cmd: string, params: Readonly<Record<string, unknown>>) => Record<string, unknown>
 
 async function setup(handler: Handler) {
@@ -41,7 +48,7 @@ function textOf(blocks: Array<{ type: string; text?: string }>): string {
 describe('godot_wait_for', () => {
   it('returns as soon as a state field matches', async () => {
     const { tool, calls } = await setup(() => ({ frames: 42 }))
-    const value = await tool.execute({ property: 'frames', equals: 42 }, exec as never)
+    const value = await tool.execute({ property: 'frames', equals: 42 }, exec as never) as WaitForValue
     expect(value).toMatchObject({ property: 'frames', value: 42 })
     expect(calls[0]).toEqual({ cmd: 'state', params: {} })
     expect(textOf(tool.output.render({ property: 'frames', equals: 42 }, value)))
@@ -54,7 +61,7 @@ describe('godot_wait_for', () => {
       poll += 1
       return { props: [{ name: 'text', type: 'String', value: poll < 3 ? 'waiting' : 'done' }] }
     })
-    const value = await tool.execute({ path: 'Main/Label', property: 'text', equals: 'done', intervalMs: 1, timeoutMs: 2_000 }, exec as never)
+    const value = await tool.execute({ path: 'Main/Label', property: 'text', equals: 'done', intervalMs: 1, timeoutMs: 2_000 }, exec as never) as WaitForValue
     expect(value).toMatchObject({ property: 'text', value: 'done' })
     expect(poll).toBe(3)
     expect(calls[0]).toEqual({ cmd: 'node', params: { path: 'Main/Label', props: ['text'], maxProps: 1 } })
@@ -102,14 +109,14 @@ describe('godot_wait_for', () => {
       poll += 1
       return poll < 3 ? { error: 'NOT_FOUND' } : { class: 'Button', props: [] }
     })
-    const value = await appearing.tool.execute({ path: 'Main/Btn', exists: true, intervalMs: 1 }, exec as never)
+    const value = await appearing.tool.execute({ path: 'Main/Btn', exists: true, intervalMs: 1 }, exec as never) as WaitForValue
     expect(value).toMatchObject({ property: 'exists', value: true })
     expect(appearing.calls[0]).toEqual({ cmd: 'node', params: { path: 'Main/Btn', maxProps: 0 } })
     expect(textOf(appearing.tool.output.render({ path: 'Main/Btn', exists: true }, value)))
       .toContain('Main/Btn exists after')
 
     const vanishing = await setup(() => ({ error: 'NOT_FOUND' }))
-    const absent = await vanishing.tool.execute({ path: 'Main/Toast', exists: false }, exec as never)
+    const absent = await vanishing.tool.execute({ path: 'Main/Toast', exists: false }, exec as never) as WaitForValue
     expect(absent).toMatchObject({ property: 'exists', value: false })
     expect(textOf(vanishing.tool.output.render({ path: 'Main/Toast', exists: false }, absent)))
       .toContain('Main/Toast is absent after')

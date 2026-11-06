@@ -20,8 +20,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as TimeoutPolicy from '@deepseek-ai/dsh-tool-call-timeout-policy'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -62,6 +64,13 @@ interface Expectation {
   modulate_on: [number, number, number]
 }
 
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
+}
+
 describe.skipIf(GODOT === undefined)('REPRO: sandbox in a scaled (non-1:1) geometry', { concurrent: false }, () => {
   let ctx: Context
   const fixtureCwd = FIXTURE
@@ -69,13 +78,11 @@ describe.skipIf(GODOT === undefined)('REPRO: sandbox in a scaled (non-1:1) geome
   let logCursor = 0
 
   const call = async (name: string, args: unknown, options: CallOptions = {}): Promise<ToolResultLike> =>
-    await ctx.tools.execute({
+    settle(await ctx.tools.execute({
       signal: new AbortController().signal,
-      callId: `repro-${++seq}` as never,
-      name,
-      arguments: args,
+      calls: [{ type: 'tool-call', id: ToolCallId(`repro-${++seq}`), name, arguments: JSON.stringify(args) }],
       agent: { session: { header: { cwd: options.cwd ?? fixtureCwd } } } as never,
-    }) as unknown as ToolResultLike
+    })) as ToolResultLike
 
   const textOf = (result: ToolResultLike): string =>
     result.content.flatMap(block => (block.type === 'text' ? [block.text ?? ''] : [])).join('\n')
@@ -132,6 +139,7 @@ describe.skipIf(GODOT === undefined)('REPRO: sandbox in a scaled (non-1:1) geome
     ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(TimeoutPolicy)
     await ctx.plugin(ToolGodotEgo, Config({

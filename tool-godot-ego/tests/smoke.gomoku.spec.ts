@@ -8,8 +8,10 @@
 
 import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as TimeoutPolicy from '@deepseek-ai/dsh-tool-call-timeout-policy'
 import { describe, expect, it } from 'vitest'
@@ -19,26 +21,32 @@ import * as ToolGodotEgo from '../src/index.ts'
 const GODOT = process.env.DSH_TEST_GODOT
 const PROJECT = fileURLToPath(new URL('./fixtures/gomoku', import.meta.url))
 
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
+}
+
 describe.skipIf(GODOT === undefined)('REAL smoke: Gomoku fixture', () => {
   it('starts the fixture, places a stone, reads it back, and resets', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(TimeoutPolicy)
     await ctx.plugin(ToolGodotEgo, Config({
-      executable: GODOT,
+      executable: GODOT as string,
       requestTimeoutMs: 20_000,
       importTimeoutMs: 120_000,
     }))
     let seq = 0
     const call = (name: string, args: unknown) => ctx.tools.execute({
       signal: new AbortController().signal,
-      callId: `gomoku-${++seq}` as never,
-      name,
-      arguments: args,
+      calls: [{ type: 'tool-call', id: ToolCallId(`gomoku-${++seq}`), name, arguments: JSON.stringify(args) }],
       agent: { session: { header: { cwd: PROJECT } } } as never,
-    })
+    }).then(settle)
     const textOf = (result: { content: { type: string; text?: string }[] }) =>
       result.content.flatMap(block => block.type === 'text' ? [block.text ?? ''] : []).join('\n')
 

@@ -49,7 +49,7 @@ describe('nodeTool', () => {
         { name: 'alive', type: 'bool', value: true },
       ],
     })
-    const value = await tool.execute({ path: 'Main/Player' }, exec as never)
+    const value = await tool.execute({ path: 'Main/Player' }, exec as never) as { text: string }
     expect(value.text).toContain('Main/Player [CharacterBody2D] res://player.tscn')
     expect(value.text).toContain('position = [10, 20]  (Vector2)')
     expect(value.text).toContain('2 more properties')
@@ -68,13 +68,13 @@ describe('nodeTool', () => {
 
   it('fills defaults for a sparse payload', async () => {
     const { tool } = await setup({})
-    const value = await tool.execute({ path: 'Main' }, exec as never)
+    const value = await tool.execute({ path: 'Main' }, exec as never) as { text: string }
     expect(value.text).toBe('Main []')
   })
 
   it('renders a row with missing name and type fields', async () => {
     const { tool } = await setup({ props: [{ name: 1, value: null }] })
-    const value = await tool.execute({ path: 'Main' }, exec as never)
+    const value = await tool.execute({ path: 'Main' }, exec as never) as { text: string }
     expect(value.text).toContain('  = null')
   })
 

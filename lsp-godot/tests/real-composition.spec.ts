@@ -13,8 +13,10 @@ import { mkdtemp, mkdir, rm, writeFile, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import Lsp from '@deepseek-ai/dsh-lsp'
@@ -54,6 +56,7 @@ async function mount(server: FakeGodotLspServer): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(Lsp)
   await ctx.plugin(LocalFileSystem, { cwd: process.cwd() })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -65,14 +68,24 @@ async function mount(server: FakeGodotLspServer): Promise<Context> {
 }
 
 let seq = 0
-function callLsp(ctx: Context, args: unknown) {
+function callLsp(ctx: Context, args: unknown): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: `real-${++seq}` as never,
-    name: 'lsp',
-    arguments: args,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`real-${++seq}`),
+      name: 'lsp',
+      arguments: JSON.stringify(args),
+    }],
     agent: { session: { header: { cwd: ws } } } as never,
-  })
+  }).then(settle)
+}
+
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
 }
 
 describe('REAL composition: tool → seam → provider → fake Godot server', () => {

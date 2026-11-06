@@ -20,12 +20,21 @@ import type { FakeBridge } from './fixtures/fake-bridge.ts'
 
 const tempDirs: string[] = []
 
+/** The JSON value `godot_play` returns; `ToolDefinition.execute` erases it to `unknown`. */
+type PlayValue = {
+  sessionId: string
+  pid?: number
+  created: boolean
+  running: boolean
+}
+
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
 /** A handle whose process outcome the test controls. */
 function makeHandle(options: { exitCode?: number | null; stderrText?: string } = {}) {
+  const stderrText = options.stderrText
   let settles = false
   let terminate = 0
   let resolveDone!: (outcome: SubprocessOutcome) => void
@@ -39,8 +48,8 @@ function makeHandle(options: { exitCode?: number | null; stderrText?: string } =
     stdout: undefined,
     stderr: undefined,
     control: undefined,
-    collected: options.stderrText === undefined ? {} : {
-      stderr: { readFrom: () => ({ text: options.stderrText as string, nextOffset: options.stderrText.length, lossy: false }) },
+    collected: stderrText === undefined ? {} : {
+      stderr: { readFrom: () => ({ text: stderrText, nextOffset: stderrText.length, lossy: false }) },
     },
     done,
     terminate: () => { terminate += 1 },
@@ -300,11 +309,9 @@ describe('startSession', () => {
         spawn: () => { throw new Error('spawn godot ENOENT') },
       },
     } as unknown as Context
-    await expect(startSession(ctx, resolveConfig({ executable: 'C:\\Godot\\godot.exe', requestTimeoutMs: 100 }), root, {}))
-      .rejects.toMatchObject({
-        code: 'GODOT_EGO_UNAVAILABLE',
-        message: expect.stringContaining('Tried "C:\\Godot\\godot.exe"'),
-      })
+    const attempt = startSession(ctx, resolveConfig({ executable: 'C:\\Godot\\godot.exe', requestTimeoutMs: 100 }), root, {})
+    await expect(attempt).rejects.toMatchObject({ code: 'GODOT_EGO_UNAVAILABLE' })
+    await expect(attempt).rejects.toThrow('Tried "C:\\Godot\\godot.exe"')
   })
 })
 
@@ -315,10 +322,11 @@ describe('playTool', () => {
       workspace,
       pid: 7,
       dispose: async () => {},
+      request: async () => ({ kind: 'ok' as const, id: 1, payload: {} }),
     }))
     const tool = playTool(registry)
     const exec = { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal }
-    const value = await tool.execute({ offscreen: true, restart: true }, exec as never)
+    const value = await tool.execute({ offscreen: true, restart: true }, exec as never) as PlayValue
     expect(value).toEqual({ sessionId: 'sess-1', pid: 7, created: true, running: true })
     const rendered = tool.output.render({}, value)
     expect(rendered[0]).toMatchObject({ type: 'text' })
@@ -326,12 +334,12 @@ describe('playTool', () => {
     expect(rendered[0].text).toContain('session sess-1 is running')
     expect(rendered[0].text).toContain('pid 7')
 
-    const reused = await tool.execute({}, exec as never)
+    const reused = await tool.execute({}, exec as never) as PlayValue
     expect(reused.created).toBe(false)
     const reusedRender = tool.output.render({}, reused)
     if (reusedRender[0]?.type !== 'text') throw new Error('expected a text block')
     expect(reusedRender[0].text).toContain('reused')
-    const explicit = await tool.execute({ path: '/ws', maxFps: 30, fixedFps: 0 }, exec as never)
+    const explicit = await tool.execute({ path: '/ws', maxFps: 30, fixedFps: 0 }, exec as never) as PlayValue
     expect(explicit.sessionId).toBe('sess-1')
   })
 
@@ -341,10 +349,11 @@ describe('playTool', () => {
       workspace,
       pid: null,
       dispose: async () => {},
+      request: async () => ({ kind: 'ok' as const, id: 1, payload: {} }),
     }))
     const tool = playTool(registry)
     const exec = { agent: undefined, signal: new AbortController().signal }
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as PlayValue
     expect(value).not.toHaveProperty('pid')
     const rendered = tool.output.render({}, value)
     if (rendered[0]?.type !== 'text') throw new Error('expected a text block')
@@ -355,7 +364,7 @@ describe('playTool', () => {
     const seen: EgoPlayOptions[] = []
     const registry = new GameSessionRegistry(async (workspace, options) => {
       seen.push(options)
-      return { sessionId: 'sess-3', workspace, pid: null, dispose: async () => {} }
+      return { sessionId: 'sess-3', workspace, pid: null, dispose: async () => {}, request: async () => ({ kind: 'ok' as const, id: 1, payload: {} }) }
     })
     const tool = playTool(registry)
     const exec = { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal }

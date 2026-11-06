@@ -44,7 +44,7 @@ describe('godot_diff', () => {
       frame: 42,
       metrics: { max: 1, mean: 0.5, mean_squared: 0.25, root_mean_squared: 0.5, peak_snr: 32.5 },
     }))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { mean: number; mean_squared: number; peak_snr: number; frame: number }
     expect(value).toEqual({ mean: 0.5, mean_squared: 0.25, peak_snr: 32.5, frame: 42 })
     expect(calls[0]).toEqual({ cmd: 'shotdiff', params: { useLuma: true } })
     expect(textOf(tool.output.render({}, value))).toBe('mean 0.5 · mse 0.25 · psnr 32.5 dB · frame 42')

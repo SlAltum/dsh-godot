@@ -31,6 +31,19 @@ afterEach(async () => {
 /** Base64 of a tiny payload; the content does not matter to the tool. */
 const DATA = Buffer.from('fake-image-bytes').toString('base64')
 
+/** The JSON value `godot_see` returns; `ToolDefinition.execute` erases it to `unknown`. */
+type SeeValue = {
+  frame: number
+  width: number
+  height: number
+  bytes: number
+  path?: string
+  image?: { attachmentId: string; mediaType: string }
+  note?: string
+  meanDiff?: number
+  changed?: boolean
+}
+
 interface SessionOptions {
   readonly data?: string
   readonly frame?: number
@@ -127,7 +140,7 @@ describe('godot_see', () => {
     const store = attachmentStore()
     const tool = seeTool(contextWith({ attachments: store, llm: visionLlm(['image']) }), await registryWith(session), resolveConfig({}))
     await tool.execute({}, exec as never) // first capture seeds the frame cache
-    const value = await tool.execute({ format: 'png', quality: 0.9, maxWidth: 640, target: 'Main/Btn' }, exec as never)
+    const value = await tool.execute({ format: 'png', quality: 0.9, maxWidth: 640, target: 'Main/Btn' }, exec as never) as SeeValue
     expect(value).toMatchObject({ frame: 7, width: 320, height: 200, image: { attachmentId: 'att-1', mediaType: 'image/png' } })
     expect(store.saveImage).toHaveBeenCalledTimes(2)
     expect(session.request).toHaveBeenCalledWith('shot', { format: 'webp', maxWidth: 1280 }, exec.signal)
@@ -143,20 +156,20 @@ describe('godot_see', () => {
     const session = sessionWith({ frame: 3, meanDiff: 0 })
     const store = attachmentStore()
     const tool = seeTool(contextWith({ attachments: store, llm: visionLlm(['image']) }), await registryWith(session), resolveConfig({}))
-    const first = await tool.execute({}, exec as never)
+    const first = await tool.execute({}, exec as never) as SeeValue
     expect(first.changed).toBe(false)
     expect(first.meanDiff).toBe(0)
-    const skipped = await tool.execute({ ifUnchanged: 'skip' }, exec as never)
+    const skipped = await tool.execute({ ifUnchanged: 'skip' }, exec as never) as SeeValue
     expect(skipped.note).toContain('unchanged')
     expect(skipped.image).toBeUndefined()
-    const resent = await tool.execute({}, exec as never)
+    const resent = await tool.execute({}, exec as never) as SeeValue
     expect(resent.image).toBeDefined()
   })
 
   it('reports a changed frame even when the frame number repeats', async () => {
     const session = sessionWith({ frame: 9, meanDiff: 12.5 })
     const tool = seeTool(contextWith({ attachments: attachmentStore(), llm: visionLlm(['image']) }), await registryWith(session), resolveConfig({}))
-    const value = await tool.execute({ ifUnchanged: 'skip' }, exec as never)
+    const value = await tool.execute({ ifUnchanged: 'skip' }, exec as never) as SeeValue
     expect(value).toMatchObject({ changed: true, meanDiff: 12.5 })
     expect(value.image).toBeDefined()
     expect(value.note).toBeUndefined()
@@ -172,7 +185,7 @@ describe('godot_see', () => {
     ]
     for (const { ctx, reason } of cases) {
       const tool = seeTool(ctx, await registryWith(sessionWith()), base)
-      const value = await tool.execute({}, exec as never)
+      const value = await tool.execute({}, exec as never) as SeeValue
       expect(value.note).toMatch(reason)
       expect(value.path).toBeDefined()
       temporary.push(value.path as string)
@@ -184,7 +197,7 @@ describe('godot_see', () => {
 
   it('treats an unresolvable route as not image-capable', async () => {
     const tool = seeTool(contextWith({ attachments: attachmentStore() }), await registryWith(sessionWith()), resolveConfig({}))
-    const value = await tool.execute({}, { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal } as never)
+    const value = await tool.execute({}, { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal } as never) as SeeValue
     expect(value.note).toMatch(/does not declare image input/)
     temporary.push(value.path as string)
   })
@@ -193,7 +206,7 @@ describe('godot_see', () => {
     const registry = new GameSessionRegistry(async () => sessionWith())
     await registry.ensure(process.cwd(), {})
     const tool = seeTool(contextWith({ attachments: attachmentStore() }), registry, resolveConfig({}))
-    const value = await tool.execute({}, { agent: undefined, signal: new AbortController().signal } as never)
+    const value = await tool.execute({}, { agent: undefined, signal: new AbortController().signal } as never) as SeeValue
     expect(value.note).toMatch(/does not declare image input/)
     temporary.push(value.path as string)
   })
@@ -205,7 +218,7 @@ describe('godot_see', () => {
       payload: { size: 'x', bytes: 'y', frame: 'z', data: 5 },
     }))
     const tool = seeTool(contextWith({}), await registryWithRequest(request), resolveConfig({}))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as SeeValue
     expect(value).toMatchObject({ frame: 0, width: 0, height: 0, bytes: 0 })
     expect(value.path).toBeDefined()
     temporary.push(value.path as string)

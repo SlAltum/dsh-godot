@@ -13,7 +13,8 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as ToolGodot from '@deepseek-ai/dsh-tool-godot'
 
@@ -29,6 +30,7 @@ beforeEach(async () => {
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(ToolGodot, { formatBackend: 'builtin' })
 })
@@ -38,14 +40,24 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-function callFormat(file: string) {
+function callFormat(file: string): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: ToolCallId(`builtin-${++callCounter}`),
-    name: 'godot_format',
-    arguments: { file },
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`builtin-${++callCounter}`),
+      name: 'godot_format',
+      arguments: JSON.stringify({ file }),
+    }],
     agent: { session: { header: { id: 'session-builtin', cwd: dir } } } as never,
-  })
+  }).then(settle)
+}
+
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
 }
 
 function text(result: { content: { type: string; text?: string }[] }): string {
@@ -85,6 +97,7 @@ describe('godot_format builtin backend', () => {
     ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(ToolGodot, { formatBackend: 'builtin', builtinSpacesBeforeEndOfLineComment: '2' })
 

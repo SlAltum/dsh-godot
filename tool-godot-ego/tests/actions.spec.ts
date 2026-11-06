@@ -41,7 +41,7 @@ function textOf(blocks: Array<{ type: string; text?: string }>): string {
 describe('godot_actions', () => {
   it('lists the project InputMap actions', async () => {
     const { tool, calls } = await setup(() => ({ actions: ['jump', 'ui_accept'], count: 2 }))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { actions: string[]; count: number }
     expect(value).toEqual({ actions: ['jump', 'ui_accept'], count: 2 })
     expect(calls[0]).toEqual({ cmd: 'actions', params: {} })
     expect(textOf(tool.output.render({}, value))).toBe('InputMap actions (2)\n  jump\n  ui_accept')
@@ -49,7 +49,7 @@ describe('godot_actions', () => {
 
   it('reports a project without actions', async () => {
     const { tool } = await setup(() => ({ actions: [] }))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { actions: string[]; count: number }
     expect(value).toEqual({ actions: [], count: 0 })
     expect(textOf(tool.output.render({}, value))).toBe('This project defines no InputMap actions.')
   })

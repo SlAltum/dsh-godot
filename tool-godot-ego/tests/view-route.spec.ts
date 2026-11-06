@@ -19,7 +19,7 @@ function fakeRequest(
   req.url = url
   req.method = options.method ?? 'GET'
   req.headers = options.headers ?? {}
-  ;(req as { socket?: { remoteAddress?: string } }).socket = { remoteAddress: options.remoteAddress }
+  ;(req as { socket?: { remoteAddress?: string | undefined } }).socket = { remoteAddress: options.remoteAddress }
   if (options.body !== undefined) {
     queueMicrotask(() => {
       req.emit('data', Buffer.from(options.body as string))

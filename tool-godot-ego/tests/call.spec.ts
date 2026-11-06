@@ -10,7 +10,7 @@ const exec = {
   signal: new AbortController().signal,
 }
 
-async function registryWith(request: ReturnType<typeof vi.fn>): Promise<GameSessionRegistry> {
+async function registryWith(request: EgoSessionHandle['request']): Promise<GameSessionRegistry> {
   const session: EgoSessionHandle = {
     sessionId: 's1',
     workspace: '/ws',
@@ -34,7 +34,7 @@ describe('godot_call', () => {
   it('calls the method, reports its return value, and names what it called', async () => {
     const request = vi.fn(async () => ({ kind: 'ok' as const, id: 1, payload: { value: true, type: 'bool' } }))
     const tool = callTool(await registryWith(request))
-    const value = await tool.execute({ path: 'Main/HUD/Start', method: 'show' }, exec as never)
+    const value = await tool.execute({ path: 'Main/HUD/Start', method: 'show' }, exec as never) as { text: string }
     expect(request).toHaveBeenCalledWith('call', { path: 'Main/HUD/Start', method: 'show', args: [] }, exec.signal)
     expect(value.text).toBe('Main/HUD/Start.show() → true  (bool)')
     expect(textOf(tool.output.render({ path: 'Main/HUD/Start', method: 'show' }, value)))
@@ -42,9 +42,9 @@ describe('godot_call', () => {
   })
 
   it('passes arguments in call order and renders void returns', async () => {
-    const request = vi.fn(async () => ({ kind: 'ok' as const, id: 1, payload: { value: null, type: 'null' } }))
+    const request = vi.fn<EgoSessionHandle['request']>(async () => ({ kind: 'ok' as const, id: 1, payload: { value: null, type: 'null' } }))
     const tool = callTool(await registryWith(request))
-    const value = await tool.execute({ path: 'Main/Player', method: 'set_health', args: [42, 'heal'] }, exec as never)
+    const value = await tool.execute({ path: 'Main/Player', method: 'set_health', args: [42, 'heal'] }, exec as never) as { text: string }
     expect(request.mock.calls[0]?.[1]).toEqual({ path: 'Main/Player', method: 'set_health', args: [42, 'heal'] })
     expect(value.text).toBe('Main/Player.set_health(42, "heal") → no return value')
   })

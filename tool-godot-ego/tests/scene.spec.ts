@@ -41,7 +41,7 @@ function textOf(blocks: ReturnType<ReturnType<typeof sceneTool>['output']['rende
 describe('godot_scene', () => {
   it('reports the current scene', async () => {
     const { tool, calls } = await setup(() => ({ scene: 'res://main.tscn', sceneCount: 12 }))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { scene: string; changed: boolean; frames?: number }
     expect(value).toEqual({ scene: 'res://main.tscn', changed: false })
     expect(calls[0]).toEqual({ cmd: 'scene', params: {} })
     expect(textOf(tool.output.render({}, value))).toBe('scene res://main.tscn')
@@ -49,14 +49,14 @@ describe('godot_scene', () => {
 
   it('reports a missing scene and tolerates a malformed reply', async () => {
     const empty = await setup(() => ({ scene: '' }))
-    expect(textOf(empty.tool.output.render({}, await empty.tool.execute({}, exec as never)))).toBe('scene (no scene)')
+    expect(textOf(empty.tool.output.render({}, await empty.tool.execute({}, exec as never) as { scene: string; changed: boolean }))).toBe('scene (no scene)')
     const malformed = await setup(() => ({ scene: 42 }))
     await expect(malformed.tool.execute({}, exec as never)).resolves.toEqual({ scene: '', changed: false })
   })
 
   it('switches to a scene and reports the new frame', async () => {
     const { tool, calls } = await setup(() => ({ scene: 'res://levels/test.tscn', frames: 77 }))
-    const value = await tool.execute({ path: 'res://levels/test.tscn' }, exec as never)
+    const value = await tool.execute({ path: 'res://levels/test.tscn' }, exec as never) as { scene: string; changed: boolean; frames?: number }
     expect(value).toEqual({ scene: 'res://levels/test.tscn', changed: true, frames: 77 })
     expect(calls[0]).toEqual({ cmd: 'scene', params: { path: 'res://levels/test.tscn' } })
     expect(textOf(tool.output.render({}, value))).toBe('switched to res://levels/test.tscn · frame 77')
@@ -64,7 +64,7 @@ describe('godot_scene', () => {
 
   it('falls back to the requested path and frame zero', async () => {
     const { tool } = await setup(() => ({}))
-    const value = await tool.execute({ path: 'res://a.tscn' }, exec as never)
+    const value = await tool.execute({ path: 'res://a.tscn' }, exec as never) as { scene: string; changed: boolean; frames?: number }
     expect(value).toEqual({ scene: 'res://a.tscn', changed: true, frames: 0 })
     expect(textOf(tool.output.render({}, value))).toBe('switched to res://a.tscn · frame 0')
     expect(textOf(tool.output.render({}, { scene: 'res://a.tscn', changed: true }))).toBe('switched to res://a.tscn · frame 0')

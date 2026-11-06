@@ -10,6 +10,14 @@ import { stopTool } from '../src/stop.ts'
 
 const exec = { agent: { session: { header: { cwd: '/ws' } } }, signal: new AbortController().signal }
 
+/** The JSON value `godot_stop` returns; `ToolDefinition.execute` erases it to `unknown`. */
+type StopValue = {
+  stopped: boolean
+  sessionId?: string
+  exitCode?: number
+  signal?: string
+}
+
 function handle(stopResult?: { exitCode: number | null; signal: string | null }): EgoSessionHandle {
   return {
     sessionId: 's1',
@@ -58,7 +66,7 @@ describe('stopTool', () => {
     const registry = new GameSessionRegistry(async () => handle({ exitCode: 0, signal: null }))
     await registry.ensure('/ws', {})
     const tool = stopTool(registry)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StopValue
     expect(value).toEqual({ stopped: true, sessionId: 's1', exitCode: 0 })
     const rendered = tool.output.render({}, value)
     if (rendered[0]?.type !== 'text') throw new Error('expected text')
@@ -69,7 +77,7 @@ describe('stopTool', () => {
     const signalled = new GameSessionRegistry(async () => handle({ exitCode: null, signal: 'SIGTERM' }))
     await signalled.ensure('/ws', {})
     const tool = stopTool(signalled)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StopValue
     expect(value).toEqual({ stopped: true, sessionId: 's1', signal: 'SIGTERM' })
     const text = tool.output.render({}, value)[0]
     if (text?.type !== 'text') throw new Error('expected text')
@@ -77,7 +85,7 @@ describe('stopTool', () => {
 
     const empty = new GameSessionRegistry(async () => handle())
     const emptyTool = stopTool(empty)
-    const none = await emptyTool.execute({}, exec as never)
+    const none = await emptyTool.execute({}, exec as never) as StopValue
     expect(none).toEqual({ stopped: false })
     const noneText = emptyTool.output.render({}, none)[0]
     if (noneText?.type !== 'text') throw new Error('expected text')
@@ -94,7 +102,7 @@ describe('stopTool', () => {
     }))
     await registry.ensure('/ws', {})
     const tool = stopTool(registry)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StopValue
     expect(value).toEqual({ stopped: true, sessionId: 's3' })
     const block = tool.output.render({}, value)[0]
     if (block?.type !== 'text') throw new Error('expected text')

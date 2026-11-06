@@ -34,12 +34,12 @@ async function setup(handler: Handler) {
 describe('godot_click', () => {
   it('sends viewport coordinates and reports the hit', async () => {
     const { tools } = await setup((_cmd, params) => (params.double === true ? {} : { hit: 'Main/Btn', frames: 9 }))
-    const value = await tools.click.execute({ x: 1, y: 2 }, exec as never)
+    const value = await tools.click.execute({ x: 1, y: 2 }, exec as never) as { hit?: string; frames: number }
     expect(value).toEqual({ hit: 'Main/Btn', frames: 9 })
     const block = tools.click.output.render({}, value)[0]
     if (block?.type !== 'text') throw new Error('expected text')
     expect(block.text).toBe('hit Main/Btn · frame 9')
-    const none = await tools.click.execute({ x: 0, y: 0, button: 'right', double: true }, exec as never)
+    const none = await tools.click.execute({ x: 0, y: 0, button: 'right', double: true }, exec as never) as { hit?: string; frames: number }
     expect(none).toEqual({ frames: 0 })
     const noneBlock = tools.click.output.render({}, none)[0]
     if (noneBlock?.type !== 'text') throw new Error('expected text')
@@ -69,7 +69,7 @@ describe('godot_click', () => {
 describe('godot_key', () => {
   it('taps a key by name with modifiers', async () => {
     const { tools, calls } = await setup(() => ({ frames: 5 }))
-    const value = await tools.key.execute({ key: 'Space', modifiers: ['shift'] }, exec as never)
+    const value = await tools.key.execute({ key: 'Space', modifiers: ['shift'] }, exec as never) as { frames: number }
     expect(value).toEqual({ frames: 5 })
     expect(calls).toHaveLength(2)
     expect(calls[0]?.params).toMatchObject({ keycode: 32, pressed: true, shift: true, ctrl: false })
@@ -103,7 +103,7 @@ describe('godot_key', () => {
 
   it('drives an InputMap action and reports whether it exists', async () => {
     const { tools } = await setup(() => ({ known: true }))
-    const value = await tools.key.execute({ action: 'jump' }, exec as never)
+    const value = await tools.key.execute({ action: 'jump' }, exec as never) as { known: boolean }
     expect(value).toEqual({ known: true })
     await tools.key.execute({ action: 'jump', pressed: false }, exec as never)
     const known = tools.key.output.render({}, value)[0]
@@ -124,7 +124,7 @@ describe('godot_key', () => {
 describe('godot_wait', () => {
   it('defaults to five frames and accepts milliseconds', async () => {
     const { tools, calls } = await setup(() => ({ frames: 12 }))
-    const value = await tools.wait.execute({}, exec as never)
+    const value = await tools.wait.execute({}, exec as never) as { frames: number }
     expect(value).toEqual({ frames: 12 })
     expect(calls[0]?.params).toEqual({ frames: 5 })
     await tools.wait.execute({ ms: 100 }, exec as never)
@@ -153,7 +153,7 @@ function textOf(blocks: Array<{ type: string; text?: string }>): string {
 describe('godot_hover', () => {
   it('moves the pointer and names the Control it landed on', async () => {
     const { tools, calls } = await setup(() => ({ frames: 21, over: 'Main/Btn' }))
-    const value = await tools.hover.execute({ x: 30, y: 40 }, exec as never)
+    const value = await tools.hover.execute({ x: 30, y: 40 }, exec as never) as { x: number; y: number; frames: number; over?: string }
     expect(value).toEqual({ x: 30, y: 40, frames: 21, over: 'Main/Btn' })
     expect(calls[0]).toEqual({ cmd: 'move', params: { x: 30, y: 40 } })
     expect(textOf(tools.hover.output.render({ x: 30, y: 40 }, value)))
@@ -207,7 +207,7 @@ describe('godot_hover', () => {
 describe('godot_drag', () => {
   it('defaults to eight steps and sends both points', async () => {
     const { tools, calls } = await setup(() => ({ frames: 8 }))
-    const value = await tools.drag.execute({ from: [10, 20], to: [30, 40] }, exec as never)
+    const value = await tools.drag.execute({ from: [10, 20], to: [30, 40] }, exec as never) as { frames: number }
     expect(value).toEqual({ frames: 8 })
     expect(calls[0]).toEqual({ cmd: 'drag', params: { from: [10, 20], to: [30, 40], steps: 8 } })
     expect(textOf(tools.drag.output.render({ from: [10, 20], to: [30, 40] }, value)))
@@ -234,7 +234,7 @@ describe('godot_drag', () => {
 describe('godot_scroll', () => {
   it('defaults the position and sends the wheel delta', async () => {
     const { tools, calls } = await setup(() => ({ frames: 2 }))
-    const value = await tools.scroll.execute({ delta: -3 }, exec as never)
+    const value = await tools.scroll.execute({ delta: -3 }, exec as never) as { x: number; y: number; frames: number }
     expect(value).toEqual({ x: 0, y: 0, frames: 2 })
     expect(calls[0]).toEqual({ cmd: 'wheel', params: { x: 0, y: 0, delta: -3 } })
     expect(textOf(tools.scroll.output.render({ delta: -3 }, value))).toBe('scrolled -3 notch(es) at (0, 0) · frame 2')
@@ -265,7 +265,7 @@ describe('godot_scroll', () => {
 describe('godot_type', () => {
   it('types text and renders its length', async () => {
     const { tools, calls } = await setup(() => ({ frames: 12 }))
-    const value = await tools.type.execute({ text: 'hello' }, exec as never)
+    const value = await tools.type.execute({ text: 'hello' }, exec as never) as { frames: number }
     expect(value).toEqual({ frames: 12 })
     expect(calls[0]).toEqual({ cmd: 'type', params: { text: 'hello' } })
     expect(textOf(tools.type.output.render({ text: 'hello' }, value))).toBe('typed 5 characters · frame 12')
@@ -295,12 +295,12 @@ describe('godot_check', () => {
       }
       return {}
     })
-    const value = await tools.check.execute({ target: 'Main/HUD/Options' }, exec as never)
+    const value = await tools.check.execute({ target: 'Main/HUD/Options' }, exec as never) as { checked: boolean; changed: boolean; frames: number }
     expect(value).toEqual({ checked: true, changed: true, frames: 9 })
     expect(textOf(tools.check.output.render({ target: 'Main/HUD/Options' }, value)))
       .toBe('Main/HUD/Options is checked')
     const callsBefore = calls.filter(call => call.cmd === 'click').length
-    const again = await tools.check.execute({ target: 'Main/HUD/Options' }, exec as never)
+    const again = await tools.check.execute({ target: 'Main/HUD/Options' }, exec as never) as { checked: boolean; changed: boolean }
     expect(again).toEqual({ checked: true, changed: false })
     expect(calls.filter(call => call.cmd === 'click').length).toBe(callsBefore)
     expect(textOf(tools.check.output.render({ target: 'Main/HUD/Options' }, again))).toContain('(already)')
@@ -312,7 +312,7 @@ describe('godot_check', () => {
       if (cmd === 'node') return { props: [{ name: 'button_pressed', value: false }] }
       return {}
     })
-    const value = await tools.check.execute({ target: 'Main/Btn', checked: true }, exec as never)
+    const value = await tools.check.execute({ target: 'Main/Btn', checked: true }, exec as never) as { checked: boolean; changed: boolean; frames: number }
     expect(value).toEqual({ checked: false, changed: false, frames: 0 })
     expect(textOf(tools.check.output.render({ target: 'Main/Btn', checked: true }, value))).toContain('did not change')
   })
@@ -355,7 +355,7 @@ describe('godot_fill', () => {
       }
       return {}
     })
-    const value = await tools.fill.execute({ target: 'Main/HUD/NameInput', text: 'hello' }, exec as never)
+    const value = await tools.fill.execute({ target: 'Main/HUD/NameInput', text: 'hello' }, exec as never) as { text: string; frames: number }
     expect(value).toEqual({ text: 'hello', frames: 4 })
     expect(calls.map(call => call.cmd)).toEqual(['state', 'click', 'key', 'key', 'type', 'node'])
     expect(calls[2]?.params).toMatchObject({ keycode: 65, ctrl: true, pressed: true })

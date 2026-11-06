@@ -16,7 +16,7 @@ export interface FakeBridgeOptions {
   /** Reported window size (default `[640, 400]`); any value exercises validation. */
   readonly window?: unknown
   /** Reported pid, or `undefined` to omit the field. */
-  readonly pid?: number
+  readonly pid?: number | undefined
   /** Send `hello` on connect (default true). */
   readonly sendHello?: boolean
   /** Return the reply body for one command, or `undefined` to stay silent. */

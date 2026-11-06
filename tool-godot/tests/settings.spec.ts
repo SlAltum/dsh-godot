@@ -16,7 +16,8 @@ import ConfigEditor from '@deepseek-ai/dsh-config-editor'
 import Hmr from '@deepseek-ai/dsh-hmr'
 import Settings from '@deepseek-ai/dsh-settings'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import * as ToolGodot from '@deepseek-ai/dsh-tool-godot'
@@ -39,6 +40,7 @@ async function bootGodot(): Promise<{ ctx: Context; dir: string }> {
     { id: 'settings', name: 'cordis:settings' },
     { id: 'system-prompt', name: 'cordis:systemPrompt' },
     { id: 'tools', name: 'cordis:tools' },
+    { id: 'tool-executor-native', name: 'cordis:toolExecutorNative' },
     { id: 'subprocess', name: 'cordis:localSubprocess' },
     { id: ENTRY, name: 'cordis:godot', config: { executable: process.execPath, executableArgs: [FAKE] } },
   ] }]))
@@ -53,6 +55,7 @@ async function bootGodot(): Promise<{ ctx: Context; dir: string }> {
     Object.assign(context.loader.builtins, {
       editor: ConfigEditor, settings: Settings, systemPrompt: SystemPrompt,
       tools: ToolRuntime, localSubprocess: LocalSubprocessRuntime, godot: ToolGodot,
+      toolExecutorNative: NativeToolExecutor,
     })
   })
   onTestFinished(async () => { await ctx.fiber.dispose(); rmSync(home, { recursive: true, force: true }) })
@@ -71,14 +74,24 @@ function entryFiber(ctx: Context): unknown {
 let callCounter = 0
 
 /** Run one `godot_validate` against the booted context. */
-function validate(ctx: Context, dir: string) {
+function validate(ctx: Context, dir: string): Promise<ToolExecutionResult> {
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: ToolCallId(`settings-${++callCounter}`),
-    name: 'godot_validate',
-    arguments: { path: dir },
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`settings-${++callCounter}`),
+      name: 'godot_validate',
+      arguments: JSON.stringify({ path: dir }),
+    }],
     agent: { session: { header: { id: 'session-settings', cwd: dir } } } as never,
-  })
+  }).then(settle)
+}
+
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
 }
 
 function text(result: { content: { type: string; text?: string }[] }): string {

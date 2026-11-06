@@ -13,8 +13,10 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as TimeoutPolicy from '@deepseek-ai/dsh-tool-call-timeout-policy'
 import { describe, expect, it } from 'vitest'
@@ -23,6 +25,13 @@ import type { EgoConfig } from '../src/config.ts'
 import { apply, applyWith } from '../src/index.ts'
 import { GameSessionRegistry } from '../src/session-service.ts'
 import type { EgoSessionFactory, EgoSessionHandle } from '../src/session-service.ts'
+
+/** The single settled result of a batch this suite issued with one call. */
+function settle(batch: { results: readonly { result: ToolExecutionResult }[] }): ToolExecutionResult {
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the tool batch settled no result')
+  return result
+}
 
 /** A handle whose inverse appends its id to `log` (and may throw). */
 function handle(
@@ -149,7 +158,7 @@ describe('plugin composition', () => {
       inject: ['subprocess'],
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
-    await ctx.plugin(plugin as never, Config({}))
+    await ctx.plugin(plugin as never, Config({}) as never)
 
     const registry = ctx.get('godot.egoSessions') as GameSessionRegistry | undefined
     expect(registry).toBeInstanceOf(GameSessionRegistry)
@@ -183,7 +192,7 @@ describe('plugin entry (default wiring)', () => {
       inject: ['subprocess'],
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
-    await ctx.plugin(plugin as never, Config({}))
+    await ctx.plugin(plugin as never, Config({}) as never)
     const registry = ctx.get('godot.egoSessions') as GameSessionRegistry
     await registry.ensure('/ws', {})
 
@@ -227,6 +236,7 @@ describe('plugin tool registration', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(TimeoutPolicy)
     const factory: EgoSessionFactory = async workspace => ({
@@ -241,15 +251,13 @@ describe('plugin tool registration', () => {
       inject: ['subprocess'],
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
-    await ctx.plugin(plugin as never, Config({}))
+    await ctx.plugin(plugin as never, Config({}) as never)
 
-    const result = await ctx.tools.execute({
+    const result = settle(await ctx.tools.execute({
       signal: new AbortController().signal,
-      callId: 'tool-1' as never,
-      name: 'godot_play',
-      arguments: {},
+      calls: [{ type: 'tool-call', id: ToolCallId('tool-1'), name: 'godot_play', arguments: JSON.stringify({}) }],
       agent: { session: { header: { cwd: '/ws' } } } as never,
-    })
+    }))
     expect(result.isError).toBe(false)
     const text = result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
     expect(text).toContain('session s-tool is running')
@@ -273,7 +281,7 @@ describe('plugin tool registration', () => {
       inject: ['subprocess'],
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
-    await ctx.plugin(plugin as never, Config({}))
+    await ctx.plugin(plugin as never, Config({}) as never)
     expect(registered).toBe(3)
     await ctx.fiber.dispose()
   })
@@ -282,6 +290,7 @@ describe('plugin tool registration', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(TimeoutPolicy)
     const factory: EgoSessionFactory = async workspace => ({
@@ -296,16 +305,14 @@ describe('plugin tool registration', () => {
       inject: ['subprocess'],
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
-    await ctx.plugin(plugin as never, Config({ allowEval: true }))
+    await ctx.plugin(plugin as never, Config({ allowEval: true }) as never)
     const registry = ctx.get('godot.egoSessions') as GameSessionRegistry
     await registry.ensure('/ws', {})
-    const result = await ctx.tools.execute({
+    const result = settle(await ctx.tools.execute({
       signal: new AbortController().signal,
-      callId: 'tool-2' as never,
-      name: 'godot_eval',
-      arguments: { expression: '1 + 2' },
+      calls: [{ type: 'tool-call', id: ToolCallId('tool-2'), name: 'godot_eval', arguments: JSON.stringify({ expression: '1 + 2' }) }],
       agent: { session: { header: { cwd: '/ws' } } } as never,
-    })
+    }))
     expect(result.isError).toBe(false)
     await ctx.fiber.dispose()
   })

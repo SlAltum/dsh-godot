@@ -27,7 +27,7 @@ describe('logsTool', () => {
   it('reads both streams with the cursor and renders them', async () => {
     const logs = vi.fn(() => ({ stdout: 'hello\n', stderr: 'warn\n', nextOffset: 42 }))
     const tool = logsTool(await setup(logs))
-    const value = await tool.execute({ since: 7, maxBytes: 128 }, exec as never)
+    const value = await tool.execute({ since: 7, maxBytes: 128 }, exec as never) as { text: string; nextOffset: number }
     expect(logs).toHaveBeenCalledWith(7, 128)
     expect(value).toEqual({ text: 'stdout:\nhello\n\nstderr:\nwarn\n', nextOffset: 42 })
     const block = tool.output.render({}, value)[0]
@@ -38,7 +38,7 @@ describe('logsTool', () => {
   it('reports an empty read and defaults', async () => {
     const logs = vi.fn(() => ({ stdout: '', stderr: '', nextOffset: 3 }))
     const tool = logsTool(await setup(logs))
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as { text: string; nextOffset: number }
     expect(logs).toHaveBeenCalledWith(0, 4096)
     expect(value.text).toBe('(no new output)')
   })

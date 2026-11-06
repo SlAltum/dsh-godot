@@ -39,6 +39,17 @@ function textOf(blocks: Array<{ type: string; text?: string }>): string {
   return block.text
 }
 
+/** The JSON value `godot_status` returns; `ToolDefinition.execute` erases it to `unknown`. */
+type StatusValue = {
+  sessionId: string
+  state: string
+  pid?: number
+  window?: [number, number]
+  lostReason?: string
+  projectRoot?: string
+  imported?: boolean
+}
+
 describe('godot_status', () => {
   it('reports the snapshot without contacting the game', async () => {
     const registry = await registryWith({
@@ -51,7 +62,7 @@ describe('godot_status', () => {
       snapshot: () => snapshot(),
     })
     const tool = statusTool(registry)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StatusValue
     expect(value).toEqual({
       sessionId: 's1',
       state: 'ready',
@@ -78,7 +89,7 @@ describe('godot_status', () => {
       snapshot: () => snapshot({ state: 'lost', pid: 9, window: null, lostReason: 'game exited with code 1' }),
     })
     const tool = statusTool(registry)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StatusValue
     expect(value).toMatchObject({ state: 'lost', lostReason: 'game exited with code 1' })
     expect(value).not.toHaveProperty('window')
     const text = textOf(tool.output.render({}, value))
@@ -95,7 +106,7 @@ describe('godot_status', () => {
       request: async () => ({ kind: 'ok', id: 1, payload: {} }),
     })
     const tool = statusTool(registry)
-    const value = await tool.execute({}, exec as never)
+    const value = await tool.execute({}, exec as never) as StatusValue
     expect(value).toEqual({ sessionId: 's1', state: 'unknown' })
     expect(textOf(tool.output.render({}, value))).toBe('session s1 · unknown')
   })

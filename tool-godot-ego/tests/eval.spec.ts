@@ -25,7 +25,7 @@ async function setup(payload: Record<string, unknown>) {
 describe('evalTool', () => {
   it('sends the expression and renders value with its type', async () => {
     const { tool, request } = await setup({ value: 3, type: 'int' })
-    const value = await tool.execute({ expression: '1 + 2' }, exec as never)
+    const value = await tool.execute({ expression: '1 + 2' }, exec as never) as { value: string; type: string }
     expect(request).toHaveBeenCalledWith('eval', { expression: '1 + 2' }, exec.signal)
     expect(value).toEqual({ value: '3', type: 'int' })
     const block = tool.output.render({}, value)[0]
