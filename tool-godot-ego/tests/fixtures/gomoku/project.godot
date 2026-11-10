@@ -1,6 +1,11 @@
-; Minimal two-player Gomoku fixture for the visual sandbox.
-; Keep the project plain: the sandbox injects its own boot scene, so
-; res://main.tscn only has to provide a normal, clickable UI.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
 config_version=5
 
 [application]

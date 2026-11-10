@@ -1,0 +1,213 @@
+/* The row belongs to the shell's DisclosureRow; this file styles what the card
+   puts inside it. */
+
+/* A failed run reads as a failure in the row's own title. */
+.failed {
+  color: var(--dsw-alias-label-danger);
+}
+
+/* The run's facts sit at the row's secondary size, the way every shell row's summary
+   does: the content variable, not a fixed token, so a reader's font scale still
+   applies. Without this the span inherits the primary content size and reads one step
+   larger than the title beside it. */
+.facts {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mark is masked, so it takes the shape of the row's own leading icon slot:
+   14 px, `currentColor`, replaced by the chevron on hover. */
+.icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+/* The failure branch has no host row to style it. */
+.name {
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The body rides the secondary tier the row title and the summary use (ToolDetails
+   sets `font: xs-13` on its own body): with no size here the content inherits the
+   message's primary size and reads one step over the row it sits under. The card
+   sits on the row's own indent; the sections inside it need none. */
+.bodyWrap {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  margin: 8px 0 0 20px;
+  padding: 10px 14px;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-markdown-code-block);
+}
+
+.stops {
+  display: grid;
+  gap: 6px;
+}
+
+/* Sections divide by a hairline on the card's own surface — no nested boxes. */
+.stop {
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+/* The first stop has no rule above it: the card's own edge is there. */
+.stops > .stop:first-child,
+.bodyWrap > .stops > .stop:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.stopHead {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+
+.stopIndex {
+  font: var(--dsw-font-xs-13-strong);
+  color: var(--dsw-alias-label-primary);
+}
+
+.stopWhere {
+  font-family: var(--dsw-font-family-mono);
+  color: var(--dsw-alias-label-primary);
+}
+
+.stopReason {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.stopThread {
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.section {
+  margin-top: 6px;
+}
+
+.sectionTitle {
+  margin: 0 0 4px;
+  font: var(--dsw-font-xs-13-strong);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.frames {
+  margin: 0;
+  padding-left: 18px;
+  font-family: var(--dsw-font-family-mono);
+}
+
+/* Text sits on the card's own surface — the shell's code blocks draw no inner box. */
+.block {
+  margin: 4px 0 0;
+  font-family: var(--dsw-font-family-mono);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 320px;
+}
+
+.entries {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  margin: 2px 0;
+}
+
+.entryHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.rows {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  list-style: none;
+}
+
+.rowName {
+  color: var(--dsw-alias-label-tertiary);
+  margin-right: 8px;
+}
+
+.rowValue {
+  font-family: var(--dsw-font-family-mono);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dim {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The picked node of a stop: identity first, then whatever the run expanded. */
+.nodeInfo {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.nodeHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+.ok {
+  color: var(--dsw-alias-label-positive);
+}
+
+.bad {
+  color: var(--dsw-alias-label-danger);
+}
+
+.exit {
+  margin-top: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The shell's own inspect action, in the place the built-in rows put theirs. */
+.inspect {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .inspect:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}

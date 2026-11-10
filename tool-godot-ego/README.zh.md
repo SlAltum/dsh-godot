@@ -60,6 +60,8 @@ export async function mount(ctx: Context): Promise<void> {
 
 一个 workspace 至多一个会话。`godot_stop` 让桥接退出，在 `graceMs` 内等待，超时后升级为终止，并报告真实退出码或信号。dispose 执行同一套反向清理，并删除临时脚本；会话注册表以 `godot.egoSessions` 发布，它自身的清理逻辑在插件卸载时销毁全部会话。
 
+每个启动的会话都会写一条记录（pid、桥接端口、项目根、临时目录）到 `stateDir`，默认 `<DSH_HOME>/cache/godot-ego`。进程里第一次 `godot_play` 会先清扫该目录：属于另一个仍在运行的宿主的记录原样保留；已死的游戏清掉遗留脚本；还活着且桥接仍在记录端口应答的游戏被终止；pid 活着但端口无声的原样保留——那个 pid 已被别的程序复用。这正是宿主没跑完销毁就被强杀时留下的东西，也是下一次启动不会堆出一排游戏窗口的原因。
+
 <a id="host-endpoints"></a>
 ## 宿主端点
 
@@ -105,6 +107,7 @@ web server 自身没有鉴权层，因此端点在本地校验：请求必须来
 | `importTimeoutMs` | `120000` | 一次性导入的预算。 |
 | `timeoutMs` | `60000` | 超时策略经 `exec.signal` 强制执行的协作工具预算。 |
 | `requestTimeoutMs` | `20000` | 单条桥接命令与握手的预算。 |
+| `stateDir` | `''` | 跨重启会话记录的目录；留空用 `<DSH_HOME>/cache/godot-ego`。 |
 | `graceMs` | `5000` | 停止游戏时的终止升级宽限。 |
 | `maxNodes` | `200` | `godot_state` 渲染的场景树节点预算；`0` 关闭场景树。 |
 | `maxProps` | `40` | `godot_node` 的属性行预算。 |
@@ -233,7 +236,7 @@ Godot visual sandbox: call godot_play to start the project, godot_see to look at
 <a id="known-limitations-and-deferred-work"></a>
 
 - **子窗口不在取帧范围内** —— 根视口纹理不含 `Window` 子节点，因此弹窗或第二个窗口对 `godot_see` 不可见。
-- **最小化或完全遮挡时可能不渲染** —— 帧会停在旧画面；`godot_see` 报告帧号，`godot_diff` 与上一张已取帧比较。
+- **窗口最小化时不渲染** —— Godot 停止绘制，`frame_post_draw` 不再触发：`godot_see` 最多等 2 秒就报 `NOT_DRAWING`（恢复窗口后重试）。等待必须有界，否则一次截图就会占住命令循环。
 - **切换场景不重放启动逻辑** —— `godot_scene` 与 `godot_play.scene` 调用 `change_scene_to_file`，不等价于项目自身的启动路径。
 - **DPI 与画布变换会移动坐标** —— 尽量按 Control 路径点击；坐标来自上报的 rect，缩放时可能不同。
 - **一个 workspace 一个会话** —— 第二次 `godot_play` 复用运行中的会话，除非给 `restart`。

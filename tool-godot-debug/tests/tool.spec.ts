@@ -693,10 +693,13 @@ describe('runDebug scene trees', () => {
     expect(t0!.stopIndex).toBe(0)
     expect(t1!.stopIndex).toBe(1)
     // The tree root is the engine Window root; Main carries the script path.
-    expect(t0!.lines[0]).toBe('root [Window] (26323453389)')
-    expect(t0!.lines[1]).toBe('  Main [res://main.gd] (26994542042) res://main.tscn')
-    expect(t0!.lines.some(l => l.includes('Leaf中文'))).toBe(true)
-    expect(t1!.lines).toEqual(t0!.lines) // static scene: identical tree (T7.0 fact 5)
+    const root0 = t0!.nodes[0]!
+    expect(root0.name).toBe('root')
+    expect(root0.className).toBe('Window')
+    expect(root0.id).toBe('26323453389')
+    expect(root0.children[0]).toMatchObject({ name: 'Main', className: 'res://main.gd', sceneFilePath: 'res://main.tscn' })
+    expect(JSON.stringify(root0.children)).toContain('Leaf中文')
+    expect(JSON.stringify(t1!.nodes)).toEqual(JSON.stringify(t0!.nodes)) // static scene: identical tree (T7.0 fact 5)
     // The tree-node id was inspectable (fixture includes the tree-id inspect).
     expect(result.expandedObjects).toBe(0) // expansion disabled in this run
   })

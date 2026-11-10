@@ -43,7 +43,7 @@ export type StructuredDebugInput = {
   exit?: { exitCode?: number; signal?: string }
   expansion?: { stopIndex: number; expandedObjects: number; entries: ExpandedEntry[] }
   edits?: { stopIndex: number; results: EditResult[] }
-  sceneTrees?: { stopIndex: number; lines: string[] }[]
+  sceneTrees?: { stopIndex: number; nodes: SceneTreeViewNode[]; truncated?: boolean }[]
   expandedObjects: number
   expansionTruncated: boolean
   editsApplied: number
@@ -67,8 +67,8 @@ export type DebugViewStop = {
    *  the stop had no variables. */
   varsLines?: string[]
   scopeTruncated?: { locals: boolean; members: boolean; globals: boolean }
-  /** This stop's scene-tree lines when it had a frame and trees were taken. */
-  sceneTree?: { lines: string[] }
+  /** This stop's scene tree when it had a frame and trees were taken. */
+  sceneTree?: { nodes: SceneTreeViewNode[]; truncated?: boolean }
 }
 
 /** One expanded object in the view: the inspect module's `ExpandedEntry`
@@ -95,6 +95,8 @@ export type DebugEditResult = {
   detail?: string
 }
 
+import type { SceneTreeViewNode } from './scene-tree.ts'
+
 /** The JSON-safe, byte-bounded structured card view (T20). A `type` for
  *  JsonValue assignability. */
 export type DebugView = {
@@ -117,9 +119,10 @@ export type DebugView = {
   sceneTreeTruncated: boolean
   outputTruncated: boolean
   varsTruncated: boolean
-  /** Set when the byte budget cut parts of the view (scope lines first, then
-   *  scene-tree lines). */
+  /** Set when the byte budget cut parts of the view. */
   viewTruncated: boolean
+  /** The last cut that landed; absent when the view fit as captured. */
+  viewCut?: 'expansionChildren' | 'expansion' | 'vars' | 'sceneTree'
 }
 
 /** Render one stop's three scopes as lines (format parity with the text
@@ -150,8 +153,38 @@ function withoutVarsLines(view: DebugView): DebugView {
   }
 }
 
+/** Drop the nested objects of every entry (the tallest part of a deep sample). */
+function withoutExpansionChildren(view: DebugView): DebugView {
+  if (view.expansion === undefined) return view
+  return {
+    ...view,
+    expansion: {
+      ...view.expansion,
+      entries: view.expansion.entries.map((entry) => {
+        const { children: _children, ...rest } = entry
+        return rest
+      }),
+    },
+  }
+}
+
+/** Drop the whole sample, keeping the counts. */
+function withoutExpansion(view: DebugView): DebugView {
+  if (view.expansion === undefined) return view
+  const { expansion: _expansion, ...rest } = view
+  return rest
+}
+
+/** Byte-budget cuts in the order they may land: derived data first, slice last. */
+const VIEW_CUTS: readonly [NonNullable<DebugView['viewCut']>, (view: DebugView) => DebugView][] = [
+  ['expansionChildren', withoutExpansionChildren],
+  ['expansion', withoutExpansion],
+  ['vars', withoutVarsLines],
+  ['sceneTree', withoutSceneTrees],
+]
+
 /** Drop the scene-tree lines from every stop (second cut). */
-function withoutSceneTreeLines(view: DebugView): DebugView {
+function withoutSceneTrees(view: DebugView): DebugView {
   return {
     ...view,
     stops: view.stops.map((stop) => {
@@ -190,11 +223,13 @@ export function structuredDebugView(value: StructuredDebugInput, maxStops: numbe
       viewStop.scopeTruncated = stop.snapshot.scopeTruncated
     }
     const tree = value.sceneTrees?.find(t => t.stopIndex === i)
-    if (tree !== undefined) viewStop.sceneTree = { lines: tree.lines }
+    if (tree !== undefined && tree.nodes.length > 0) {
+      viewStop.sceneTree = tree.truncated === true ? { nodes: tree.nodes, truncated: true } : { nodes: tree.nodes }
+    }
     return viewStop
   })
 
-  const view: DebugView = {
+  let view: DebugView = {
     version: 1,
     stopCount: value.stops.length,
     maxStops,
@@ -243,15 +278,17 @@ export function structuredDebugView(value: StructuredDebugInput, maxStops: numbe
     viewTruncated: false,
   }
 
-  // Byte budget (H2): cut the largest parts first, keep the flag honest.
+  // Byte budget: the tree is the run's slice, so it is the last thing cut —
+  // the sample and the scope lines pay first, and the flag names the cut that
+  // landed so the card can say what it is missing instead of guessing.
   if (JSON.stringify(view).length > VIEW_MAX_BYTES) {
-    const cutVars = withoutVarsLines(view)
-    if (JSON.stringify(cutVars).length > VIEW_MAX_BYTES) {
-      view.stops = withoutSceneTreeLines(cutVars).stops
-    } else {
-      view.stops = cutVars.stops
+    for (const [name, cut] of VIEW_CUTS) {
+      view = cut(view)
+      view.viewCut = name
+      if (JSON.stringify(view).length <= VIEW_MAX_BYTES) break
     }
     view.viewTruncated = true
   }
+
   return view
 }

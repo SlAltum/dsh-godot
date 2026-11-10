@@ -7,7 +7,7 @@ kind: "package-group"
 
 English | [中文](README.zh.md)
 
-A family of Godot Engine plugins for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) agent harness: headless project tooling, GDScript semantic navigation, a scripted debugger, and a visual sandbox for a running game. Maintained as an independent repository; the packages build inside the harness monorepo workspace.
+A family of Godot Engine plugins for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) agent harness: headless project tooling, GDScript semantic navigation, a scripted debugger, and a visual sandbox for a running game. This repository is self-contained: it declares its own workspace, resolves `@deepseek-ai/dsh-*` from the published npm releases, and builds here without the harness monorepo.
 
 ## Summary
 
@@ -34,7 +34,7 @@ Point the agent at a Godot project and it can validate scripts, run a scene head
 
 | Package | Role | DSH seam |
 |---|---|---|
-| `bundle-godot/` | **Optional capability bundle**: installs the five packages below as one profile bundle; Godot is not part of `dsh-base` or `dsh-web-app` | `dsh.bundle.patch` |
+| `bundle-godot/` | **Optional capability bundle**: installs the four host packages below as one profile bundle; Godot is not part of `dsh-base` or `dsh-web-app` | `dsh.bundle.patch` |
 | `tool-godot/` | Headless CLI tools: `godot_validate`, `godot_run_scene`, `godot_format`, `godot_inspect`, `godot_editor_script` | `ctx.tools` |
 | `lsp-godot/` | GDScript navigation (`goToDefinition` / `findReferences` / `hover`) through Godot's built-in TCP language server, attach or spawn | `ctx.lsp` |
 | `tool-godot-debug/` | `godot_debug`: one bounded scripted debug run — breakpoints, headless launch, per-stop stack/variable snapshots, structured report | `ctx.tools` |
@@ -54,10 +54,15 @@ The capabilities were migrated from **godot-vscode-plugin** (Godot Tools v2.7.1,
 <a id="installation"></a>
 ## Installation
 
-Godot is **optional**: `dsh-base` and `dsh-web-app` mount none of these packages. The supported path is the capability bundle, which inserts the five rows together and appears under **Installed plugins** in the Plugins page:
+Godot is **optional**: `dsh-base` and `dsh-web-app` mount none of these packages. The supported path is the capability bundle, which inserts the four rows together and appears under **Installed plugins** in the Plugins page.
+
+Clone, install and build, then point the harness at the built bundle:
 
 ```bash
-dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-godot
+git clone https://github.com/SlAltum/dsh-godot.git
+cd dsh-godot
+pnpm install && pnpm build
+dsh plugin install link:<absolute path to dsh-godot>/bundle-godot
 ```
 
 Restart `dsh web` after installing. The bundle's page carries the `tool-godot` settings form, and every row keeps the defaults listed under Configuration. A profile that wants only some rows can insert the individual packages instead and skip the bundle.
@@ -128,14 +133,16 @@ Every key has a default; per-package details live in each package's README.
 <a id="building-from-source"></a>
 ## Building from source
 
-- The packages depend on `@deepseek-ai/dsh-*` workspace packages and build/test against the harness monorepo workspace (Node.js ^22.19 or >= 24, pnpm).
-- To build fully standalone, switch those dependencies to the published npm versions (all required packages are public on npm) and provide your own test/lint/tsconfig setup.
+- Requirements: Node.js ^22.19 or >= 24, pnpm 11+, and a Godot 4.2+ build on `PATH` for the tools themselves.
+- `pnpm install` resolves every `@deepseek-ai/dsh-*` dependency from npm (the `alpha` dist-tag tracks this repository: `0.2.2-alpha.3`). `pnpm build` compiles each package's `src/` to `lib/` with `tsc`; no other build step is involved.
+- `ui-godot/` (the browser settings card and sandbox watch panel) is **not** part of this build: its client bundle needs the harness monorepo's client build pipeline (`packages/client/tsdown.client.ts`, 1000+ lines of CSS/asset/react wiring). The four host packages and the bundle work without it; `godot_see` returns frames straight into the conversation, so the watch panel is convenience, not capability. Adopting the client pipeline here is tracked as future work.
 
 <a id="repository-layout"></a>
 ## Repository layout
 
 - `bundle-godot/` — the optional capability bundle (rows, icon, install docs).
-- `tool-godot/`, `lsp-godot/`, `tool-godot-debug/`, `tool-godot-ego/`, `ui-godot/` — the five packages above (see [architecture](docs/architecture.md) for the module map).
+- `tool-godot/`, `lsp-godot/`, `tool-godot-debug/`, `tool-godot-ego/` — the four host packages above (see [architecture](docs/architecture.md) for the module map).
+- `ui-godot/` — the browser surface; source only, excluded from `pnpm build` (see [Building from source](#building-from-source)).
 - `docs/` — architecture documentation.
 
 <a id="testing"></a>
@@ -149,7 +156,7 @@ Tested on:
 - **Node.js**: 24 (v24.19.0)
 - **DSH**: 0.1.0-rc.5 (harness monorepo workspace)
 
-Run the unit suites from the monorepo root: `pnpm exec vitest run packages/godot/lsp-godot packages/godot/tool-godot-debug`. Real-Godot integration suites (for example, the debugger smoke) are opt-in through `GODOT_EXE`.
+Suites are not wired in this repository yet: they still import the harness test toolkits, which are not published. Port them once those arrive; until then `pnpm build` plus a real-Godot smoke run is the verification gate. Real-Godot integration suites (for example, the debugger smoke) are opt-in through `GODOT_EXE`.
 
 ## Known limitations and deferred work
 
@@ -173,6 +180,6 @@ Released under the MIT License. See [LICENSE](LICENSE) for the full text.
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-Protocol facts (LSP framing, the remote-debugger binary format, Godot version gates) are recorded against a real Godot 4.7 instance under `docs/`; recheck them before changing a wire claim. The packages live in their own repository and are mounted here as the `packages/godot` submodule, so a change lands in the submodule first and the parent records the new commit.
+Protocol facts (LSP framing, the remote-debugger binary format, Godot version gates) are recorded against a real Godot 4.7 instance under `docs/`; recheck them before changing a wire claim. The repository is mounted into the harness monorepo as the `packages/godot` submodule; a change lands here first and the parent records the new commit.
 
 </details>

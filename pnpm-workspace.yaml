@@ -1,0 +1,12 @@
+packages:
+  - bundle-godot
+  - lsp-godot
+  - tool-godot
+  - tool-godot-debug
+  - tool-godot-ego
+  - ui-godot
+
+onlyBuiltDependencies:
+  - '@deepseek-ai/dsh-subprocess-local'
+  - koffi
+  - node-pty

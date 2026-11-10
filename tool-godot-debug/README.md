@@ -35,6 +35,7 @@ Ask one question about runtime state and get an answer without print statements:
 - [Settings](#settings)
 - [Config](#config)
 - [Tool](#tool)
+- [Session panel endpoints](#session-panel)
 - [Errors](#errors)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
@@ -59,8 +60,8 @@ Every key has a default; a deployment only overrides what its environment needs.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `executable` | `godot` | godot executable path or PATH command name. |
-| `executableArgs` | `[]` | Fixed argv elements inserted after the godot executable (deployment wrappers). |
+| `executable` | `''` | godot executable path or PATH command name; empty inherits the live `tool-godot` value (the settings card stays the one place to configure it), else the command `godot`. |
+| `executableArgs` | `[]` | Fixed argv elements inserted after the godot executable (deployment wrappers); empty inherits the `tool-godot` value. |
 | `debugPort` | `0` | Remote-debug port the game connects to; `0` = auto-pick a free port (default). A fixed port helps deployments that must allow the inbound rule. |
 | `maxMessageBytes` | `16777216` | Largest single framed protocol message accepted from the game. |
 | `maxOutputBytes` | `1048576` | Max bytes of game `output`/`error` content retained in one run; a lossy run marks the result `outputTruncated`. |
@@ -89,6 +90,21 @@ Every key has a default; a deployment only overrides what its environment needs.
 ### Card view
 
 The tool's `presentationMeta` carries a replayable card view: the compact `DebugMeta` (stop positions + counts) plus a versioned, JSON-safe `view` — per-stop frames, the first frame-bearing stop's rendered scope lines, the expansion tree, edit outcomes, per-stop scene trees, and bounded output/error tails. The shipped dynamic UI plugin (`docs/ui-plugin-godot.js`) renders this as collapsible per-stop sections with a summary chips row; when the view is absent or malformed the card falls back to the plain text report. The view stays size-parity with the text: scope lines render only on the first frame-bearing stop, and a 256 KiB serialized budget cuts scope lines first, then scene-tree lines, flagging `viewTruncated`.
+
+
+<a id="session-panel"></a>
+## Session panel endpoints
+
+`godot_debug_session` keeps a session alive across calls, and the Web panel drives that same session over HTTP: `harness.handle` — the RPC bridge a dynamic UI plugin uses — is not available to a static client package, so the session exposes four endpoints under `/api/godot/debug` instead. They follow the sandbox's `/api/godot/*` contract: loopback plus same-site (or a pinned token), JSON bodies, and only the session id crossing the boundary.
+
+| Endpoint | Method | Body | Reply |
+|---|---|---|---|
+| `/api/godot/debug/start` | POST | `{ mode?, port?, projectRoot, executable?, scene?, args?, singleThreadedScene? }` | `{ ok, session }`, `409` while another session is active |
+| `/api/godot/debug/stop` | POST | `{ sessionId }` | `{ ok, stopped }` |
+| `/api/godot/debug/poll` | GET | `?session=<id>` | `{ ok, snapshot }`, `404` for an unknown id |
+| `/api/godot/debug/command` | POST | `{ sessionId, request }` | `{ ok, result }`, `400` for an unknown command kind |
+
+The routes are mounted only where a web server is; a headless deployment keeps every tool and simply has no panel.
 
 <a id="errors"></a>
 ## Errors

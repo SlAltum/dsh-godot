@@ -21,6 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { GateRejection, ProcessGate } from './process-gate.ts'
 
 /** The Godot project marker file `findProjectRoot` looks for. */
 export const PROJECT_FILE = 'project.godot'
@@ -170,6 +171,12 @@ export interface GodotCaps {
   stderrMaxBytes: number
   /** Terminate-escalation grace period (ms), bounded by `MAX_TIMER_DELAY_MS`. */
   graceMs: number
+  /**
+   * Host-wide slot budget for one-shot runs. Optional so a caller that builds
+   * caps by hand (tests, a single-run embedding) is not forced to own a gate;
+   * the plugin wires one instance for every tool.
+   */
+  gate?: ProcessGate
 }
 
 /**
@@ -260,84 +267,92 @@ export async function runGodot(
   }
   const cwd = exec.agent?.session.header.cwd
   const workdir = cwd ?? process.cwd()
-  let handle: SubprocessHandle
+  // Waiting for a slot is part of the run's budget: a queued call that cannot
+  // start before its deadline is refused here, not after it starts a process.
+  const deadlineAt = deadlineMs === undefined ? undefined : Date.now() + deadlineMs
+  const release = await acquireSlot(caps, exec.signal, deadlineAt, toolName)
   try {
-    handle = ctx.subprocess.spawn({
-      argv: [executable.executable, ...executable.args, ...argv],
-      cwd: workdir,
-      stdio: {
-        stdin: 'ignore',
-        stdout: { maxBytes: caps.stdoutMaxBytes },
-        stderr: { maxBytes: caps.stderrMaxBytes },
-      },
-      graceMs: caps.graceMs,
-      signal: exec.signal,
-    } satisfies SubprocessSpawnSpec)
-  } catch (error: unknown) {
-    // Node's spawn() throws synchronously for a NUL in argv, and the local
-    // impl can throw synchronously when the signal aborts between the check
-    // above and this call. The static narrowing that proves this re-check
-    // "always false" cannot see AbortSignal state changes.
-    /* v8 ignore start -- the abort racing a synchronous spawn throw cannot be
-       driven deterministically; the re-check mirrors search-core's defensive
-       handling of the spawn-creation race. */
+    let handle: SubprocessHandle
+    try {
+      handle = ctx.subprocess.spawn({
+        argv: [executable.executable, ...executable.args, ...argv],
+        cwd: workdir,
+        stdio: {
+          stdin: 'ignore',
+          stdout: { maxBytes: caps.stdoutMaxBytes },
+          stderr: { maxBytes: caps.stderrMaxBytes },
+        },
+        graceMs: caps.graceMs,
+        signal: exec.signal,
+      } satisfies SubprocessSpawnSpec)
+    } catch (error: unknown) {
+      // Node's spawn() throws synchronously for a NUL in argv, and the local
+      // impl can throw synchronously when the signal aborts between the check
+      // above and this call. The static narrowing that proves this re-check
+      // "always false" cannot see AbortSignal state changes.
+      /* v8 ignore start -- the abort racing a synchronous spawn throw cannot be
+         driven deterministically; the re-check mirrors search-core's defensive
+         handling of the spawn-creation race. */
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
+      if (exec.signal.aborted) {
+        throw new GodotError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'GODOT_ABORTED')
+      }
+      /* v8 ignore stop */
+      throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
+    }
+    let outcome: SubprocessOutcome
+    // A property, not a `let`: the watchdog flips it from inside a timer callback,
+    // which the static narrowing of a local would not see.
+    const watchdog = { fired: false }
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      outcome = deadlineMs === undefined
+        ? await handle.done
+        : await Promise.race([
+          handle.done,
+          new Promise<'timeout'>((resolve) => {
+            deadlineTimer = setTimeout(() => {
+              watchdog.fired = true
+              handle.terminate()
+              resolve('timeout')
+            }, deadlineMs)
+          }),
+        ]).then(async (raced) => {
+          // A terminated run still settles; wait for it so the streams are complete.
+          return raced === 'timeout' ? await handle.done : raced
+        })
+    } catch (error: unknown) {
+      throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
+    } finally {
+      clearTimeout(deadlineTimer)
+    }
+    const stdout = handle.collected.stdout?.readFrom(0)
+    const stderr = handle.collected.stderr?.readFrom(0)
+    /* v8 ignore start -- the local subprocess impl always supplies collected
+       streams for a successful spawn; a provider contract violation cannot be
+       driven in tests. */
+    if (stdout === undefined || stderr === undefined) {
+      throw new GodotError(`${toolName} command produced no collected output streams`, 'GODOT_UNAVAILABLE')
+    }
+    /* v8 ignore stop */
+    // The signal can abort while the spawn is awaited; the static narrowing that
+    // proves this re-check "always false" cannot see AbortSignal state changes.
     // oxlint-disable-next-line typescript/no-unnecessary-condition
     if (exec.signal.aborted) {
       throw new GodotError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'GODOT_ABORTED')
     }
-    /* v8 ignore stop */
-    throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
-  }
-  let outcome: SubprocessOutcome
-  // A property, not a `let`: the watchdog flips it from inside a timer callback,
-  // which the static narrowing of a local would not see.
-  const watchdog = { fired: false }
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined
-  try {
-    outcome = deadlineMs === undefined
-      ? await handle.done
-      : await Promise.race([
-        handle.done,
-        new Promise<'timeout'>((resolve) => {
-          deadlineTimer = setTimeout(() => {
-            watchdog.fired = true
-            handle.terminate()
-            resolve('timeout')
-          }, deadlineMs)
-        }),
-      ]).then(async (raced) => {
-        // A terminated run still settles; wait for it so the streams are complete.
-        return raced === 'timeout' ? await handle.done : raced
-      })
-  } catch (error: unknown) {
-    throw new GodotError(`${toolName} could not start its command (${executable.executable} launch failed)`, 'GODOT_UNAVAILABLE', { cause: error })
+    return {
+      exitCode: outcome.exitCode,
+      signal: outcome.signal,
+      stdout: stdout.text,
+      stderr: stderr.text,
+      stdoutTruncated: stdout.lossy,
+      stderrTruncated: stderr.lossy,
+      workdir,
+      ...(watchdog.fired ? { timedOut: true } : {}),
+    }
   } finally {
-    clearTimeout(deadlineTimer)
-  }
-  const stdout = handle.collected.stdout?.readFrom(0)
-  const stderr = handle.collected.stderr?.readFrom(0)
-  /* v8 ignore start -- the local subprocess impl always supplies collected
-     streams for a successful spawn; a provider contract violation cannot be
-     driven in tests. */
-  if (stdout === undefined || stderr === undefined) {
-    throw new GodotError(`${toolName} command produced no collected output streams`, 'GODOT_UNAVAILABLE')
-  }
-  /* v8 ignore stop */
-  // The signal can abort while the spawn is awaited; the static narrowing that
-  // proves this re-check "always false" cannot see AbortSignal state changes.
-  // oxlint-disable-next-line typescript/no-unnecessary-condition
-  if (exec.signal.aborted) {
-    throw new GodotError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'GODOT_ABORTED')
-  }
-  return {
-    exitCode: outcome.exitCode,
-    signal: outcome.signal,
-    stdout: stdout.text,
-    stderr: stderr.text,
-    stdoutTruncated: stdout.lossy,
-    stderrTruncated: stderr.lossy,
-    workdir,
-    ...(watchdog.fired ? { timedOut: true } : {}),
+    release()
   }
 }
 
@@ -398,4 +413,33 @@ export function displayPath(path: string, workdir: string): string {
 export function resToRelative(issuePath: string, projectRoot: string): string {
   if (issuePath.startsWith('res://')) return issuePath.slice('res://'.length)
   return displayPath(issuePath, projectRoot)
+}
+
+/**
+ * Take a gate slot for one run, mapping a refusal to the tool's abort error.
+ * @param caps - the resolved caps; no gate means no budget.
+ * @param signal - the caller's cancellation.
+ * @param deadlineAt - absolute time the run must start by; queued time counts.
+ * @param toolName - the calling tool, used in the error message.
+ * @returns the release function for the slot.
+ */
+async function acquireSlot(
+  caps: GodotCaps,
+  signal: AbortSignal,
+  deadlineAt: number | undefined,
+  toolName: string,
+): Promise<() => void> {
+  if (caps.gate === undefined) return () => {}
+  try {
+    return await caps.gate.acquire({ signal, ...(deadlineAt !== undefined ? { deadlineAt } : {}) })
+  } catch (error: unknown) {
+    const reason = (error as GateRejection).reason
+    if (reason === 'aborted' || reason === 'deadline') {
+      throw new GodotError(
+        `${toolName} was aborted before completion (tool timeout or caller cancellation)`,
+        'GODOT_ABORTED',
+      )
+    }
+    throw error
+  }
 }

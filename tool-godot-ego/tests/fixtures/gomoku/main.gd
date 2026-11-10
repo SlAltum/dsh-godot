@@ -22,19 +22,19 @@ var _moves := 0
 var _last := Vector2i(-1, -1)
 var _win_cells: Array[Vector2i] = []
 
-@onready var board_view: Control = $BoardView
-@onready var board_hits: Control = $BoardHits
-@onready var status_name: Label = $StatusName
-@onready var status_accent: Label = $StatusAccent
-@onready var move_meta: Label = $MoveMeta
-@onready var last_move: Label = $LastMove
-@onready var turn_value: Label = $TurnValue
-@onready var black_count: Label = $BlackCount
-@onready var white_count: Label = $WhiteCount
+@onready var board_view: Control = $%BoardView
+@onready var board_hits: Control = $%BoardHits
+@onready var status_name: Label = $%StatusName
+@onready var status_accent: Label = $%StatusAccent
+@onready var move_meta: Label = $%MoveMeta
+@onready var last_move: Label = $%LastMove
+@onready var turn_value: Label = $%TurnValue
+@onready var black_count: Label = $%BlackCount
+@onready var white_count: Label = $%WhiteCount
 
 
 func _ready() -> void:
-	$NewGame.pressed.connect(_new_game)
+	$%NewGame.pressed.connect(_new_game)
 	_build_hits()
 	_new_game()
 

@@ -11,6 +11,38 @@ import { BOOT_SOURCE, BRIDGE_SOURCE, bootstrapSource, bridgeSource } from '../sr
 describe('bridgeSource', () => {
   const source = bridgeSource({ allowEval: false })
 
+  it('puts the window where its title bar is reachable, whatever the project asked', () => {
+    // A project with absolute placement (0,0) lands the client area on the screen
+    // origin, so the OS frame goes negative and the title bar is off-screen.
+    expect(source).toContain('func _place_window() -> void:')
+    expect(source).toContain('screen_get_usable_rect')
+    expect(source).toContain('if OS.get_environment("DSH_EGO_OFFSCREEN") == "1":')
+    expect(source).toContain('DisplayServer.window_set_position(pos)')
+  })
+
+  it('bounds the wait for a drawn frame instead of hanging on a minimized window', () => {
+    // A minimized window stops drawing: `frame_post_draw` never fires, so an
+    // unbounded await leaves the handler suspended with `_busy` set and every
+    // later command queues forever while the host still sees a live socket.
+    expect(bridgeSource()).not.toContain('await RenderingServer.frame_post_draw')
+    expect(source).toContain('if not await _await_draw(DRAW_BUDGET_MS):')
+    expect(source).toContain('_reply_error(id, "NOT_DRAWING"')
+    expect(source).toContain('restore the window and retry')
+  })
+
+  it('traces nothing unless asked, and names a command that never finishes when asked', () => {
+    expect(bridgeSource()).toContain('const TRACE := false')
+    expect(bridgeSource()).toContain('const ALLOW_EVAL := false')
+    const traced = bridgeSource({ trace: true })
+    expect(traced).toContain('const TRACE := true')
+    // The watchdog is the only signal that names the command holding `_busy`.
+    expect(traced).toContain('[bridge] SLOW cmd=')
+    expect(traced).toContain('[bridge] recv ')
+    expect(traced).toContain('[bridge] send %dB err=%d')
+    // A dropped reply is reported even without tracing.
+    expect(traced).toContain('if _trace or err != OK:')
+  })
+
   it('keeps the bridge alive while the game is paused', () => {
     expect(source).toContain('process_mode = Node.PROCESS_MODE_ALWAYS')
   })

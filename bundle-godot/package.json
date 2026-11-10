@@ -45,9 +45,12 @@
     "@deepseek-ai/dsh-ui-godot": "workspace:^"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "^4.1.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "^4.1.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
   }
 }

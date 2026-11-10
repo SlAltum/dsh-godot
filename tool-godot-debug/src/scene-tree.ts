@@ -22,6 +22,53 @@ export interface SceneTreeNode {
   children: SceneTreeNode[]
 }
 
+/** One scene node in JSON-safe form: the object id is a string. A `type` (not an
+ *  interface) so it satisfies JsonValue when it rides a tool result. */
+export type SceneTreeViewNode = {
+  name: string
+  className: string
+  /** The engine object id, stringified (`scene:inspect_object` takes it back as BigInt). */
+  id: string
+  /** The scene file the node came from; '' for runtime-created nodes. */
+  sceneFilePath: string
+  children: SceneTreeViewNode[]
+}
+
+/** A node the renderer can read: the parsed tree or its JSON-safe copy. */
+export interface SceneTreeRenderable {
+  name: string
+  className: string
+  id: bigint | string
+  sceneFilePath: string
+  children: readonly SceneTreeRenderable[]
+}
+
+/**
+ * Convert a parsed tree into the JSON-safe shape a tool result can carry.
+ * @param root - the parsed tree, already bounded by the tool's node budget.
+ * @param maxNodes - the remaining node budget.
+ * @returns the converted nodes and whether the budget was exhausted.
+ */
+export function toSceneViewNodes(root: SceneTreeNode, maxNodes: number): { nodes: SceneTreeViewNode[]; truncated: boolean } {
+  let remaining = maxNodes
+  let truncated = false
+  const convert = (node: SceneTreeNode): SceneTreeViewNode | null => {
+    if (remaining <= 0) {
+      truncated = true
+      return null
+    }
+    remaining -= 1
+    const children: SceneTreeViewNode[] = []
+    for (const child of node.children) {
+      const converted = convert(child)
+      if (converted !== null) children.push(converted)
+    }
+    return { name: node.name, className: node.className, id: String(node.id), sceneFilePath: node.sceneFilePath, children }
+  }
+  const top = convert(root)
+  return { nodes: top === null ? [] : [top], truncated }
+}
+
 /** The parse result: the tree root and whether any bound was hit. */
 export interface SceneTreeParse {
   root: SceneTreeNode | null
@@ -144,15 +191,26 @@ export function resolveNodePaths(root: SceneTreeNode | null, paths: string[]): {
  * @param options - the render bounds.
  * @returns the lines and whether anything was dropped.
  */
-export function renderSceneTree(root: SceneTreeNode | null, options: SceneTreeRenderOptions): { lines: string[]; truncated: boolean } {
-  if (root === null || options.maxNodes <= 0) return { lines: [], truncated: root !== null }
+export function renderSceneTree(root: SceneTreeRenderable | null, options: SceneTreeRenderOptions): { lines: string[]; truncated: boolean } {
+  return renderTreeNodeList(root === null ? [] : [root], options)
+}
+
+/**
+ * Render a list of roots (a tool result carries the JSON-safe node list, not the
+ * parsed root) into model-facing lines.
+ * @param roots - the top-level nodes.
+ * @param options - the render bounds.
+ * @returns the rendered lines and whether the budget was exhausted.
+ */
+export function renderTreeNodeList(roots: readonly SceneTreeRenderable[], options: SceneTreeRenderOptions): { lines: string[]; truncated: boolean } {
+  if (roots.length === 0 || options.maxNodes <= 0) return { lines: [], truncated: roots.length > 0 }
   const lines: string[] = []
   let remaining = options.maxNodes
   let truncated = false
-  renderNode(root, 0)
+  for (const root of roots) renderNode(root, 0)
   return { lines, truncated }
 
-  function renderNode(node: SceneTreeNode, depth: number): void {
+  function renderNode(node: SceneTreeRenderable, depth: number): void {
     if (remaining <= 0) {
       truncated = true
       return

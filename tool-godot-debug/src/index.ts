@@ -28,11 +28,14 @@ import type { GodotDebugConfig, ResolvedGodotDebugConfig } from './config.ts'
 import { structuredDebugView } from './debug-view.ts'
 import type { StructuredDebugInput } from './debug-view.ts'
 import type { ExpandedEntry } from './inspect.ts'
+import { renderTreeNodeList } from './scene-tree.ts'
 import { runDebug } from './tool.ts'
 import type { DebugRunResult } from './tool.ts'
 import { GodotError } from './error.ts'
 import type { EditRequest } from './edit.ts'
+import { resolveDebugExecutable } from './executable.ts'
 import { createDebugSessionService } from './session-service.ts'
+import { sessionRoute } from './session-route.ts'
 import type { DebugSessionService } from './session-service.ts'
 import type { SessionCommandRequest } from './session.ts'
 
@@ -57,6 +60,14 @@ export type { ExpandedEntry, ExpansionResult } from './inspect.ts'
 export { applyEdits, findEditTarget, findPropValue, parseEditValue, valueEquals } from './edit.ts'
 export type { EditRequest, EditResult, EditValueType } from './edit.ts'
 export { parseSceneTree, renderSceneTree } from './scene-tree.ts'
+
+/**
+ * Node bound for the report's re-render of a stop's tree.
+ *
+ * The tree was already bounded by `maxTreeNodes` when the tool parsed it, so this
+ * bound only guards a caller that hands `renderDebugOutput` a tree from elsewhere.
+ */
+const REPORT_SCENE_TREE_NODES = 1024
 export type { SceneTreeNode, SceneTreeParse, SceneTreeRenderOptions } from './scene-tree.ts'
 export { GodotError } from './error.ts'
 export type { GodotErrorCode } from './error.ts'
@@ -174,8 +185,9 @@ export function renderDebugOutput(value: DebugRunResult, maxStops: number): stri
       // frame and scene trees are enabled; tree index = stop index).
       const tree = value.sceneTrees?.find(t => t.stopIndex === i)
       if (tree !== undefined) {
-        lines.push(`  scene tree (${tree.lines.length} nodes):`)
-        for (const line of tree.lines) lines.push(`    ${line}`)
+        const rendered = renderTreeNodeList(tree.nodes, { maxNodes: REPORT_SCENE_TREE_NODES, maxLineLength: 200 })
+        lines.push(`  scene tree (${rendered.lines.length} nodes):`)
+        for (const line of rendered.lines) lines.push(`    ${line}`)
       }
       if (i === fullIdx) {
         for (const [scopeName, vars] of [
@@ -269,6 +281,12 @@ export function presentDebugResult(_args: { maxStops?: number }, result: ToolRes
   return debugViewFromMeta(result.meta)
 }
 
+/** The executable facts `runDebug` takes, resolved once per call. */
+function resolvedExecutable(ctx: Context, config: ResolvedGodotDebugConfig): { executable: string; executableArgs: string[] } {
+  const resolved = resolveDebugExecutable(ctx, config)
+  return { executable: resolved.executable, executableArgs: [...resolved.args] }
+}
+
 /**
  * Register the `godot_debug` tool. Registration is unconditional; a missing
  * godot executable surfaces as the structured `GODOT_UNAVAILABLE` error at
@@ -281,6 +299,20 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
   // A row may be mounted without a config key; resolve the schema here.
   const resolved = Config(config) as ResolvedGodotDebugConfig
   validateConfig(resolved)
+
+  // T21: the interactive session service (long-lived sessions, attach by
+  // default, launch since T21.8). The Web panel drives it through
+  // `/api/godot/debug/*` — `harness.handle` is a dynamic-plugin-only primitive,
+  // so a static client package cannot reach the session that way.
+  // Session idle timeout is a constant 10 min (configurable later).
+  const service = createDebugSessionService({
+    maxMessageBytes: resolved.maxMessageBytes,
+    maxOutputBytes: resolved.maxOutputBytes,
+    maxTreeNodes: resolved.maxTreeNodes,
+    idleTimeoutMs: SESSION_IDLE_TIMEOUT_MS,
+    subprocess: ctx.subprocess,
+    graceMs: resolved.graceMs,
+  })
 
   ctx.effect(() => {
     const disposers = [
@@ -609,17 +641,10 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
                 },
                 editsApplied: { type: 'number', required: true },
                 editsTruncated: { type: 'boolean', required: true },
-                sceneTrees: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      stopIndex: { type: 'number', required: true },
-                      lines: { type: 'array', required: true, items: { type: 'string' } },
-                    },
-                  },
-                },
+                // Opaque: a stop's tree carries engine object ids (bigint), so the
+                // schema cannot describe it field by field; the card reads the
+                // JSON-safe copy the view builds.
+                sceneTrees: { type: 'json' },
                 sceneTreeCount: { type: 'number', required: true },
                 sceneTreeTruncated: { type: 'boolean', required: true },
                 outputTruncated: { type: 'boolean', required: true },
@@ -646,8 +671,7 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
             const input = args
             const projectRoot = input.path === undefined ? workdir : resolve(workdir, input.path)
             const result = await runDebug({
-              executable: c.executable,
-              executableArgs: c.executableArgs,
+              ...resolvedExecutable(ctx, c),
               projectRoot,
               ...(input.scene !== undefined ? { scene: input.scene } : {}),
               breakpoints: (input.breakpoints ?? []).map(bp => ({
@@ -682,10 +706,10 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
             })
             // The exit schema is an optional object without nulls; a null exit
             // (attach mode) and null exit fields are normalized away, as is a
-            // null expansion/edit carrier and the scene-tree root (which
-            // carries bigint ids — only the rendered lines cross the JSON
-            // boundary). One return shape carries both branches (the fields
-            // must not be lost on the attach null-exit path).
+            // null expansion/edit carrier and the per-stop scene trees, which
+            // ride the structured card view instead: the result value stays a
+            // report plus counts. One return shape carries both branches (the
+            // fields must not be lost on the attach null-exit path).
             const exit = result.exit === null ? undefined : {
               ...(result.exit.exitCode !== null ? { exitCode: result.exit.exitCode } : {}),
               ...(result.exit.signal !== null ? { signal: result.exit.signal } : {}),
@@ -714,6 +738,12 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
               ...resultRest,
               ...(exit !== undefined ? { exit } : {}),
               ...(expansion !== undefined ? { expansion } : {}),
+              // The card view reads the trees from the result value, so the
+              // JSON-safe node lists stay here while the parsed tree (bigint
+              // ids) never leaves the tool.
+              ...(result.sceneTrees !== null
+                ? { sceneTrees: result.sceneTrees.map(t => ({ stopIndex: t.stopIndex, nodes: t.nodes })) }
+                : {}),
               ...(result.edits !== null
                 ? {
                   edits: {
@@ -731,9 +761,6 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
                   },
                 }
                 : {}),
-              ...(result.sceneTrees !== null
-                ? { sceneTrees: result.sceneTrees.map(t => ({ stopIndex: t.stopIndex, lines: t.lines })) }
-                : {}),
             }
           },
           presentCall: (args): GenericCallView => {
@@ -747,21 +774,7 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
         return () => {
           disposeTool()
         }      })(),
-      // T21: the interactive session service (long-lived sessions, attach by
-      // default, launch since T21.8), bridged to `harness.handle` RPC by the
-      // dynamic plugin's host half. Session idle timeout is a constant
-      // 10 min (configurable later).
-      (() => {
-        const service = createDebugSessionService({
-          maxMessageBytes: resolved.maxMessageBytes,
-          maxOutputBytes: resolved.maxOutputBytes,
-          maxTreeNodes: resolved.maxTreeNodes,
-          idleTimeoutMs: SESSION_IDLE_TIMEOUT_MS,
-          subprocess: ctx.subprocess,
-          graceMs: resolved.graceMs,
-        })
-        return ctx.provide('godot.debugSession', service)
-      })(),
+      ctx.provide('godot.debugSession', service),
       (() => {
         const tool = defineTool({
           name: 'godot_debug_session',
@@ -879,7 +892,7 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
                 // auto-picked port, process owned (terminated on stop).
                 const started = await service.start({
                   mode: 'launch',
-                  executable: args.executable ?? resolved.executable,
+                  executable: args.executable ?? resolveDebugExecutable(ctx, resolved).executable,
                   projectRoot: args.projectRoot ?? cwd,
                   ...(args.scene !== undefined ? { scene: args.scene } : {}),
                   ...(args.args !== undefined ? { args: args.args } : {}),
@@ -1002,6 +1015,12 @@ export function apply(ctx: Context, config: GodotDebugConfig = {}): void {
         }
       })(),
     ]
+    // The panel is chrome: a deployment without a web server keeps every tool.
+    ctx.inject(['webServer'], (webCtx) => {
+      webCtx.effect(() => {
+        return sessionRoute(webCtx, service, resolvedExecutable(ctx, resolved))
+      }, 'tool-godot-debug.session-route')
+    })
     return () => {
       for (const dispose of disposers) dispose()
     }

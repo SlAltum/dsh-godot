@@ -62,71 +62,272 @@ offset_right = 1280.0
 offset_bottom = 720.0
 mouse_filter = 2
 
-[node name="HeaderMark" type="ColorRect" parent="."]
+[node name="Header" type="Control" parent="."]
 layout_mode = 0
-offset_left = 64.0
-offset_top = 47.0
-offset_right = 72.0
-offset_bottom = 55.0
+offset_left = 62
+offset_top = 41
+offset_right = 1216
+offset_bottom = 164
+mouse_filter = 2
+
+[node name="HeaderMark" type="ColorRect" parent="Header"]
+layout_mode = 0
+offset_left = 2
+offset_top = 6
+offset_right = 10
+offset_bottom = 14
 color = Color(0.756, 0.298, 0.219, 1)
 
-[node name="Eyebrow" type="Label" parent="."]
+[node name="Eyebrow" type="Label" parent="Header"]
 layout_mode = 0
-offset_left = 82.0
-offset_top = 41.0
-offset_right = 520.0
-offset_bottom = 59.0
+offset_left = 20
+offset_top = 0
+offset_right = 458
+offset_bottom = 18
 theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 9
 text = "DSH / GODOT SANDBOX / 001"
 
-[node name="Title" type="Label" parent="."]
+[node name="Title" type="Label" parent="Header"]
 layout_mode = 0
-offset_left = 62.0
-offset_top = 52.0
-offset_right = 620.0
-offset_bottom = 142.0
+offset_left = 0
+offset_top = 11
+offset_right = 558
+offset_bottom = 101
 theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
 theme_override_fonts/font = ExtResource("3_serif")
 theme_override_font_sizes/font_size = 66
 text = "Gomoku"
 
-[node name="Subtitle" type="Label" parent="."]
+[node name="Subtitle" type="Label" parent="Header"]
 layout_mode = 0
-offset_left = 66.0
-offset_top = 136.0
-offset_right = 560.0
-offset_bottom = 154.0
+offset_left = 4
+offset_top = 95
+offset_right = 498
+offset_bottom = 113
 theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 9
 text = "FIVE IN A ROW  ·  15 × 15"
 
-[node name="TopRule" type="ColorRect" parent="."]
+[node name="TopRule" type="ColorRect" parent="Header"]
 layout_mode = 0
-offset_left = 64.0
-offset_top = 163.0
-offset_right = 1216.0
-offset_bottom = 164.0
+offset_left = 2
+offset_top = 122
+offset_right = 1154
+offset_bottom = 123
 color = Color(0.25, 0.227, 0.188, 1)
 
-[node name="BoardView" type="Control" parent="."]
+[node name="Board" type="Control" parent="."]
 layout_mode = 0
-offset_left = 64.0
-offset_top = 184.0
-offset_right = 564.0
-offset_bottom = 684.0
+offset_left = 64
+offset_top = 184
+offset_right = 564
+offset_bottom = 684
+mouse_filter = 2
+
+[node name="BoardView" type="Control" parent="Board"]
+layout_mode = 0
+offset_left = 0
+offset_top = 0
+offset_right = 500
+offset_bottom = 500
 mouse_filter = 2
 script = ExtResource("2_board")
 mono_font = ExtResource("4_mono")
+unique_name_in_owner = true
 
-[node name="NewGame" type="Button" parent="."]
+[node name="BoardHits" type="Control" parent="Board"]
 layout_mode = 0
-offset_left = 680.0
-offset_top = 566.0
-offset_right = 860.0
-offset_bottom = 604.0
+offset_left = 0
+offset_top = 0
+offset_right = 500
+offset_bottom = 500
+unique_name_in_owner = true
+
+[node name="Sidebar" type="Control" parent="."]
+layout_mode = 0
+offset_left = 678
+offset_top = 193
+offset_right = 1216
+offset_bottom = 696
+mouse_filter = 2
+
+[node name="StatusKicker" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 0
+offset_right = 172
+offset_bottom = 16
+theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "STATUS"
+
+[node name="StatusName" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 0
+offset_top = 15
+offset_right = 232
+offset_bottom = 85
+theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
+theme_override_fonts/font = ExtResource("3_serif")
+theme_override_font_sizes/font_size = 52
+text = "Black"
+unique_name_in_owner = true
+
+[node name="StatusAccent" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 244
+offset_top = 15
+offset_right = 522
+offset_bottom = 85
+theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
+theme_override_fonts/font = ExtResource("3_serif")
+theme_override_font_sizes/font_size = 52
+text = "to move"
+unique_name_in_owner = true
+
+[node name="MoveMeta" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 93
+offset_right = 322
+offset_bottom = 109
+theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "MOVE 00  /  225"
+unique_name_in_owner = true
+
+[node name="Rule1" type="ColorRect" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 117
+offset_right = 538
+offset_bottom = 118
+color = Color(0.25, 0.227, 0.188, 1)
+
+[node name="LastKicker" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 137
+offset_right = 82
+offset_bottom = 151
+theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "LAST MOVE"
+
+[node name="LastMove" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 0
+offset_top = 153
+offset_right = 80
+offset_bottom = 193
+theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 28
+text = "—"
+unique_name_in_owner = true
+
+[node name="TurnKicker" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 100
+offset_top = 137
+offset_right = 172
+offset_bottom = 151
+theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "TURN"
+
+[node name="TurnValue" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 98
+offset_top = 153
+offset_right = 222
+offset_bottom = 185
+theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
+theme_override_fonts/font = ExtResource("5_sans")
+theme_override_font_sizes/font_size = 21
+text = "—"
+unique_name_in_owner = true
+
+[node name="Rule2" type="ColorRect" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 221
+offset_right = 538
+offset_bottom = 222
+color = Color(0.25, 0.227, 0.188, 1)
+
+[node name="StonesKicker" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 241
+offset_right = 102
+offset_bottom = 255
+theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "STONES"
+
+[node name="BlackDot" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 263
+offset_right = 22
+offset_bottom = 285
+theme_override_colors/font_color = Color(0.094, 0.094, 0.086, 1)
+theme_override_colors/font_outline_color = Color(0.52, 0.48, 0.42, 1)
+theme_override_constants/outline_size = 1
+theme_override_fonts/font = ExtResource("5_sans")
+theme_override_font_sizes/font_size = 16
+text = "●"
+
+[node name="BlackCount" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 26
+offset_top = 267
+offset_right = 162
+offset_bottom = 283
+theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "BLACK  ·  00"
+unique_name_in_owner = true
+
+[node name="WhiteDot" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 293
+offset_right = 22
+offset_bottom = 315
+theme_override_colors/font_color = Color(0.91, 0.878, 0.816, 1)
+theme_override_fonts/font = ExtResource("5_sans")
+theme_override_font_sizes/font_size = 16
+text = "○"
+
+[node name="WhiteCount" type="Label" parent="Sidebar"]
+layout_mode = 0
+offset_left = 26
+offset_top = 297
+offset_right = 162
+offset_bottom = 313
+theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
+theme_override_fonts/font = ExtResource("4_mono")
+theme_override_font_sizes/font_size = 9
+text = "WHITE  ·  00"
+unique_name_in_owner = true
+
+[node name="NewGame" type="Button" parent="Sidebar"]
+layout_mode = 0
+offset_left = 2
+offset_top = 373
+offset_right = 182
+offset_bottom = 411
 focus_mode = 0
 theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
 theme_override_colors/font_hover_color = Color(0.945, 0.914, 0.855, 1)
@@ -138,225 +339,66 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_button_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_button_pressed")
 theme_override_styles/focus = SubResource("StyleBoxFlat_button_normal")
 text = "NEW GAME  →"
+unique_name_in_owner = true
 
-[node name="BoardHits" type="Control" parent="."]
+[node name="Hint1" type="Label" parent="Sidebar"]
 layout_mode = 0
-offset_left = 64.0
-offset_top = 184.0
-offset_right = 564.0
-offset_bottom = 684.0
-
-[node name="StatusKicker" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 193.0
-offset_right = 850.0
-offset_bottom = 209.0
-theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "STATUS"
-
-[node name="StatusName" type="Label" parent="."]
-layout_mode = 0
-offset_left = 678.0
-offset_top = 208.0
-offset_right = 910.0
-offset_bottom = 278.0
-theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
-theme_override_fonts/font = ExtResource("3_serif")
-theme_override_font_sizes/font_size = 52
-text = "Black"
-
-[node name="StatusAccent" type="Label" parent="."]
-layout_mode = 0
-offset_left = 922.0
-offset_top = 208.0
-offset_right = 1200.0
-offset_bottom = 278.0
-theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
-theme_override_fonts/font = ExtResource("3_serif")
-theme_override_font_sizes/font_size = 52
-text = "to move"
-
-[node name="MoveMeta" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 286.0
-offset_right = 1000.0
-offset_bottom = 302.0
-theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "MOVE 00  /  225"
-
-[node name="Rule1" type="ColorRect" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 310.0
-offset_right = 1216.0
-offset_bottom = 311.0
-color = Color(0.25, 0.227, 0.188, 1)
-
-[node name="LastKicker" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 330.0
-offset_right = 760.0
-offset_bottom = 344.0
-theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "LAST MOVE"
-
-[node name="LastMove" type="Label" parent="."]
-layout_mode = 0
-offset_left = 678.0
-offset_top = 346.0
-offset_right = 758.0
-offset_bottom = 386.0
-theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 28
-text = "—"
-
-[node name="TurnKicker" type="Label" parent="."]
-layout_mode = 0
-offset_left = 778.0
-offset_top = 330.0
-offset_right = 850.0
-offset_bottom = 344.0
-theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "TURN"
-
-[node name="TurnValue" type="Label" parent="."]
-layout_mode = 0
-offset_left = 776.0
-offset_top = 346.0
-offset_right = 900.0
-offset_bottom = 378.0
-theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
-theme_override_fonts/font = ExtResource("5_sans")
-theme_override_font_sizes/font_size = 21
-text = "—"
-
-[node name="Rule2" type="ColorRect" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 414.0
-offset_right = 1216.0
-offset_bottom = 415.0
-color = Color(0.25, 0.227, 0.188, 1)
-
-[node name="StonesKicker" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 434.0
-offset_right = 780.0
-offset_bottom = 448.0
-theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "STONES"
-
-[node name="BlackDot" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 456.0
-offset_right = 700.0
-offset_bottom = 478.0
-theme_override_colors/font_color = Color(0.094, 0.094, 0.086, 1)
-theme_override_colors/font_outline_color = Color(0.52, 0.48, 0.42, 1)
-theme_override_constants/outline_size = 1
-theme_override_fonts/font = ExtResource("5_sans")
-theme_override_font_sizes/font_size = 16
-text = "●"
-
-[node name="BlackCount" type="Label" parent="."]
-layout_mode = 0
-offset_left = 704.0
-offset_top = 460.0
-offset_right = 840.0
-offset_bottom = 476.0
-theme_override_colors/font_color = Color(0.945, 0.914, 0.855, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "BLACK  ·  00"
-
-[node name="WhiteDot" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 486.0
-offset_right = 700.0
-offset_bottom = 508.0
-theme_override_colors/font_color = Color(0.91, 0.878, 0.816, 1)
-theme_override_fonts/font = ExtResource("5_sans")
-theme_override_font_sizes/font_size = 16
-text = "○"
-
-[node name="WhiteCount" type="Label" parent="."]
-layout_mode = 0
-offset_left = 704.0
-offset_top = 490.0
-offset_right = 840.0
-offset_bottom = 506.0
-theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
-theme_override_fonts/font = ExtResource("4_mono")
-theme_override_font_sizes/font_size = 9
-text = "WHITE  ·  00"
-
-[node name="Hint1" type="Label" parent="."]
-layout_mode = 0
-offset_left = 680.0
-offset_top = 630.0
-offset_right = 1100.0
-offset_bottom = 644.0
+offset_left = 2
+offset_top = 437
+offset_right = 422
+offset_bottom = 451
 theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 8
 text = "CLICK AN EMPTY INTERSECTION"
 
-[node name="Hint2" type="Label" parent="."]
+[node name="Hint2" type="Label" parent="Sidebar"]
 layout_mode = 0
-offset_left = 680.0
-offset_top = 646.0
-offset_right = 1100.0
-offset_bottom = 660.0
+offset_left = 2
+offset_top = 453
+offset_right = 422
+offset_bottom = 467
 theme_override_colors/font_color = Color(0.62, 0.58, 0.51, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 8
 text = "TO PLACE A STONE"
 
-[node name="MaterialNote" type="Label" parent="."]
+[node name="MaterialNote" type="Label" parent="Sidebar"]
 layout_mode = 0
-offset_left = 680.0
-offset_top = 676.0
-offset_right = 1000.0
-offset_bottom = 696.0
+offset_left = 2
+offset_top = 483
+offset_right = 322
+offset_bottom = 503
 theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
 theme_override_fonts/font = ExtResource("3_serif")
 theme_override_font_sizes/font_size = 15
 text = "Kaya  ·  slate  ·  shell"
 
-[node name="FooterLeft" type="Label" parent="."]
+[node name="Footer" type="Control" parent="."]
 layout_mode = 0
-offset_left = 64.0
-offset_top = 690.0
-offset_right = 400.0
-offset_bottom = 706.0
+offset_left = 64
+offset_top = 690
+offset_right = 1216
+offset_bottom = 706
+mouse_filter = 2
+
+[node name="FooterLeft" type="Label" parent="Footer"]
+layout_mode = 0
+offset_left = 0
+offset_top = 0
+offset_right = 336
+offset_bottom = 16
 theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 8
 text = "GODOT 4.7  ·  TEST FIXTURE"
 
-[node name="FooterRight" type="Label" parent="."]
+[node name="FooterRight" type="Label" parent="Footer"]
 layout_mode = 0
-offset_left = 1000.0
-offset_top = 690.0
-offset_right = 1216.0
-offset_bottom = 706.0
+offset_left = 936
+offset_top = 0
+offset_right = 1152
+offset_bottom = 16
 theme_override_colors/font_color = Color(0.44, 0.41, 0.36, 1)
 theme_override_fonts/font = ExtResource("4_mono")
 theme_override_font_sizes/font_size = 8

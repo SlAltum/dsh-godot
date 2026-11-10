@@ -302,6 +302,14 @@ export async function expandObjects(
 
   /** Fetch one object (recursively per maxDepth); returns null on skip. */
   async function fetchOne(id: bigint, name: string, depth: number): Promise<FetchedEntry | null> {
+    // The cap counts every object the walk fetches, nested children included:
+    // a single container attribute (a 225-entry array) otherwise multiplies the
+    // sample by its own length. The bound is the worst case the time budget
+    // above already assumes (roots × depth).
+    if (expandedObjects >= objectCap * Math.max(1, options.maxDepth)) {
+      expansionTruncated = true
+      return null
+    }
     const remaining = options.budgetMs - (Date.now() - start)
     if (remaining <= 0) {
       expansionTruncated = true // budget spent: skip, keep partial result

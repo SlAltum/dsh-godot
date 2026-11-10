@@ -1,0 +1,78 @@
+/**
+ * The engine classes the packaged icon set covers.
+ *
+ * Generated from `src/client/assets/icons/`: one SVG per engine class, named
+ * after the class. The build copies that directory to `lib/assets/icons` (the
+ * host serves it under `/plugins/<package>/assets/`), so the list and the files
+ * cannot drift without a build change. The tree uses an icon as a CSS mask, so
+ * the file's own colours never matter — only its shape — and a class outside
+ * this set falls back to a dot instead of a mask that fails to load.
+ */
+
+/** Class names with a packaged icon. */
+export const NODE_ICON_CLASSES: ReadonlySet<string> = new Set([
+  'ARVRAnchor', 'ARVRCamera', 'ARVRController', 'ARVROrigin', 'AcceptDialog', 'AnimatableBody2D', 'AnimatableBody3D', 'AnimatedSprite',
+  'AnimatedSprite2D', 'AnimatedSprite3D', 'AnimatedTexture', 'Animation', 'AnimationLibrary', 'AnimationPlayer', 'AnimationTree', 'AnimationTreePlayer',
+  'Area', 'Area2D', 'Area3D', 'ArrayMesh', 'ArrayOccluder3D', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'ArrowUp', 'AspectRatioContainer', 'AtlasTexture', 'AudioListener2D', 'AudioListener3D', 'AudioStreamPlayer', 'AudioStreamPlayer2D', 'AudioStreamPlayer3D',
+  'AudioStreamPolyphonic', 'AudioStreamSample', 'AudioStreamWAV', 'BackBufferCopy', 'BakedLightmap', 'BakedLightmapData', 'BitMap', 'BitmapFont',
+  'Bone2D', 'BoneAttachment', 'BoneAttachment3D', 'BoxContainer', 'BoxMesh', 'BoxOccluder3D', 'BoxShape', 'BoxShape3D',
+  'Button', 'ButtonGroup', 'CPUParticles', 'CPUParticles2D', 'CPUParticles3D', 'CSGBox', 'CSGBox3D', 'CSGCombiner',
+  'CSGCombiner3D', 'CSGCylinder', 'CSGCylinder3D', 'CSGMesh', 'CSGMesh3D', 'CSGPolygon', 'CSGPolygon3D', 'CSGSphere',
+  'CSGSphere3D', 'CSGTorus', 'CSGTorus3D', 'CSharpScript', 'Camera', 'Camera2D', 'Camera3D', 'CameraAttributesPhysical',
+  'CameraAttributesPractical', 'CameraTexture', 'CanvasGroup', 'CanvasItemMaterial', 'CanvasLayer', 'CanvasModulate', 'CanvasTexture', 'CapsuleMesh',
+  'CapsuleShape', 'CapsuleShape2D', 'CapsuleShape3D', 'CenterContainer', 'CharacterBody2D', 'CharacterBody3D', 'CheckBox', 'CheckButton',
+  'CircleShape2D', 'ClippedCamera', 'CodeEdit', 'CodeHighlighter', 'CollisionPolygon', 'CollisionPolygon2D', 'CollisionPolygon3D', 'CollisionShape',
+  'CollisionShape2D', 'CollisionShape3D', 'ColorPicker', 'ColorPickerButton', 'ColorRect', 'CompressedTexture2D', 'CompressedTexture3D', 'ConcavePolygonShape',
+  'ConcavePolygonShape2D', 'ConcavePolygonShape3D', 'ConeTwistJoint', 'ConeTwistJoint3D', 'ConfirmationDialog', 'Container', 'Control', 'ConvexPolygonShape',
+  'ConvexPolygonShape2D', 'ConvexPolygonShape3D', 'CubeMap', 'CubeMesh', 'CubemapArray', 'Curve', 'Curve2D', 'Curve3D',
+  'CurveTexture', 'CurveXYZTexture', 'CylinderMesh', 'CylinderShape', 'CylinderShape3D', 'DampedSpringJoint2D', 'Decal', 'DirectionalLight',
+  'DirectionalLight2D', 'DirectionalLight3D', 'DynamicFont', 'DynamicFontData', 'Edit', 'Environment', 'FileDialog', 'FlowContainer',
+  'FogMaterial', 'FogVolume', 'FontFile', 'FontVariation', 'GDNativeLibrary', 'GDScript', 'GIProbe', 'GIProbeData',
+  'GPUParticles2D', 'GPUParticles3D', 'GPUParticlesAttractorBox3D', 'GPUParticlesAttractorSphere3D', 'GPUParticlesAttractorVectorField3D', 'GPUParticlesCollisionBox3D', 'GPUParticlesCollisionHeightField3D', 'GPUParticlesCollisionSDF3D',
+  'GPUParticlesCollisionSphere3D', 'Generic6DOFJoint', 'Generic6DOFJoint3D', 'Gradient', 'GradientTexture', 'GradientTexture1D', 'GradientTexture2D', 'GraphEdit',
+  'GraphElement', 'GraphFrame', 'GraphNode', 'GridContainer', 'GridMap', 'GrooveJoint2D', 'GuiVisibilityHidden', 'GuiVisibilityVisible',
+  'GuiVisibilityXray', 'HBoxContainer', 'HFlowContainer', 'HScrollBar', 'HSeparator', 'HSlider', 'HSplitContainer', 'HTTPRequest',
+  'HeightMapShape', 'HeightMapShape3D', 'Help', 'HelpSearch', 'HingeJoint', 'HingeJoint3D', 'ImageTexture', 'ImageTexture3D',
+  'ImmediateGeometry', 'ImmediateMesh', 'ImportCheck', 'ImportFail', 'ImporterMeshInstance3D', 'Info', 'InterpolatedCamera', 'ItemList',
+  'KinematicBody', 'LOD', 'Label', 'Label3D', 'LabelSettings', 'LargeTexture', 'LightOccluder2D', 'LightmapGI',
+  'LightmapGIData', 'LightmapProbe', 'Line2D', 'LineEdit', 'LinkButton', 'Listener', 'Lock', 'MarginContainer',
+  'Marker2D', 'Marker3D', 'MenuBar', 'MenuButton', 'MergeGroup', 'MeshInstance', 'MeshInstance2D', 'MeshInstance3D',
+  'MeshLibrary', 'MeshTexture', 'MultiMesh', 'MultiMeshInstance', 'MultiMeshInstance2D', 'MultiMeshInstance3D', 'Navigation', 'NavigationAgent',
+  'NavigationAgent2D', 'NavigationAgent3D', 'NavigationLink2D', 'NavigationLink3D', 'NavigationMesh', 'NavigationMeshInstance', 'NavigationObstacle', 'NavigationObstacle2D',
+  'NavigationObstacle3D', 'NavigationPolygon', 'NavigationPolygonInstance', 'NavigationRegion2D', 'NavigationRegion3D', 'NinePatchRect', 'Node', 'Node2D',
+  'Node3D', 'NoiseTexture', 'NoiseTexture2D', 'NoiseTexture3D', 'ORMMaterial3D', 'ORMSpatialMaterial', 'Object', 'Occluder',
+  'OccluderInstance3D', 'OccluderPolygon2D', 'OccluderShapePolygon', 'OccluderShapeSphere', 'OmniLight', 'OmniLight3D', 'OptionButton', 'PackedScene',
+  'Panel', 'PanelContainer', 'PanoramaSky', 'PanoramaSkyMaterial', 'Parallax2D', 'ParallaxBackground', 'ParallaxLayer', 'ParticleProcessMaterial',
+  'Particles', 'ParticlesMaterial', 'Path', 'Path2D', 'Path3D', 'PathFollow', 'PathFollow2D', 'PathFollow3D',
+  'PhysicalBone', 'PhysicalBone2D', 'PhysicalBone3D', 'PhysicalBoneSimulator3D', 'PhysicalSkyMaterial', 'PhysicsMaterial', 'PinJoint', 'PinJoint2D',
+  'PinJoint3D', 'PlaceholderMaterial', 'PlaceholderMesh', 'PlaceholderTexture2D', 'PlaceholderTexture3D', 'PlaneMesh', 'PlaneShape', 'Play',
+  'PlayBackwards', 'PlayCustom', 'PlayRemote', 'PlayScene', 'PlayStart', 'PointLight2D', 'PointMesh', 'Polygon2D',
+  'PolygonOccluder3D', 'PolygonPathFinder', 'Popup', 'PopupDialog', 'PopupMenu', 'PopupPanel', 'PortableCompressedTexture2D', 'Portal',
+  'PrismMesh', 'ProceduralSky', 'ProceduralSkyMaterial', 'Progress1', 'Progress2', 'Progress3', 'Progress4', 'Progress5',
+  'Progress6', 'Progress7', 'Progress8', 'ProgressBar', 'ProximityGroup', 'ProxyTexture', 'QuadMesh', 'QuadOccluder3D',
+  'RayCast', 'RayCast2D', 'RayCast3D', 'RayShape', 'RectangleShape2D', 'ReferenceRect', 'ReflectionProbe', 'RegEx',
+  'RegExMatch', 'Reload', 'ReloadSmall', 'RemoteTransform', 'RemoteTransform2D', 'RemoteTransform3D', 'ResourcePreloader', 'RibbonTrailMesh',
+  'RichTextEffect', 'RichTextLabel', 'RigidBody', 'RigidBody2D', 'RigidBody3D', 'Room', 'RoomGroup', 'RoomManager',
+  'RootMotionView', 'Script', 'ScriptCreate', 'ScriptRemove', 'ScrollContainer', 'Search', 'SegmentShape2D', 'SeparationRayShape2D',
+  'SeparationRayShape3D', 'Shader', 'ShaderGlobalsOverride', 'ShaderInclude', 'ShaderMaterial', 'ShapeCast', 'ShapeCast2D', 'ShapeCast3D',
+  'ShortCut', 'Signals', 'SignalsAndGroups', 'Skeleton', 'Skeleton2D', 'Skeleton3D', 'SkeletonIK', 'SkeletonIK3D',
+  'Sky', 'SliderJoint', 'SliderJoint3D', 'Slot', 'SoftBody', 'SoftBody3D', 'Spatial', 'SpatialMaterial',
+  'SphereMesh', 'SphereOccluder3D', 'SphereShape', 'SphereShape3D', 'SpinBox', 'SplitContainer', 'SpotLight', 'SpotLight3D',
+  'SpringArm', 'SpringArm3D', 'Sprite', 'Sprite2D', 'Sprite3D', 'SpriteFrames', 'StandardMaterial3D', 'StaticBody',
+  'StaticBody2D', 'StaticBody3D', 'StatusIndicator', 'Stop', 'StreamTexture', 'StyleBoxEmpty', 'StyleBoxFlat', 'StyleBoxLine',
+  'StyleBoxTexture', 'SubViewport', 'SubViewportContainer', 'SyntaxHighlighter', 'SystemFont', 'TabBar', 'TabContainer', 'Tabs',
+  'TextEdit', 'TextFile', 'TextMesh', 'Texture2DArray', 'Texture3D', 'TextureArray', 'TextureButton', 'TextureProgress',
+  'TextureProgressBar', 'TextureRect', 'Theme', 'TileMap', 'TileMapLayer', 'TileSet', 'Timer', 'ToolButton',
+  'TorusMesh', 'TouchScreenButton', 'Tree', 'TubeTrailMesh', 'Tween', 'Unlock', 'VBoxContainer', 'VFlowContainer',
+  'VScrollBar', 'VSeparator', 'VSlider', 'VSplitContainer', 'VehicleBody', 'VehicleBody3D', 'VehicleWheel', 'VehicleWheel3D',
+  'VideoPlayer', 'VideoStreamPlayer', 'Viewport', 'ViewportContainer', 'ViewportTexture', 'VisibilityEnabler', 'VisibilityNotifier', 'VisibleOnScreenEnabler2D',
+  'VisibleOnScreenEnabler3D', 'VisibleOnScreenNotifier2D', 'VisibleOnScreenNotifier3D', 'VisualScript', 'VisualScriptComment', 'VisualScriptExpression', 'VisualShader', 'VisualShaderNodeBooleanUniform',
+  'VisualShaderNodeColorConstant', 'VisualShaderNodeColorOp', 'VisualShaderNodeColorUniform', 'VisualShaderNodeComment', 'VisualShaderNodeCubeMap', 'VisualShaderNodeCubeMapUniform', 'VisualShaderNodeCurveTexture', 'VisualShaderNodeCurveXYZTexture',
+  'VisualShaderNodeExpression', 'VisualShaderNodeFloatFunc', 'VisualShaderNodeFloatOp', 'VisualShaderNodeGlobalExpression', 'VisualShaderNodeInput', 'VisualShaderNodeIntFunc', 'VisualShaderNodeIntOp', 'VisualShaderNodeScalarFunc',
+  'VisualShaderNodeScalarOp', 'VisualShaderNodeScalarUniform', 'VisualShaderNodeTextureUniform', 'VisualShaderNodeTextureUniformTriplanar', 'VisualShaderNodeTransformCompose', 'VisualShaderNodeTransformDecompose', 'VisualShaderNodeTransformUniform', 'VisualShaderNodeTransformVecMult',
+  'VisualShaderNodeVec3Uniform', 'VisualShaderNodeVectorCompose', 'VisualShaderNodeVectorDecompose', 'VisualShaderNodeVectorDistance', 'VisualShaderNodeVectorFunc', 'VisualShaderNodeVectorLen', 'VoxelGI', 'VoxelGIData',
+  'Window', 'WindowDialog', 'World', 'World2D', 'World3D', 'WorldBoundaryShape2D', 'WorldBoundaryShape3D', 'WorldEnvironment',
+  'XRAnchor3D', 'XRBodyModifier3D', 'XRCamera3D', 'XRController3D', 'XRFaceModifier3D', 'XRHandModifier3D', 'XRNode3D', 'XROrigin3D',
+  'YSort', 'Zoom', 'ZoomLess', 'ZoomMore', 'ZoomReset',
+]);

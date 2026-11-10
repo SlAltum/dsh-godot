@@ -38,7 +38,7 @@ import { DebugController, type StopInfo } from './controller.ts'
 import { structuredDebugView, type DebugView, type StructuredDebugInput } from './debug-view.ts'
 import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
 import { renderSnapshot } from './snapshot.ts'
-import { parseSceneTree, renderSceneTree } from './scene-tree.ts'
+import { parseSceneTree, toSceneViewNodes } from './scene-tree.ts'
 import { GodotError } from './error.ts'
 import { RENDER_OPTIONS, toResPath, probeVersion, type DebugBreakpoint, type DebugStop } from './tool.ts'
 import { verifyGodotVersion, type SubprocessLike } from '@deepseek-ai/dsh-lsp-godot'
@@ -324,10 +324,10 @@ export class DebugSession {
           )
           const parsed = parseSceneTree(Array.isArray(resp[2]) ? resp[2] : undefined, this.boundsMaxTreeNodes())
           if (parsed.root !== null) {
-            const { lines, truncated } = renderSceneTree(parsed.root, { maxNodes: this.boundsMaxTreeNodes(), maxLineLength: 200 })
-            input.sceneTrees = [{ stopIndex: 0, lines }]
+            const view = toSceneViewNodes(parsed.root, this.boundsMaxTreeNodes())
+            input.sceneTrees = [{ stopIndex: 0, nodes: view.nodes }]
             input.sceneTreeCount = 1
-            if (truncated || parsed.truncated) input.sceneTreeTruncated = true
+            if (parsed.truncated || view.truncated) input.sceneTreeTruncated = true
           } else if (parsed.truncated) {
             input.sceneTreeTruncated = true
           }

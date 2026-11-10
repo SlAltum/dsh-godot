@@ -11,7 +11,7 @@ The **Godot browser surface**: a settings card on the Godot bundle's Plugins pag
 
 Source entry: [`src/client/index.ts`](src/client/index.ts) — settings card and watch panel registration.
 
-This package is the **persistent** replacement for the settings card that the dynamic UI plugin (`docs/ui-plugin-godot.js`) used to provide: as a `dsh.client` row of the Godot bundle it survives dsh web process restarts, which a process-memory dynamic plugin cannot. The dynamic plugin's debug tool cards (keyed `godot_debug` / `godot_debug_session`) remain out of scope; only the settings card moved here.
+This package is the browser half of the Godot bundle: the settings card on the bundle page and the sandbox watch panel. Both are `dsh.client` rows of the bundle, so they keep their state across `dsh web` restarts. The debug tool cards (keyed `godot_debug` / `godot_debug_session`) belong to the dynamic UI plugin (`docs/ui-plugin-godot.js`).
 
 The settings card and the watch ball use the Godot logo. The bundled `src/client/assets/godot-logo.svg` is the unmodified icon from `godot-vscode-plugin`'s `resources/godot_icon.svg`; the Godot logo is © Godot Foundation and licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
@@ -57,7 +57,7 @@ The `/api/godot` endpoints are guarded on the host: loopback plus same-site (`Se
 Install the optional [`dsh-godot-bundle`](../bundle-godot/README.md); it inserts this row together with `tool-godot` and `tool-godot-ego`:
 
 ```bash
-dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-godot
+dsh plugin install link:<path-to-this-repo>/bundle-godot
 ```
 
 A custom composition may add the row directly:
@@ -93,6 +93,6 @@ None; this package neither assembles nor sends a provider request.
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-This package is the persistent replacement for the settings card the dynamic UI plugin used to mount: as a `dsh.client` row it survives `dsh web` restarts. The logo ships from `src/client/assets`, so the manifest must keep the `./assets/*` export and `lib/assets` in `files` or the client bundle refuses to resolve it.
+It builds with its own `tsdown.config.ts` (`pnpm build` → `lib/index.js` + `lib/client.js`), and both artifacts are committed because the bundle installs straight from Git with no build step. `lib/client.js` registers under the package name and requests only the client baseline from the module table; the logo inlines as a data URL, so the package ships no asset directory.
 
 </details>

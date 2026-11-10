@@ -1,34 +1,11 @@
 {
-  "extends": "../../../tsconfig.base.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "lib/types"
+    "outDir": "lib",
+    "declarationDir": "lib/types"
   },
-  "include": ["src"],
-  "references": [
-    {
-      "path": "../../../vendor/cosmokit"
-    },
-    {
-      "path": "../../../vendor/cordis"
-    },
-    {
-      "path": "../../../vendor/schemastery"
-    },
-    {
-      "path": "../../util/timeout"
-    },
-    {
-      "path": "../../fs/fs"
-    },
-    {
-      "path": "../../lsp/lsp"
-    },
-    {
-      "path": "../../lsp/lsp-stdio"
-    },
-    {
-      "path": "../../subprocess/subprocess"
-    }
+  "include": [
+    "src"
   ]
 }

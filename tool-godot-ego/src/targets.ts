@@ -25,6 +25,10 @@ export interface SceneTreeNode {
   readonly className: string
   readonly id: string
   readonly scene: string
+  /** `unique_name_in_owner`: the same `%` the scene preview draws. */
+  readonly unique: boolean
+  /** The node's script path when it has one (the scene preview's script glyph). */
+  readonly script: string
   readonly children: readonly SceneTreeNode[]
 }
 
@@ -55,7 +59,7 @@ export interface TargetFilter {
  * @param filter - the substrings to match.
  * @returns the matching targets, in input order.
  */
-export function filterTargets(targets: readonly TargetEntry[], filter: TargetFilter): TargetEntry[] {
+function filterTargets(targets: readonly TargetEntry[], filter: TargetFilter): TargetEntry[] {
   const contains = (value: string, needle: string | undefined): boolean =>
     needle === undefined || needle === '' || value.toLowerCase().includes(needle.toLowerCase())
   return targets.filter(target =>
@@ -112,6 +116,8 @@ export function parseTree(raw: unknown): SceneTreeNode | null {
     className: typeof record.class === 'string' ? record.class : '',
     id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
     scene: typeof record.scene === 'string' ? record.scene : '',
+    unique: record.unique === true,
+    script: typeof record.script === 'string' ? record.script : '',
     children,
   }
 }

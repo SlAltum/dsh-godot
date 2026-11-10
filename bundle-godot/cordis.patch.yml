@@ -18,7 +18,6 @@
     - id: tool-godot-ego
       name: '@deepseek-ai/dsh-tool-godot-ego'
 
-    # The browser half: settings card on this bundle's page and the sandbox
-    # watch panel. The module loader scans this row's package for `dsh.client`.
     - id: ui-godot
       name: '@deepseek-ai/dsh-ui-godot'
+

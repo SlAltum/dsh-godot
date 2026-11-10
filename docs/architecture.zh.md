@@ -27,9 +27,31 @@ Godot 是可选能力，不属于 harness 核心：`dsh-base` 与 `dsh-web-app` 
 
 **LSP 导航（lsp-godot）。** provider 通过 TCP 与 Godot 内置语言服务器说 JSON-RPC。查询流程：规范化工作区、读取源码（有界）、确保连接（attach 已运行编辑器的端口，或自起 provider 持有的无头编辑器）、能力协商、transient `didOpen`、发送操作请求、归一化响应（Godot URI + hover 清洗）、`didClose`。连接按 workspace 池化并带序列化队列；中止的查询意味着断开（Godot 忽略 `$/cancelRequest`），下次查询重建连接。`changeWorkspace` 通知与查询工作区不匹配时，以 `LSP_UNAVAILABLE` 使查询失败。
 
-**调试运行（tool-godot-debug）。** harness 侧是 TCP **服务器**：预选端口，spawn `godot --headless --path <root> --remote-debug tcp://127.0.0.1:<port>`，游戏连入。帧为 `[u32 LE 长度][单个 variant 编码数组]`，数组为 `[command, threadId, params]`（Godot ≥ 4.2）。运行管线：等待 `set_pid`（threadId 就绪），然后循环停顿 → 快照 → 继续直至 `maxStops`：每次 `debug_enter` 请求堆栈转储与帧变量、渲染（有界深度/大小）、再 `continue`。`debug_exit` 表示离开暂停状态而非游戏退出；无 `--quit-after` 的无头游戏会持续运行，因此工具终止进程树并等待（`kill → await done`）。每次取消、超时或协议失败都只结束调用一次。
+**调试运行（tool-godot-debug）。** harness 侧是 TCP **服务器**：预选端口，spawn `godot --headless --path <root> --remote-debug tcp://127.0.0.1:<port>`，游戏连入。帧为 `[u32 LE 长度][单个 variant 编码数组]`，数组为 `[command, threadId, params]`（Godot ≥ 4.2）。运行管线：等待 `set_pid`（threadId 就绪），然后循环停顿 → 快照 → 继续直至 `maxStops`：每次 `debug_enter` 请求堆栈转储与帧变量、渲染（有界深度/大小）、再 `continue`。`debug_exit` 表示离开暂停状态而非游戏退出；无 `--quit-after` 的无头游戏会持续运行，因此工具终止进程树并等待（`kill → await done`）。每次取消、超时或协议失败都只结束调用一次。交互式会话（`godot_debug_session`）活过一次调用，由 `/api/godot/debug/*` 驱动——这是动态 UI 插件所用 `harness.handle` 桥的静态等价物。
 
 **可视化沙盒（tool-godot-ego）。** 宿主绑定 `127.0.0.1:0`，把 boot `SceneTree` 与桥接节点写入项目外的临时目录，再 spawn `godot --path <root> --script <boot.gd> --windowed`。临时主循环注入桥接后切到主场景；`godot_play` 传入 `scene` 时改读 `DSH_EGO_SCENE`。`project.godot` 与 `res://` 一个字节不动。桥接用环境变量给的端口与口令回连，保持 `process_mode = PROCESS_MODE_ALWAYS`（暂停的游戏仍应答），画面只在内存中取帧，`shotdiff` 在引擎内算指标，节点属性通过 `get_property_list` 读取，输入通过 `Viewport.push_input` 注入。一个 workspace 至多一个会话；dispose 关闭 socket、终止进程并删除临时脚本。`ui-godot` 浏览器半边注册 `shell.overlay` 观察球，轮询 `/api/godot/sessions`、拉 `/api/godot/view`，并把画面点击转发到 `/api/godot/input`。
+
+## 进程所有权与生命周期
+
+本仓库里每个 Godot 进程只有一个所有者，且所有者就是持有该进程流或 socket 的组件。
+
+| 资源 | 所有者 | 谁释放 | 落点 |
+|---|---|---|---|
+| 一次性运行（`godot_validate`、`godot_run_scene`、`godot_format`、`godot_editor_script`） | 那次工具调用 | 运行落定：退出、到期或取消都会终止进程树 | `tool-godot/src/godot-core.ts`（`runGodot`） |
+| LSP 连接（attach） | 该 workspace 的池条目 | 池关闭、对端断开或查询中止 | `lsp-godot/src/pool.ts` |
+| LSP 编辑器（spawn） | 创建它的那条连接 | 该连接关闭 | `lsp-godot/src/connect-mode.ts` |
+| 调试运行 | 那次工具调用；harness 是 TCP 服务端 | 调用落定或停靠预算用尽 | `tool-godot-debug/src/index.ts` |
+| 沙盒游戏会话 | 注册表里的 session 对象 | `godot_stop`、`restart: true`、插件 fiber 销毁，或强杀后的清扫 | `tool-godot-ego/src/session.ts`、`session-service.ts` |
+
+1. **所有者持句柄。** 不拥有进程的组件不持它的句柄、流或 socket，只向所有者索取结果。设置卡、观察窗与 `/api/godot` 三端点都是客户端：读会话列表、拉帧、转发点击，不拥有任何进程。attach 到已运行的编辑器或游戏同理——组件只拥有自己的 socket，进程归用户，关连接不杀它。
+2. **工具调用随进程结束。** 一次性运行不会活过调用：落定 → 终止进程树 → 等待退出。调用返回时子进程仍在跑，就是泄漏。
+3. **长驻进程随所有者结束，不随启动它的调用结束。** 沙盒游戏在 `godot_play` 返回后继续活着，直到 `godot_stop` 或插件 fiber 销毁。
+4. **拆卸是逆操作，顺序固定**：拒绝在途请求 → 关 socket → 关 listener → 终止进程 → 在宽限期内等它退出 → 删除临时产物。每一步幂等；某一步失败会被记录，其余步骤照跑。
+5. **一个 workspace 一个会话。** 注册表按 workspace 映射 session；并发 `ensure` 共用一次创建，`restart` 先拆再起。临时脚本放在项目之外，随创建它的会话一起删除。
+6. **取消终止进程树。** `exec.signal` 抵达 subprocess seam，协作超时与调用方取消都会杀掉进程及其子孙；Windows 上按创建时间身份校验后经 `taskkill /T` 发信号，复用的 pid 不会被误认成子进程。任何环节都不依赖子进程自己发现该停了。
+7. **会话状态是声明出来的，不是猜的。** `starting → ready`；`ready → lost` 发生在进程退出、socket 断开、行格式错误或 token/协议不匹配时；`disposed` 是终态，从任何状态都可到达。`lost` 会拒绝在途请求、给出 `lostReason`，且不会复活——下一次 `ensure` 建新会话。
+8. **所有者消失后不留活进程。** 所有者已不在的进程，要么被下一个需要该资源的组件认领，要么被终止；任何组件都找不到的进程是缺陷。每个沙盒会话在返回前写一条记录（pid、桥接端口、项目根、临时目录），dispose 时清掉；进程里第一次 `godot_play` 会清扫该目录——已死的游戏清掉遗留脚本，还活着且桥接仍应答的游戏被终止，pid 活着但端口无声的原样保留（pid 已被复用）。
+9. **预算按调用计算。** 每次一次性运行自带 deadline 与输出上限；沙盒自带导入、请求与终止宽限预算。宿主级上限只作用于一次性运行：`maxConcurrentRuns`（默认 4）最多同时放行这么多，其余排队，排队时间算进调用方自己的预算。沙盒会话仍按「一个 workspace 一个」有界。
 
 ## 协议事实
 
@@ -37,12 +59,6 @@ Godot 是可选能力，不属于 harness 核心：`dsh-base` 与 `dsh-web-app` 
 
 - **LSP**：`textDocumentSync` 为 `{ change: 1, openClose: true }`；`positionEncoding` 缺省 utf-16；项目不匹配时，`gdscript_client/changeWorkspace` 在 initialize 响应前通告；忽略 `$/cancelRequest`；hover 带行首 tab（旧版本还有 bbcode 残留）；URI 为 `%3A` 编码。
 - **调试器**：游戏连入；帧为单数组 variant（游戏拒绝平铺顶层 variant）；命令需要来自 `set_pid` 的 `threadId`；`debug_enter` 参数为 `[isUserBreakpoint, reason, true, 1]`（用户停顿 `reason === 'Breakpoint'`，脚本错误为错误描述）；`stack_dump` 行号 1-based；`output` 消息携带 `PackedStringArray`（类型 34）；`stack_frame_var` 有第五个 `className` 元素，源插件未使用。
-
-## 移植时修复的源插件 bug
-
-- `encode_String` 把 UTF-16 的 `str.length` 当作字节长度——非 ASCII 路径损坏。已改用 `Buffer.byteLength`；测试含中文 `res://` 路径。
-- `encode_variant` 对 `undefined` 写零字节而 `size_variant` 预留 4 字节——尺寸不匹配的帧。编码器现在对 `undefined` 抛错。
-- `PACKED_FLOAT64_ARRAY` 用 32 位读取器解码。该分支现在按 64 位读取。
 
 ## 测试
 

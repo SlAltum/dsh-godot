@@ -7,7 +7,7 @@ kind: "package-group"
 
 [English](README.md) | 中文
 
-面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 智能体框架的 Godot Engine 插件族：无头项目工具、GDScript 语义导航、脚本化调试器、运行中游戏的可视化沙盒。作为独立仓库维护；各包在 harness monorepo workspace 内构建。
+面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 智能体框架的 Godot Engine 插件族：无头项目工具、GDScript 语义导航、脚本化调试器、运行中游戏的可视化沙盒。本仓库自包含：自带 workspace 声明，从 npm 已发布的 `@deepseek-ai/dsh-*` 解析依赖，无需 harness monorepo 即可构建。
 
 ## 概述
 
@@ -34,7 +34,7 @@ kind: "package-group"
 
 | 包 | 角色 | DSH 接缝 |
 |---|---|---|
-| `bundle-godot/` | **可选能力 bundle**：一次安装下面五个包；Godot 不在 `dsh-base` / `dsh-web-app` 里 | `dsh.bundle.patch` |
+| `bundle-godot/` | **可选能力 bundle**：一次安装下面四个宿主包；Godot 不在 `dsh-base` / `dsh-web-app` 里 | `dsh.bundle.patch` |
 | `tool-godot/` | 无头 CLI 工具：`godot_validate`、`godot_run_scene`、`godot_format`、`godot_inspect`、`godot_editor_script` | `ctx.tools` |
 | `lsp-godot/` | GDScript 导航（`goToDefinition` / `findReferences` / `hover`），通过 Godot 内置 TCP 语言服务器，attach 或 spawn | `ctx.lsp` |
 | `tool-godot-debug/` | `godot_debug`：一次有界的脚本化调试运行——断点、无头启动、逐步栈 / 变量快照、结构化报告 | `ctx.tools` |
@@ -54,10 +54,13 @@ kind: "package-group"
 <a id="installation"></a>
 ## 安装
 
-Godot 是**可选能力**：`dsh-base` 与 `dsh-web-app` 都不挂载这些包。推荐用能力 bundle，一次插入五个行，并在插件页的**已安装插件**下出现：
+Godot 是**可选能力**：`dsh-base` 与 `dsh-web-app` 都不挂载这些包。推荐用能力 bundle，一次插入四个行，并在插件页的**已安装插件**下出现：
 
 ```bash
-dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-godot
+git clone https://github.com/SlAltum/dsh-godot.git
+cd dsh-godot
+pnpm install && pnpm build
+dsh plugin install link:<dsh-godot 的绝对路径>/bundle-godot
 ```
 
 安装后重启 `dsh web`。bundle 页面带 `tool-godot` 设置表单，各行保留“配置”一节的默认值。只需要部分行的 profile 可以改为逐包插入，跳过 bundle。
@@ -128,14 +131,16 @@ export async function mount(ctx: Context): Promise<void> {
 <a id="building-from-source"></a>
 ## 从源码构建
 
-- 各包依赖 `@deepseek-ai/dsh-*` workspace 包，并针对 harness monorepo workspace 构建与测试（Node.js ^22.19 或 >= 24，pnpm）。
-- 完全独立构建时，将这些依赖切换到已发布的 npm 版本（所需包均已在 npm 公开），并自备测试 / lint / tsconfig 配置。
+- 依赖：Node.js ^22.19 或 >= 24、pnpm 11+；工具本身另需 PATH 上有 Godot 4.2+。
+- `pnpm install` 从 npm 解析全部 `@deepseek-ai/dsh-*` 依赖（`alpha` dist-tag 与本仓库对齐：`0.2.2-alpha.3`）。`pnpm build` 用 `tsc` 把各包 `src/` 编译到 `lib/`，没有其他构建步骤。
+- `ui-godot/`（浏览器设置卡与沙盒观看面板）**不参与**本构建：它的客户端 bundle 依赖 harness monorepo 的客户端构建管线（`packages/client/tsdown.client.ts`，一千余行 CSS/资源/React 接线）。四个宿主包与 bundle 不依赖它即可工作；`godot_see` 直接返回帧到对话里，观看面板属便利性而非能力。接入该管线列为后续工作。
 
 <a id="repository-layout"></a>
 ## 仓库结构
 
 - `bundle-godot/` —— 可选能力 bundle（行、图标、安装说明）。
-- `tool-godot/`、`lsp-godot/`、`tool-godot-debug/`、`tool-godot-ego/`、`ui-godot/` —— 上述五个包（模块地图见 [architecture](docs/architecture.md)）。
+- `tool-godot/`、`lsp-godot/`、`tool-godot-debug/`、`tool-godot-ego/` —— 上述四个宿主包（模块地图见 [architecture](docs/architecture.md)）。
+- `ui-godot/` —— 浏览器面；仅源码，不参与 `pnpm build`（见[从源码构建](#building-from-source)）。
 - `docs/` —— 架构文档。
 
 <a id="testing"></a>
@@ -149,7 +154,7 @@ export async function mount(ctx: Context): Promise<void> {
 - **Node.js**：24（v24.19.0）
 - **DSH**：0.1.0-rc.5（harness monorepo workspace）
 
-在 monorepo 根目录运行单元套件：`pnpm exec vitest run packages/godot/lsp-godot packages/godot/tool-godot-debug`。真实 Godot 集成套件（如调试器冒烟）经 `GODOT_EXE` 环境变量按需启用。
+本仓库尚未接入单元套件：它们仍导入 harness 的测试工具包，而那些包未发布。等发布后移植；在此之前以 `pnpm build` 加真实 Godot 冒烟作为验证闸门。真实 Godot 集成套件（如调试器冒烟）经 `GODOT_EXE` 环境变量按需启用。
 
 ## 已知限制与后续工作
 

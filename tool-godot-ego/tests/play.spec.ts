@@ -113,6 +113,7 @@ describe('buildSpawnSpec', () => {
       DSH_EGO_BRIDGE: 'C:/tmp/bridge.gd',
       DSH_EGO_SCENE: '',
       DSH_EGO_ALLOW_EVAL: '0',
+      DSH_EGO_OFFSCREEN: '0',
     })
   })
 
@@ -120,6 +121,21 @@ describe('buildSpawnSpec', () => {
     const spec = buildSpawnSpec({ ...base, scene: 'res://levels/test.tscn' })
     expect(spec.env?.DSH_EGO_SCENE).toBe('res://levels/test.tscn')
     expect(spec.argv.join(' ')).not.toContain('res://levels/test.tscn')
+  })
+
+  it('tells the bridge when the window is off-screen, so it leaves the position alone', () => {
+    const onScreen = buildSpawnSpec({
+      executable: { executable: 'godot', args: [] },
+      projectRoot: '/proj', bootPath: '/tmp/boot.gd', bridgePath: '/tmp/bridge.gd',
+      port: 1234, token: 't', allowEval: false, offscreen: false, maxFps: 60, fixedFps: 0, graceMs: 1000,
+    })
+    expect(onScreen.env?.DSH_EGO_OFFSCREEN).toBe('0')
+    const offScreen = buildSpawnSpec({
+      executable: { executable: 'godot', args: [] },
+      projectRoot: '/proj', bootPath: '/tmp/boot.gd', bridgePath: '/tmp/bridge.gd',
+      port: 1234, token: 't', allowEval: false, offscreen: true, maxFps: 60, fixedFps: 0, graceMs: 1000,
+    })
+    expect(offScreen.env?.DSH_EGO_OFFSCREEN).toBe('1')
   })
 
   it('adds the off-screen position and prefers fixed fps', () => {
@@ -259,7 +275,8 @@ describe('startSession', () => {
         },
       },
     } as unknown as Context
-    const config = resolveConfig({})
+    const registryDir = join(root, '.registry')
+    const config = resolveConfig({ stateDir: registryDir })
     const handle = await createPlayFactory(ctx, config)(root, { offscreen: true, maxFps: 30, scene: 'res://levels/test.tscn' })
 
     expect(handle.imported).toBe(false)
@@ -275,9 +292,14 @@ describe('startSession', () => {
     await expect(handle.request('ping')).resolves.toMatchObject({ kind: 'ok' })
     expect(handle.logs?.()).toEqual({ stdout: '', stderr: '', nextOffset: 0 })
 
+    // The record is what a restarted host finds, and stop is what removes it.
+    const recordPath = join(registryDir, `${handle.sessionId}.json`)
+    expect(existsSync(recordPath)).toBe(true)
+
     const stopped = await handle.stop?.()
     expect(stopped).toEqual({ exitCode: null, signal: null })
     expect(existsSync(scriptDir)).toBe(false)
+    expect(existsSync(recordPath)).toBe(false)
     await handle.dispose()
     expect(existsSync(scriptDir)).toBe(false)
     expect(bridge).toBeDefined()
@@ -296,7 +318,7 @@ describe('startSession', () => {
         },
       },
     } as unknown as Context
-    await expect(startSession(ctx, resolveConfig({ requestTimeoutMs: 100 }), root, {}))
+    await expect(startSession(ctx, resolveConfig({ requestTimeoutMs: 100, stateDir: join(root, '.registry') }), root, {}))
       .rejects.toMatchObject({ code: 'GODOT_EGO_REJECTED' })
     expect(scripts.length).toBe(1)
     expect(existsSync(scripts[0] as string)).toBe(false)
@@ -309,7 +331,7 @@ describe('startSession', () => {
         spawn: () => { throw new Error('spawn godot ENOENT') },
       },
     } as unknown as Context
-    const attempt = startSession(ctx, resolveConfig({ executable: 'C:\\Godot\\godot.exe', requestTimeoutMs: 100 }), root, {})
+    const attempt = startSession(ctx, resolveConfig({ executable: 'C:\\Godot\\godot.exe', requestTimeoutMs: 100, stateDir: join(root, '.registry') }), root, {})
     await expect(attempt).rejects.toMatchObject({ code: 'GODOT_EGO_UNAVAILABLE' })
     await expect(attempt).rejects.toThrow('Tried "C:\\Godot\\godot.exe"')
   })

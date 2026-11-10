@@ -35,6 +35,7 @@ export async function mount(ctx: Context): Promise<void> {
 - [Settings](#settings)
 - [Config](#config)
 - [工具](#tool)
+- [会话面板端点](#session-panel)
 - [错误](#errors)
 - [模型体验](#model-experience)
 - [已知限制与延后工作](#known-limitations-and-deferred-work)
@@ -59,8 +60,8 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
-| `executable` | `godot` | godot 可执行文件路径或 PATH 命令名。 |
-| `executableArgs` | `[]` | 可执行文件后插入的固定 argv（部署包装器）。 |
+| `executable` | `''` | godot 可执行文件路径或 PATH 命令名；留空则继承 `tool-godot` 的实时值（设置卡仍是唯一的配置入口），否则用命令 `godot`。 |
+| `executableArgs` | `[]` | 可执行文件后插入的固定 argv（部署包装器）；留空继承 `tool-godot` 的值。 |
 | `debugPort` | `0` | 游戏连入的 remote-debug 端口；`0` = 自动预选空闲端口（默认）。固定端口适合需要放行入站规则的部署。 |
 | `maxMessageBytes` | `16777216` | 接受的最大单条协议帧消息。 |
 | `maxOutputBytes` | `1048576` | 单次运行保留的游戏 `output`/`error` 内容字节上限；超出后结果标记 `outputTruncated`。 |
@@ -89,6 +90,21 @@ Godot 4 调试协议是**自定义二进制协议**（非 DAP）：本侧绑定�
 ### 卡片视图
 
 工具的 `presentationMeta` 携带可回放卡片视图：紧凑的 `DebugMeta`（停顿位置 + 计数）外加带版本、JSON-safe 的 `view`——逐停顿帧列表、首个有帧停顿的渲染变量行、展开树、编辑结果、逐停顿场景树与有界输出/错误尾部。随附动态 UI 插件（`docs/ui-plugin-godot.js`）将其渲染为可折叠的逐停顿分区与摘要 chips 行；view 缺失或损坏时卡片回退整段文本报告。视图与文本保持体积对等：变量行只渲染在首个有帧停顿，256 KiB 序列化预算先裁变量行、再裁场景树行，并置 `viewTruncated` 标记。
+
+
+<a id="session-panel"></a>
+## 会话面板端点
+
+`godot_debug_session` 让会话跨调用存活，Web 面板通过 HTTP 驱动同一个会话：动态 UI 插件用的 `harness.handle` RPC 桥对静态客户端包不可用，因此会话在 `/api/godot/debug` 下暴露四个端点。守卫与沙盒的 `/api/godot/*` 一致：loopback 加同站（或固定令牌）、JSON 报文、跨边界的只有会话 id。
+
+| 端点 | 方法 | 报文 | 应答 |
+|---|---|---|---|
+| `/api/godot/debug/start` | POST | `{ mode?, port?, projectRoot, executable?, scene?, args?, singleThreadedScene? }` | `{ ok, session }`；已有会话时 `409` |
+| `/api/godot/debug/stop` | POST | `{ sessionId }` | `{ ok, stopped }` |
+| `/api/godot/debug/poll` | GET | `?session=<id>` | `{ ok, snapshot }`；未知 id `404` |
+| `/api/godot/debug/command` | POST | `{ sessionId, request }` | `{ ok, result }`；未知命令 `400` |
+
+路由只在挂了 web server 的部署里注册；无头部署保留全部工具，只是没有面板。
 
 <a id="errors"></a>
 ## 错误

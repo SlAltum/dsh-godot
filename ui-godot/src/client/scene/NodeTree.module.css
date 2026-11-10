@@ -1,0 +1,155 @@
+/* One scene tree: rows, icons and the editor's marks. */
+
+.tree {
+  margin: 0;
+  padding: 8px 4px 8px 8px;
+  list-style: none;
+  /* A row ellipsises its own text; the tree must not scroll sideways for it. */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.children {
+  margin: 0;
+  padding-left: 11px;
+  list-style: none;
+}
+
+.node {
+  margin: 1px 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: 4px;
+  padding: 1px 4px;
+  min-width: 0;
+}
+
+/* Selection draws a ring, not a fill: the fill channel reports captured state
+   (the row's own properties are in this run's sample), so the two never compete. */
+.rowSelected {
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary);
+}
+
+/* A row whose properties the caller captured: the same green a diff addition uses,
+   at 8% so it reads as a state rather than a highlight. */
+.rowCaptured {
+  background: var(--dsw-static-green-500-a08);
+}
+
+.rowCaptured.rowSelected {
+  background: var(--dsw-static-green-500-a12);
+}
+
+.twisty,
+.twistySpacer {
+  width: 14px;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* The name keeps its width; the class text is what gives way when the pane is
+   narrow, so a row never reads as `Cell_00…`. */
+.name {
+  flex: 0 1 auto;
+  min-width: 8ch;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  align-self: center;
+}
+
+/* A class outside the icon set keeps the row aligned without inventing a mark. */
+.iconSpacer {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Icons are masks: the file supplies the shape, the row supplies the colour,
+   so one packaged set reads correctly in either theme. */
+.icon,
+.badgeIcon {
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+/* The script and inherited-scene glyphs ride beside the class icon at a
+   smaller size, reading as attributes of the node rather than of the class. */
+.badgeIcon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  align-self: center;
+  background-color: var(--dsw-alias-label-tertiary);
+}
+
+.icon {
+  background-color: var(--dsw-alias-label-secondary);
+}
+
+.type {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Marks sit in a right-aligned block, the way the Godot editor's Scene dock
+   places them before its visibility toggle: `%` for a unique name, then the
+   script glyph for a script. VSCode had to spell the script mark as the letter
+   `S` because a file-decoration badge holds one character; a tree can draw the
+   icon instead. */
+.marks {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.uniqueMark {
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.badge {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  flex: none;
+}
+
+.line {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  flex: none;
+  min-width: 18px;
+  text-align: right;
+}

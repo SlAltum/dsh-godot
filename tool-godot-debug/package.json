@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-godot-debug",
-  "description": "Model-facing Godot debug tool (godot_debug): one bounded scripted debug run — CLI breakpoints, headless launch over --remote-debug, per-stop stack/variable snapshots, auto-continue, structured report",
+  "description": "Model-facing Godot debug tool (godot_debug): one bounded scripted debug run \u2014 CLI breakpoints, headless launch over --remote-debug, per-stop stack/variable snapshots, auto-continue, structured report",
   "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
@@ -27,25 +27,33 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@deepseek-ai/dsh-util-values": "^0.2.2-alpha.3",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-llm": "^0.2.2-alpha.3",
     "@deepseek-ai/dsh-lsp-godot": "workspace:^",
-    "@deepseek-ai/dsh-subprocess": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@deepseek-ai/dsh-subprocess": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-timeout": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-tool-godot": "workspace:^",
+    "@deepseek-ai/dsh-tools": "^0.2.2-alpha.3"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-llm": "^0.2.2-alpha.3",
     "@deepseek-ai/dsh-lsp-godot": "workspace:^",
-    "@deepseek-ai/dsh-subprocess": "workspace:^",
-    "@deepseek-ai/dsh-subprocess-local": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@deepseek-ai/dsh-subprocess": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-subprocess-local": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-timeout": "^0.2.2-alpha.3",
+    "@deepseek-ai/dsh-tool-call-timeout-policy": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tool-executor-native": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tool-godot": "workspace:^",
+    "@deepseek-ai/dsh-tools": "^0.2.2-alpha.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
   }
 }

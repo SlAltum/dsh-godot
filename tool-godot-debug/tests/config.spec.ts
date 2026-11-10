@@ -26,7 +26,7 @@ function expectConfigRejected(input: object, message: string | RegExp): void {
 describe('Config defaults', () => {
   it('fills every field with the documented default', () => {
     const c = resolve({})
-    expect(c.executable).toBe('godot')
+    expect(c.executable).toBe('')
     expect(c.executableArgs).toEqual([])
     expect(c.debugPort).toBe(0)
     expect(c.maxMessageBytes).toBe(16_000_000)

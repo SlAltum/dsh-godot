@@ -9,7 +9,8 @@ This charter defines two uses of the embedded Gomoku fixture: a fast agent self-
 - Board: 15 × 15, columns A–O left to right, rows 1–15 top to bottom
 - Cell name: `Cell_<row>_<col>`, zero-based; for example H8 is `Cell_07_07` and L8 is `Cell_07_11`
 - Black is `1`, White is `2`, empty is `0`
-- Every intersection is a named Button; `New game` sits in the actions row above the board
+- Every intersection is a named Button; `New game` sits in the `Sidebar` group beside the board
+- Scene hierarchy: `Main` → `Background`, `Header`, `Board` (`BoardView` + `BoardHits`), `Sidebar`, `Footer`; the nodes the script reaches carry unique names, so `main.gd` binds them as `%BoardView`, `%StatusName`, `%NewGame` rather than by path
 
 ## Preconditions
 
@@ -40,14 +41,14 @@ godot_find(name: "Cell_07_07")
 godot_find(name: "NewGame")
 ```
 
-Pass: the tree includes `BoardView` and `BoardHits`, `godot_find` returns the H8 cell path under `Main/BoardHits`, and `NewGame` is discoverable before the 200-target list is exhausted.
+Pass: the tree includes `BoardView` and `BoardHits`, `godot_find` returns the H8 cell path under `Main/Board/BoardHits`, and `NewGame` is discoverable before the 200-target list is exhausted.
 
 ### A3 — Black's first move
 
 ```text
-godot_click(target: Main/BoardHits/Cell_07_07)
-godot_node(path: /root/Main/StatusName, props: ["text"])
-godot_node(path: /root/Main/StatusAccent, props: ["text"])
+godot_click(target: Main/Board/BoardHits/Cell_07_07)
+godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
 godot_node(path: /root/Main, props: ["_moves", "_last"])
 ```
 
@@ -56,9 +57,9 @@ Pass: `StatusName` is `White`, `StatusAccent` is `to move`, `_moves` is `1`, and
 ### A4 — White's reply
 
 ```text
-godot_click(target: Main/BoardHits/Cell_07_08)
-godot_node(path: /root/Main/StatusName, props: ["text"])
-godot_node(path: /root/Main/StatusAccent, props: ["text"])
+godot_click(target: Main/Board/BoardHits/Cell_07_08)
+godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
 ```
 
 Pass: `StatusName` returns to `Black` and `StatusAccent` reads `to move`; `_moves` is `2`.
@@ -88,7 +89,7 @@ Pass: `StatusName` is `Black`, `StatusAccent` is `wins`, `/root/Main` reports `_
 ### A7 — reset
 
 ```text
-godot_click(target: Main/NewGame)
+godot_click(target: Main/Sidebar/NewGame)
 godot_node(path: /root/Main, props: ["_moves", "_current", "_finished"])
 ```
 
@@ -132,15 +133,15 @@ The agent opens the native scene, plays Black first, and then answers the user's
 
    ```text
    godot_node(path: /root/Main, props: ["_board", "_moves", "_current", "_finished"], depth: 3)
-   godot_node(path: /root/Main/StatusName, props: ["text"])
-   godot_node(path: /root/Main/StatusAccent, props: ["text"])
+   godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+   godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
    ```
 
 6. If `_current` is not `1` (Black), the user's turn is still open; wait, do not click.
 7. If `_current` is `1` and `_finished` is false, choose one empty cell, click it by its full `Cell_<row>_<col>` path, verify `StatusName` becomes `White` with `StatusAccent` `to move`, and announce the coordinate.
 8. Repeat from step 3 until the status reports a win or draw.
 
-The agent may instead wait for `StatusName` to become `Black` with `godot_wait_for` on `/root/Main/StatusName`, but asking the user to say the move is complete is preferred for a conversational test.
+The agent may instead wait for `StatusName` to become `Black` with `godot_wait_for` on `/root/Main/Sidebar/StatusName`, but asking the user to say the move is complete is preferred for a conversational test.
 
 ### Move choice
 
@@ -160,7 +161,7 @@ Announce every agent move as a coordinate before or immediately after the click.
 ### Ending
 
 - On a win or draw, announce the result and the final move.
-- Ask whether the user wants `New game`; click `Main/NewGame` only after agreement.
+- Ask whether the user wants `New game`; click `Main/Sidebar/NewGame` only after agreement.
 - Call `godot_stop` only when the user asks to end the session or when the test run is finished.
 - Leave the native window open while the user is still playing.
 

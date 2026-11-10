@@ -12,7 +12,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { LspError } from '@deepseek-ai/dsh-lsp'
-import type { HostWorkspace } from '@deepseek-ai/dsh-lsp-stdio/src/host.ts'
+import type { HostWorkspace } from './lsp-wire-types.ts'
 import { resolveConfig } from './config.ts'
 import type { GodotLspConfig, ResolvedGodotLspConfig } from './config.ts'
 import { connectForWorkspace, type ConnectModeDeps } from './connect-mode.ts'

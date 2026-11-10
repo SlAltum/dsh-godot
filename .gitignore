@@ -3,6 +3,11 @@ node_modules/
 lib/
 *.tsbuildinfo
 
+# ui-godot ships its built artifacts: the plugin is installed from Git straight
+# into a profile, so there is no build step to run before the loader reads it.
+!ui-godot/lib/
+!ui-godot/lib/**
+
 # Godot import cache
 .godot/
 
@@ -11,6 +16,11 @@ lib/
 # (tool-godot-debug/tests/fixtures, lsp-godot/tests/fixtures) hold everything
 # tests replay.
 .context/
+
+# Task board state: the zen database and its per-machine config are local to this
+# checkout (the board is how a session tracks its own work, not a repository
+# artifact). `.context/` above holds everything a reader needs instead.
+.dsh-zen/
 
 # Probe runtime artifacts (APPDATA redirects for the user:// crash workaround,
 # logs, pid files).

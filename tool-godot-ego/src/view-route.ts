@@ -15,6 +15,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import { EgoGodotError } from './errors.ts'
 import type { GameSessionRegistry } from './session-service.ts'
+import { parseTree, type SceneTreeNode } from './targets.ts'
 
 /** The slice of `ctx.webServer` this route uses. */
 interface WebServerLike {
@@ -42,6 +43,16 @@ const MAX_BUFFERED_BYTES = 1_000_000
 
 /** Largest accepted JSON body for one input request. */
 const MAX_INPUT_BYTES = 16_384
+
+/** Default and maximum node count of one scene-tree answer. */
+const TREE_NODES_DEFAULT = 300
+const TREE_NODES_MAX = 800
+
+/** How long one tree answer may take before the route gives up. */
+const TREE_TIMEOUT_MS = 3_000
+
+/** Property rows one node answer returns at most. */
+const NODE_MAX_PROPS = 120
 
 /** Session projection returned by `/api/godot/sessions`. */
 interface SessionView {
@@ -81,6 +92,16 @@ export function viewRoute(ctx: Context, registry: GameSessionRegistry, options: 
       kind: 'prefix',
       path: '/api/godot/input',
       handler: (req, res) => { void input(req, res, registry, token) },
+    }),
+    server.register({
+      kind: 'prefix',
+      path: '/api/godot/tree',
+      handler: (req, res) => { void tree(req, res, registry, token) },
+    }),
+    server.register({
+      kind: 'prefix',
+      path: '/api/godot/node',
+      handler: (req, res) => { void node(req, res, registry, token) },
     }),
   ]
   return () => { for (const dispose of disposers) dispose() }
@@ -134,6 +155,154 @@ function listSessions(
     return
   }
   json(res, 200, { ok: true, sessions: projectSessions(registry) })
+}
+
+/**
+ * `/api/godot/tree`: the running game's node tree.
+ *
+ * The watch panel renders it exactly like a `.tscn` preview — same rows, same
+ * icons — so the live hierarchy is readable while the game runs. Bounded like
+ * every other answer: the bridge reports the whole tree, the route trims it.
+ */
+async function tree(
+  req: IncomingMessage,
+  res: ServerResponse,
+  registry: GameSessionRegistry,
+  token: string | undefined,
+): Promise<void> {
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  if (!authorized(req, url, token)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  const sessionId = url.searchParams.get('session') ?? ''
+  const handle = registry.list().find(item => item.sessionId === sessionId)
+  if (handle === undefined || handle.snapshot?.().state === 'lost') {
+    json(res, 404, { ok: false, error: 'unknown-session' })
+    return
+  }
+  const requested = Number(url.searchParams.get('maxNodes') ?? TREE_NODES_DEFAULT)
+  const maxNodes = Number.isFinite(requested)
+    ? Math.min(Math.max(Math.trunc(requested), 1), TREE_NODES_MAX)
+    : TREE_NODES_DEFAULT
+  const abort = new AbortController()
+  const timer = setTimeout(() => { abort.abort() }, TREE_TIMEOUT_MS)
+  try {
+    // The bridge trims the tree itself, so hand it the same budget the route
+    // promises: otherwise it answers its own default (200 nodes) and reports a
+    // truncation nobody asked for.
+    const reply = await handle.request('state', { tree: true, targets: false, diff: false, maxNodes }, abort.signal)
+    const parsed = parseTree(reply.payload.tree)
+    if (parsed === null) {
+      json(res, 200, { ok: false, error: 'no-tree' })
+      return
+    }
+    const bounded = boundTree(parsed, maxNodes)
+    const returned = countNodes(bounded.nodes[0] ?? null)
+    // The bridge enforces the budget we send, so an answer that fills the budget
+    // may have left nodes behind even when our own bound did not fire. (The
+    // scene's node count is not the yardstick: it counts the Window wrapper the
+    // tree does not carry.)
+    const sceneNodes = typeof reply.payload.nodeCount === 'number' ? reply.payload.nodeCount : returned
+    json(res, 200, {
+      ok: true,
+      nodes: bounded.nodes,
+      nodeCount: returned,
+      sceneNodes,
+      truncated: bounded.truncated || returned >= maxNodes,
+    })
+  } catch {
+    json(res, 200, { ok: false, error: 'tree-unavailable' })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * `/api/godot/node`: one node's properties, for the panel's detail pane.
+ *
+ * On demand only: the panel asks when a node is selected, so a tree with
+ * hundreds of nodes costs nothing until someone looks at one.
+ */
+async function node(
+  req: IncomingMessage,
+  res: ServerResponse,
+  registry: GameSessionRegistry,
+  token: string | undefined,
+): Promise<void> {
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  if (!authorized(req, url, token)) {
+    json(res, 403, { ok: false, error: 'forbidden' })
+    return
+  }
+  const sessionId = url.searchParams.get('session') ?? ''
+  const path = url.searchParams.get('path') ?? ''
+  const handle = registry.list().find(item => item.sessionId === sessionId)
+  if (handle === undefined || handle.snapshot?.().state === 'lost') {
+    json(res, 404, { ok: false, error: 'unknown-session' })
+    return
+  }
+  if (path === '') {
+    json(res, 400, { ok: false, error: 'missing-path' })
+    return
+  }
+  const abort = new AbortController()
+  const timer = setTimeout(() => { abort.abort() }, TREE_TIMEOUT_MS)
+  try {
+    const reply = await handle.request('node', { path, maxProps: NODE_MAX_PROPS, depth: 2 }, abort.signal)
+    if (typeof reply.payload.error === 'string') {
+      json(res, 200, { ok: false, error: 'node-unavailable' })
+      return
+    }
+    const rows = Array.isArray(reply.payload.props) ? reply.payload.props : []
+    json(res, 200, {
+      ok: true,
+      className: typeof reply.payload.class === 'string' ? reply.payload.class : '',
+      scene: typeof reply.payload.scene === 'string' ? reply.payload.scene : '',
+      total: typeof reply.payload.total === 'number' ? reply.payload.total : rows.length,
+      props: rows.flatMap((row) => {
+        if (typeof row !== 'object' || row === null) return []
+        const record = row as Record<string, unknown>
+        if (typeof record.name !== 'string') return []
+        return [{
+          name: record.name,
+          value: typeof record.value === 'string' ? record.value : JSON.stringify(record.value ?? null),
+          ...(typeof record.type === 'string' && record.type !== '' ? { type: record.type } : {}),
+        }]
+      }),
+    })
+  } catch {
+    json(res, 200, { ok: false, error: 'node-unavailable' })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Trim a tree to a node budget, reporting whether anything was dropped. */
+function boundTree(root: SceneTreeNode, maxNodes: number): { nodes: SceneTreeNode[]; truncated: boolean } {
+  let remaining = maxNodes
+  let truncated = false
+  const cut = (node: SceneTreeNode): SceneTreeNode | null => {
+    if (remaining <= 0) {
+      truncated = true
+      return null
+    }
+    remaining -= 1
+    const children: SceneTreeNode[] = []
+    for (const child of node.children) {
+      const kept = cut(child)
+      if (kept !== null) children.push(kept)
+    }
+    return { ...node, children }
+  }
+  const top = cut(root)
+  return { nodes: top === null ? [] : [top], truncated }
+}
+
+/** Count every node of a tree (null counts as none). */
+function countNodes(node: SceneTreeNode | null): number {
+  if (node === null) return 0
+  return node.children.reduce((total, child) => total + countNodes(child), 1)
 }
 
 /** `/api/godot/input`: one click forwarded to a session. */

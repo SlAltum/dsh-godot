@@ -11,7 +11,7 @@ kind: "package-reference"
 
 源码入口：[`src/client/index.ts`](src/client/index.ts)——设置卡与观察窗注册。
 
-本包是动态 UI 插件（`docs/ui-plugin-godot.js`）所提供设置卡片的**持久化**替代品：作为 Godot bundle 的 `dsh.client` 行，它能在 dsh web 进程重启后继续存在，而进程内存态的动态插件不能。动态插件的调试工具卡（键 `godot_debug` / `godot_debug_session`）不在范围内；本次只迁移设置卡片。
+本包是 Godot bundle 的浏览器半边：bundle 页上的设置卡与沙盒观察窗。两者都是 bundle 的 `dsh.client` 行，因此能在 `dsh web` 重启后继续存在。调试工具卡（键 `godot_debug` / `godot_debug_session`）归动态 UI 插件（`docs/ui-plugin-godot.js`）。
 
 设置卡与观察球使用 Godot logo。随包携带的 `src/client/assets/godot-logo.svg` 是 `godot-vscode-plugin` 的 `resources/godot_icon.svg` 未修改副本；Godot logo 版权归 Godot Foundation，采用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可。
 
@@ -57,7 +57,7 @@ kind: "package-reference"
 安装可选的 [`dsh-godot-bundle`](../bundle-godot/README.zh.md)；它会连同 `tool-godot` 与 `tool-godot-ego` 一起插入 `ui-godot` 行：
 
 ```bash
-dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-godot
+dsh plugin install link:<本仓库路径>/bundle-godot
 ```
 
 自定义组合也可以直接加行：
@@ -93,6 +93,6 @@ dsh plugin install link:D:/source_code/deepseek-harness/packages/godot/bundle-go
 <details>
 <summary>维护者的工作上下文——点击展开</summary>
 
-本包是动态 UI 插件原先挂载的设置卡片的持久替代：作为 `dsh.client` 行，它能经受 `dsh web` 重启。logo 从 `src/client/assets` 交付，因此 manifest 必须保留 `./assets/*` 导出与 `files` 中的 `lib/assets`，否则客户端 bundle 无法解析它。
+本包用自己的 `tsdown.config.ts` 构建（`pnpm build` → `lib/index.js` + `lib/client.js`），两个产物都入库，因为 bundle 直接从 Git 安装、没有构建步骤。`lib/client.js` 以包名注册，且只向模块表请求客户端 baseline；logo 以 data URL 内联，因此包里没有资源目录。
 
 </details>

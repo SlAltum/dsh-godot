@@ -9,7 +9,7 @@
  */
 
 import { LspError } from '@deepseek-ai/dsh-lsp'
-import type { WireServerCapabilities } from '@deepseek-ai/dsh-lsp-stdio/src/protocol.ts'
+import type { WireServerCapabilities } from './lsp-wire-types.ts'
 import { GodotLspEndpoint } from './endpoint.ts'
 import type { ConnectionHandle } from './pool.ts'
 

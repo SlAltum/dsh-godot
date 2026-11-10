@@ -264,7 +264,7 @@ describe('plugin tool registration', () => {
     await ctx.fiber.dispose()
   })
 
-  it('registers the viewer route when a web server is mounted', async () => {
+  it('registers every watch-panel route when a web server is mounted', async () => {
     const ctx = new Context()
     await ctx.plugin(LocalSubprocessRuntime)
     let registered = 0
@@ -282,7 +282,7 @@ describe('plugin tool registration', () => {
       apply: (child: Context, config: EgoConfig) => { applyWith(child, config, { factory }) },
     }
     await ctx.plugin(plugin as never, Config({}) as never)
-    expect(registered).toBe(3)
+    expect(registered).toBe(5)
     await ctx.fiber.dispose()
   })
 

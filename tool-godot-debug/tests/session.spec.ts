@@ -176,7 +176,7 @@ describe('debug session service', () => {
           threadId: number
           frames: { file: string; line: number; func: string }[]
           varsLines: string[]
-          sceneTree: { lines: string[] }
+          sceneTree: { nodes: { name: string; className: string; id: string }[] }
         }[]
       }
     }
@@ -189,7 +189,7 @@ describe('debug session service', () => {
       frames: [{ file: 'res://main.gd', line: 12, func: '_ready' }],
     })
     expect(stop.varsLines).toEqual(['  locals:', '    counter = 1'])
-    expect(stop.sceneTree.lines).toContain('root [Window] (1)')
+    expect(stop.sceneTree.nodes[0]).toMatchObject({ name: 'root', className: 'Window', id: '1' })
 
     const versionBefore = (service.poll(sessionId) as { version: number }).version
     const cont = await service.command(sessionId, { kind: 'continue' })
@@ -384,11 +384,10 @@ describe('debug session service', () => {
     const sessionId = await boot(service, game)
     game.debugEnter(true, '')
     await waitFor(() => stateOf(service, sessionId) === 'paused', 'paused')
-    const snap = service.poll(sessionId) as { pause: { stops: { sceneTree: { lines: string[] } }[] } }
-    const lines = snap.pause.stops[0]!.sceneTree.lines
-    expect(lines).toContain('root [Window] (1)')
-    expect(lines).toContain('  Main [Node2D] (7)')
-    expect(lines).toContain('  Player [CharacterBody2D] (8)')
+    const snap = service.poll(sessionId) as { pause: { stops: { sceneTree: { nodes: { name: string }[] } }[] } }
+    const nodes = snap.pause.stops[0]!.sceneTree.nodes
+    expect(nodes[0]).toMatchObject({ name: 'root', className: 'Window', id: '1' })
+    expect(nodes[0]!.children.map(child => child.name)).toEqual(['Main', 'Player'])
   })
 
   // ---- T21.8: launch-mode sessions (the session spawns the game) ----

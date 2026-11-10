@@ -1,7 +1,15 @@
 /** The watch panel's poller, selection, and click forwarding. */
 
 import { describe, expect, it, vi } from 'vitest'
+// The shell's primitives package pulls its whole stylesheet/dependency chain; the
+// panel only borrows its tooltip and one glyph, so the suite stubs it.
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({
+  Tooltip: ({ children }: { children: unknown }) => children,
+  IconPanelLeftOutlineRegular: () => null,
+}))
+
 import { GodotWatchController, watchStreamUrl } from '../src/client/godot-watch-controller.ts'
+import { clampPaneSize } from '../src/client/GodotWatch.tsx'
 
 /** A fetch response carrying JSON. */
 function json(body: unknown, status = 200): Response {
@@ -13,7 +21,117 @@ const sessions = [
   { sessionId: 's2', state: 'lost', pid: null, window: null, lostReason: 'game exited' },
 ]
 
+describe('watch panel layout', () => {
+  it('docks the tree beside one column that stacks the preview over the detail', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const { resolve } = await import('node:path')
+    const css = await readFile(resolve(process.cwd(), 'src/client/GodotWatch.module.css'), 'utf8')
+    // The stage is a flex row whose sidebar stretches; the right column stacks.
+    expect(css).toMatch(/\.stage\s*\{[^}]*display:\s*flex/)
+    expect(css).toMatch(/\.stage\s*\{[^}]*align-items:\s*stretch/)
+    expect(css).toMatch(/\.column\s*\{[^}]*flex-direction:\s*column/)
+    // The tree must not cap its own height: it fills the stage and scrolls inside.
+    expect(css).not.toMatch(/\.treePane\s*\{[^}]*max-height/)
+    // The preview is the elastic half: growing the details takes the picture's height.
+    expect(css).toMatch(/\.framePane\s*\{[^}]*flex:\s*1 1 0/)
+    expect(css).toMatch(/\.detailPane\s*\{[^}]*flex:\s*0 0 auto/)
+    // The fold control matches the shell's own header button, 28 px and its tokens.
+    expect(css).toMatch(/\.treeToggle\s*\{[^}]*width:\s*28px/)
+    expect(css).toMatch(/\.treeToggle\s*\{[^}]*border-radius:\s*var\(--dsw-radius-sm\)/)
+    // Folding the tree leaves a rail that still holds its toggle.
+    expect(css).toMatch(/\.rail\s*\{[^}]*flex:\s*0 0 32px/)
+    expect(css).toMatch(/\.rail\s*\{[^}]*align-items:\s*flex-start/)
+    expect(css).toMatch(/\.rail\s*\{[^}]*justify-content:\s*center/)
+  })
+
+  it('holds a dragged pane size between its bounds', () => {
+    expect(clampPaneSize(80, 140, 420)).toBe(140)
+    expect(clampPaneSize(999, 140, 420)).toBe(420)
+    expect(clampPaneSize(260, 140, 420)).toBe(260)
+  })
+
+  it('takes its width from the component, not from a CSS constant', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const { resolve } = await import('node:path')
+    const css = await readFile(resolve(process.cwd(), 'src/client/GodotWatch.module.css'), 'utf8')
+    expect(css).not.toMatch(/\.panel\s*\{[^}]*\bwidth:\s*\d+px/)
+  })
+})
+
 describe('GodotWatchController', () => {
+  it('reads the selected session tree while the panel is open', async () => {
+    const tree = {
+      name: 'root', className: 'Window', id: '1', scene: '', unique: false, script: '',
+      children: [{ name: 'Main', className: 'Control', id: '2', scene: 'res://main.tscn', unique: true, script: 'res://main.gd', children: [] }],
+    }
+    const fetch = vi.fn(async (input: RequestInfo | URL) => input === '/api/godot/sessions'
+      ? json({ ok: true, sessions })
+      : json({ ok: true, nodes: [tree], nodeCount: 2, truncated: false }))
+    const watch = new GodotWatchController({ fetch })
+    watch.toggle() // open: the tree is only worth polling while shown
+    // Opening kicks a refresh; the session list must land before the tree ask.
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/godot/tree?session=s1', { headers: { accept: 'application/json' } })
+    })
+    const state = watch.inject().hooks.watch.getSnapshot()
+    expect(state.tree?.[0]?.name).toBe('root')
+    expect(state.tree?.[0]?.children[0]).toMatchObject({ name: 'Main', className: 'Control' })
+    // The marks the scene preview draws ride the live tree too.
+    expect(state.tree?.[0]?.children[0]).toMatchObject({ unique: true, script: 'res://main.gd' })
+    expect(state.treeError).toBeNull()
+  })
+
+  it('reads one node\'s properties when a row is picked', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (input === '/api/godot/sessions') return json({ ok: true, sessions })
+      if (String(input).startsWith('/api/godot/tree')) return json({ ok: true, nodes: [], nodeCount: 0, truncated: false })
+      return json({
+        ok: true,
+        className: 'Label',
+        scene: 'res://main.tscn',
+        total: 2,
+        props: [{ name: 'text', value: 'Black' }, { name: 'visible', value: 'true' }],
+      })
+    })
+    const watch = new GodotWatchController({ fetch })
+    watch.toggle()
+    await vi.waitFor(() => { expect(watch.inject().hooks.watch.getSnapshot().tree).not.toBeNull() })
+    watch.selectNode('Main/Sidebar/StatusName')
+    await vi.waitFor(() => {
+      expect(watch.inject().hooks.watch.getSnapshot().nodeDetail?.className).toBe('Label')
+    })
+    const state = watch.inject().hooks.watch.getSnapshot()
+    expect(state.selectedNode).toBe('Main/Sidebar/StatusName')
+    expect(state.nodeDetail?.props.map(prop => prop.name)).toEqual(['text', 'visible'])
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/godot/node?session=s1&path=Main%2FSidebar%2FStatusName',
+      { headers: { accept: 'application/json' } },
+    )
+  })
+
+  it('forgets a node selection when the session changes', async () => {
+    const fetch = vi.fn(async () => json({ ok: true, sessions }))
+    const watch = new GodotWatchController({ fetch })
+    await watch.refresh()
+    watch.selectNode('Main/Sidebar/StatusName')
+    expect(watch.inject().hooks.watch.getSnapshot().selectedNode).toBe('Main/Sidebar/StatusName')
+    watch.select('s2')
+    expect(watch.inject().hooks.watch.getSnapshot().selectedNode).toBeUndefined()
+    expect(watch.inject().hooks.watch.getSnapshot().nodeDetail).toBeNull()
+  })
+
+  it('reports a host that answers without a tree instead of throwing', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) => input === '/api/godot/sessions'
+      ? json({ ok: true, sessions })
+      : json({ ok: false, error: 'no-tree' }))
+    const watch = new GodotWatchController({ fetch })
+    watch.toggle()
+    await vi.waitFor(() => {
+      expect(watch.inject().hooks.watch.getSnapshot().treeError).toBe('no-tree')
+    })
+    expect(watch.inject().hooks.watch.getSnapshot().tree).toBeNull()
+  })
+
   it('polls the session list and selects the first session', async () => {
     const fetch = vi.fn(async () => json({ ok: true, sessions }))
     const watch = new GodotWatchController({ fetch })

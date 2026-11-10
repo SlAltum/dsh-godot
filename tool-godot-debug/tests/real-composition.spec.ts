@@ -375,13 +375,17 @@ describe('REAL composition: tool → subprocess seam → controller → fake gam
       const value = result.value as {
         sceneTreeCount: number
         sceneTreeTruncated: boolean
-        sceneTrees: { stopIndex: number; lines: string[] }[]
       }
       expect(value.sceneTreeCount).toBe(2)
       expect(value.sceneTreeTruncated).toBe(false)
-      expect(value.sceneTrees[0]).toMatchObject({ stopIndex: 0 })
-      expect(value.sceneTrees[0]!.lines[0]).toBe('root [Window] (26323453389)')
-      expect(value.sceneTrees[0]!.lines.some(l => l.includes('Leaf中文'))).toBe(true)
+      // The tree rides the card view (JSON-safe nodes), not the result value,
+      // which stays a report plus counts.
+      const cards = result.meta as {
+        view: { stops: { sceneTree?: { nodes: { name: string; className: string; children: { name: string }[] }[] } }[] }
+      }
+      const withTree = cards.view.stops.find(stop => stop.sceneTree !== undefined)!.sceneTree!
+      expect(withTree.nodes[0]).toMatchObject({ name: 'root', className: 'Window' })
+      expect(JSON.stringify(withTree.nodes[0]!.children)).toContain('Leaf中文')
 
       // Model-visible render carries a "scene tree" block per frame stop.
       const text = result.content.flatMap(block => block.type === 'text' ? block.text : []).join('\n')

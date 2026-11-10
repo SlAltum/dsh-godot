@@ -23,7 +23,7 @@ import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subpr
 import { DebugController, WaitTimeoutError, type GodotRuntimeError, type StopInfo } from './controller.ts'
 import { expandObjects, type ExpandedEntry } from './inspect.ts'
 import { applyEdits, type EditRequest, type EditResult } from './edit.ts'
-import { parseSceneTree, renderSceneTree, resolveNodePaths, type SceneTreeNode } from './scene-tree.ts'
+import { parseSceneTree, resolveNodePaths, toSceneViewNodes, type SceneTreeNode, type SceneTreeViewNode } from './scene-tree.ts'
 import { GodotError } from './error.ts'
 import { renderSnapshot, type RenderOptions, type StopSnapshot } from './snapshot.ts'
 
@@ -54,6 +54,13 @@ export interface DebugStop {
   snapshot: StopSnapshot
 }
 
+/** One stop's tree as the card receives it: its nodes, and whether the node budget cut it. */
+interface SceneTreeRecord {
+  readonly stopIndex: number
+  readonly nodes: SceneTreeViewNode[]
+  readonly truncated?: boolean
+}
+
 /** The structured result of one complete debug run. */
 export interface DebugRunResult {
   stops: DebugStop[]
@@ -80,7 +87,7 @@ export interface DebugRunResult {
   editsTruncated: boolean
   /** The Phase 7 scene-tree snapshots per frame-bearing stop; `null` when no
    *  stop had a frame or scene trees are disabled. */
-  sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] | null
+  sceneTrees: SceneTreeRecord[] | null
   /** Successful scene-tree snapshots this run. */
   sceneTreeCount: number
   /** Any tree skipped, node-dropped, or budget spent. */
@@ -528,7 +535,7 @@ async function collectStops(
   expansionTruncated: boolean
   edits: { stopIndex: number; results: EditResult[] } | null
   editsTruncated: boolean
-  sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] | null
+  sceneTrees: SceneTreeRecord[] | null
   sceneTreeTruncated: boolean
 }> {
   const stops: DebugStop[] = []
@@ -539,7 +546,7 @@ async function collectStops(
   let edited = false
   let edits: { stopIndex: number; results: EditResult[] } | null = null
   let editsTruncated = false
-  const sceneTrees: { stopIndex: number; root: SceneTreeNode; lines: string[] }[] = []
+  const sceneTrees: SceneTreeRecord[] = []
   let sceneTreeTruncated = false
   const runStart = Date.now()
   // The stop-render bounds: package defaults overlaid with config-driven
@@ -584,9 +591,9 @@ async function collectStops(
             const parsed = parseSceneTree(Array.isArray(resp[2]) ? resp[2] : undefined, options.maxTreeNodes)
             if (parsed.root !== null) {
               stopTreeRoot = parsed.root // T15: nodePaths / path: edits resolve against this stop's tree
-              const { lines, truncated } = renderSceneTree(parsed.root, { maxNodes: options.maxTreeNodes, maxLineLength: 200 })
-              if (truncated || parsed.truncated) sceneTreeTruncated = true
-              sceneTrees.push({ stopIndex: i, root: parsed.root, lines })
+              const view = toSceneViewNodes(parsed.root, options.maxTreeNodes)
+              if (parsed.truncated || view.truncated) sceneTreeTruncated = true
+              sceneTrees.push({ stopIndex: i, nodes: view.nodes, truncated: parsed.truncated || view.truncated })
             } else if (parsed.truncated) {
               sceneTreeTruncated = true
             }

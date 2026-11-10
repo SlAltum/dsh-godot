@@ -442,9 +442,27 @@ describe('expandObjects nested (Phase 8)', () => {
     const self = result.entries.find(e => e.name === 'self')
     expect(self!.children).toBeUndefined()
   })
+  it('caps the whole walk, not only the roots', async () => {
+    await connectGame()
+    const result = await expandObjects(nestedVars(), controller, {
+      maxObjects: 1,
+      maxProps: 100,
+      maxDepth: 2,
+      render: renderOptions,
+      idleTimeoutMs: 2_000,
+      budgetMs: 20_000,
+      signal: new AbortController().signal,
+    })
+    // One root plus one nested child reaches the cap (1 x depth 2): the
+    // 225-entry container case stops here instead of expanding its length.
+    expect(result.expandedObjects).toBe(2)
+    expect(result.expansionTruncated).toBe(true)
+  })
+
 })
 
 /** Phase 13: __repr__ display-name resolution across the fetched tree. */
+
 describe('expandObjects repr (Phase 13)', () => {
   it('resolves __repr__ members into entry heads and object references', async () => {
     // Two canned objects: `thing` declares __repr__ (T13.0 fact 1) and holds

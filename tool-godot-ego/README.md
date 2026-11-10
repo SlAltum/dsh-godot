@@ -60,6 +60,8 @@ Node reads go through `get_property_list` filtered to stored and script variable
 
 One workspace owns at most one session. `godot_stop` asks the bridge to quit, waits within `graceMs`, escalates to terminate, and reports the real exit code or signal. Disposal runs the same inverse and also removes the temporary scripts; the session registry publishes `godot.egoSessions` and its own inverse disposes every session when the plugin unloads.
 
+Every started session writes a record (pid, bridge port, project root, temp directory) to `stateDir` — `<DSH_HOME>/cache/godot-ego` by default. The first `godot_play` of a process sweeps that directory first: records owned by another still-running host are left alone, a dead game loses its leftover scripts, a live game whose bridge still answers the recorded port is terminated, and a live pid whose port is silent is left alone because that pid was reused by something that is not ours. This is what a host killed without running its disposal leaves behind, and why the next start does not accumulate game windows.
+
 <a id="host-endpoints"></a>
 ## Host endpoints
 
@@ -106,6 +108,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `timeoutMs` | `60000` | Cooperative tool-call budget enforced by the timeout policy through `exec.signal`. |
 | `requestTimeoutMs` | `20000` | Budget for one bridge command, and for the handshake. |
 | `graceMs` | `5000` | Terminate-escalation grace when stopping the game. |
+| `stateDir` | `''` | Directory for cross-restart session records; empty uses `<DSH_HOME>/cache/godot-ego`. |
 | `maxNodes` | `200` | Scene-tree node budget rendered by `godot_state`; `0` disables the tree. |
 | `maxProps` | `40` | Property-row budget for `godot_node`. |
 | `maxWidth` | `1280` | Preview screenshot width in pixels; `0` disables downscaling. |
@@ -233,7 +236,7 @@ Append-only.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Sub-windows are not in the captured frame** — the root viewport texture excludes `Window` children, so a popup or a second window is not visible to `godot_see`.
-- **A minimized or fully occluded window may not render** — frames stay stale; `godot_see` reports the frame number and `godot_diff` compares against the previous captured frame.
+- **A minimized window does not render** — Godot stops drawing, so no `frame_post_draw` arrives: `godot_see` waits at most 2 s and then fails with `NOT_DRAWING` (restore the window and retry). The wait stays bounded so one capture cannot hold the command loop.
 - **Switching scenes does not replay boot logic** — `godot_scene` and `godot_play.scene` call `change_scene_to_file`, which is not equivalent to the project's own start-up path.
 - **DPI and canvas transforms can shift coordinates** — click by Control path when possible; coordinates come from the reported rect and may differ under scaling.
 - **One session per workspace** — a second `godot_play` reuses the running session unless `restart` is set.

@@ -8,8 +8,12 @@
 .panel {
   position: absolute;
   pointer-events: auto;
-  width: 420px;
+  /* Width comes from the component (one source, also used for placement and
+     viewport clamping); this caps it on a narrow viewport. */
   max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-3);
@@ -73,14 +77,19 @@
 
 .body {
   padding: 10px 12px 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .frame {
   display: block;
   width: 100%;
-  max-height: 56vh;
+  height: 100%;
   object-fit: contain;
-  background: #000;
+  background: var(--dsw-alias-bg-layer-2);
   border-radius: 8px;
   cursor: crosshair;
 }
@@ -93,6 +102,7 @@
 }
 
 .hint {
+  flex: none;
   margin: 8px 0 0;
   font: var(--dsw-font-xs-13);
   color: var(--dsw-alias-label-tertiary);
@@ -173,4 +183,236 @@
 
 .error {
   background: #f85149;
+}
+
+/* Two panes under the header: the node tree, and the frame with the picked
+   node's properties — the same reading order the `.tscn` preview uses. */
+/* The preview column decides the height; the tree is a sidebar that stretches
+   beside it and scrolls inside that height, the way an IDE docks a panel. */
+.stage {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.column {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The preview is the elastic half of the split: dragging the divider below it
+   takes height from the picture instead of growing the panel. */
+.framePane {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 120px;
+}
+
+.detailPane {
+  position: relative;
+  flex: 0 0 auto;
+  height: var(--detail-h, 180px);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 6px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Folded: the pane keeps its title and gives the rest of its height back. */
+.detailPaneCollapsed {
+  position: relative;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 6px;
+  overflow: visible;
+}
+
+/* A pane's own toolbar row: clicking the title folds the pane away. It spans the
+   row and reads from the left, like a dock header — no chip, folded or not. */
+.paneToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+}
+
+.paneToggle:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The tree's fold control: the shell's own panel-left glyph, at the left of the
+   title bar, so it reads as "this panel" rather than a filter chip. */
+/* Same metrics as the shell's own header icon button (ui-sidebar
+   .iconButton): 28 px box, its radius token, its hover token. */
+.treeToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+/* The tree's own toolbar: the pane's title on the left, its fold control at the
+   right edge, where a side panel's collapse belongs. It spans the pane and stays
+   put while the rows below scroll. */
+.treeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: 4px;
+  flex: none;
+}
+
+.treeTitle {
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xs-13);
+}
+
+/* The scrolling region under a pane's header. */
+.treeBody,
+.detailBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (hover: hover) {
+  .treeToggle:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.treeToggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary);
+}
+
+.chevron {
+  display: inline-block;
+  width: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The detail header keeps its own bottom gap, folded or open. */
+.detailPane .paneToggle,
+.detailPaneCollapsed .paneToggle {
+  margin-bottom: 4px;
+}
+
+.treePane {
+  position: relative;
+  flex: 0 0 var(--tree-w, 280px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--dsw-alias-border-l2);
+  padding-right: 8px;
+  min-height: 0;
+}
+
+.rail {
+  flex: 0 0 32px;
+  display: flex;
+  /* Top-aligned, horizontally centred: the control sits where the pane header
+     sat, not in the middle of the panel. */
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2px;
+  border-right: 1px solid var(--dsw-alias-border-l2);
+}
+
+.detailHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+.props {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font: var(--dsw-font-xs-13);
+}
+
+.props li {
+  display: flex;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.propName {
+  color: var(--dsw-alias-label-tertiary);
+  flex: none;
+}
+
+.propValue {
+  font-family: var(--dsw-font-family-mono);
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Splitter strips: a thin hit area on the pane edge, highlighted on hover. */
+.splitterX,
+.splitterY {
+  position: absolute;
+  background: transparent;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+}
+
+.splitterX {
+  top: 0;
+  bottom: 0;
+  right: -5px;
+  width: 10px;
+  cursor: col-resize;
+}
+
+.splitterY {
+  left: 0;
+  right: 0;
+  top: -5px;
+  height: 10px;
+  cursor: row-resize;
+}
+
+.splitterX:hover,
+.splitterY:hover,
+.splitterX:focus-visible,
+.splitterY:focus-visible {
+  background: var(--dsw-alias-border-l2);
+  outline: none;
+}
+
+.splitterX:focus-visible,
+.splitterY:focus-visible {
+  background: var(--dsw-alias-label-tertiary);
 }

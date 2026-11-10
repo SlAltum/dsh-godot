@@ -38,6 +38,10 @@ export interface EgoConfig {
   maxProps?: number
   /** Preview screenshot width in pixels (0 = no downscale). */
   maxWidth?: number
+  /** Directory holding the cross-restart session records; empty uses the host cache. */
+  stateDir?: string
+  /** Trace every bridge command into the game's stdout (diagnosing a wedged channel). */
+  trace?: boolean
 }
 
 /** The resolved configuration after schemastery fills every default. */
@@ -57,6 +61,8 @@ export const Config: z<EgoConfig> = z.object({
   maxNodes: z.number().default(200),
   maxProps: z.number().default(40),
   maxWidth: z.number().default(1280),
+  stateDir: z.string().default(''),
+  trace: z.boolean().default(false),
 })
 
 /**

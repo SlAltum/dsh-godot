@@ -40,14 +40,14 @@ godot_find(name: "Cell_07_07")
 godot_find(name: "NewGame")
 ```
 
-通过：场景树包含 `BoardView` 与 `BoardHits`；`godot_find` 返回 `Main/BoardHits` 下的 H8 路径；在 200 个目标耗尽之前能找到 `NewGame`。
+通过：场景树包含 `BoardView` 与 `BoardHits`；`godot_find` 返回 `Main/Board/BoardHits` 下的 H8 路径；在 200 个目标耗尽之前能找到 `NewGame`。
 
 ### A3 — 黑棋第一手
 
 ```text
-godot_click(target: Main/BoardHits/Cell_07_07)
-godot_node(path: /root/Main/StatusName, props: ["text"])
-godot_node(path: /root/Main/StatusAccent, props: ["text"])
+godot_click(target: Main/Board/BoardHits/Cell_07_07)
+godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
 godot_node(path: /root/Main, props: ["_moves", "_last"])
 ```
 
@@ -56,9 +56,9 @@ godot_node(path: /root/Main, props: ["_moves", "_last"])
 ### A4 — 白棋回应
 
 ```text
-godot_click(target: Main/BoardHits/Cell_07_08)
-godot_node(path: /root/Main/StatusName, props: ["text"])
-godot_node(path: /root/Main/StatusAccent, props: ["text"])
+godot_click(target: Main/Board/BoardHits/Cell_07_08)
+godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
 ```
 
 通过：`StatusName` 回到 `Black`，`StatusAccent` 为 `to move`；`_moves` 为 `2`。
@@ -88,7 +88,7 @@ godot_node(path: /root/Main/StatusAccent, props: ["text"])
 ### A7 — 重置
 
 ```text
-godot_click(target: Main/NewGame)
+godot_click(target: Main/Sidebar/NewGame)
 godot_node(path: /root/Main, props: ["_moves", "_current", "_finished"])
 ```
 
@@ -132,15 +132,15 @@ agent 打开原生场景，先执黑，然后回应用户的白棋。原生窗�
 
    ```text
    godot_node(path: /root/Main, props: ["_board", "_moves", "_current", "_finished"], depth: 3)
-   godot_node(path: /root/Main/StatusName, props: ["text"])
-   godot_node(path: /root/Main/StatusAccent, props: ["text"])
+   godot_node(path: /root/Main/Sidebar/StatusName, props: ["text"])
+   godot_node(path: /root/Main/Sidebar/StatusAccent, props: ["text"])
    ```
 
 6. 如果 `_current` 不是 `1`（黑棋），说明仍是用户回合；继续等待，不点击。
 7. 如果 `_current` 是 `1` 且 `_finished` 为 false，选一个空位，按完整 `Cell_<行>_<列>` 路径点击，确认 `StatusName` 变为 `White`、`StatusAccent` 为 `to move`，再宣布坐标。
 8. 回到第 3 步，直到状态显示胜负或和棋。
 
-也可以不追问用户，改用 `godot_wait_for` 等待 `/root/Main/StatusName` 变为 `Black`；但对弈测试更推荐让用户明确说“已落子”，避免误判。
+也可以不追问用户，改用 `godot_wait_for` 等待 `/root/Main/Sidebar/StatusName` 变为 `Black`；但对弈测试更推荐让用户明确说“已落子”，避免误判。
 
 ### 选点策略
 
@@ -160,7 +160,7 @@ agent 每次落子都要先或立刻宣布坐标，不得连走两手。
 ### 结束
 
 - 出现胜负或和棋时，宣布结果与最后一手。
-- 询问用户是否要 `New game`；得到同意后再点 `Main/NewGame`。
+- 询问用户是否要 `New game`；得到同意后再点 `Main/Sidebar/NewGame`。
 - 只有用户要求结束，或本次测试跑完，才调用 `godot_stop`。
 - 用户还在下棋时，保持原生窗口打开。
 

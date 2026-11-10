@@ -9,7 +9,7 @@
 import type { GodotLspConfig, ResolvedGodotLspConfig } from './config.ts'
 import { establishConnection, type EstablishOptions, type GodotLspConnection } from './connection.ts'
 import type { SpawnedEditor } from './spawn.ts'
-import type { HostWorkspace } from '@deepseek-ai/dsh-lsp-stdio/src/host.ts'
+import type { HostWorkspace } from './lsp-wire-types.ts'
 
 /** Process and attach primitives, injected by the plugin assembly. */
 export interface ConnectModeDeps {

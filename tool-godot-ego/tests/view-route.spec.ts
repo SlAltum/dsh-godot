@@ -84,7 +84,7 @@ function capturingContext() {
 const payload = { data: Buffer.from('jpeg-bytes').toString('base64'), bytes: 10, size: [640, 360], frame: 1 }
 
 describe('viewRoute', () => {
-  it('registers the viewer, session-list, and input prefixes', async () => {
+  it('registers the viewer, session-list, input and tree prefixes', async () => {
     const registered: string[] = []
     const ctx = {
       get: () => ({
@@ -96,8 +96,71 @@ describe('viewRoute', () => {
     } as unknown as Context
     const registry = await registryWith(async () => ({ kind: 'ok', id: 1, payload }))
     const dispose = viewRoute(ctx, registry, { token: 'tok' })
-    expect(registered).toEqual(['/api/godot/view', '/api/godot/sessions', '/api/godot/input'])
+    expect(registered).toEqual([
+      '/api/godot/view', '/api/godot/sessions', '/api/godot/input', '/api/godot/tree', '/api/godot/node',
+    ])
     expect(typeof dispose).toBe('function')
+  })
+
+  it('answers the live scene tree for one session, bounded', async () => {
+    const tree = {
+      name: 'root', class: 'Window', id: '1', scene: '', unique: false, script: '',
+      children: [{ name: 'Main', class: 'Control', id: '2', scene: 'res://main.tscn', unique: true, script: 'res://main.gd', children: [] }],
+    }
+    const { ctx, routes } = capturingContext()
+    // One node returned for a budget of one: the answer filled it, so it may be short.
+    const registry = await registryWith(async () => ({ kind: 'ok', id: 1, payload: { tree, nodeCount: 9 } }))
+    viewRoute(ctx, registry, { token: 'tok' })
+    const res = fakeResponse()
+    routes.get('/api/godot/tree')!(fakeRequest('/api/godot/tree?session=s1&token=tok&maxNodes=1'), res as unknown as ServerResponse)
+    await vi.waitFor(() => { expect(res.statusCode).toBe(200) })
+    const body = JSON.parse(String(res.ended)) as { ok: boolean; truncated: boolean; nodeCount: number; nodes: unknown[] }
+    expect(body.ok).toBe(true)
+    expect(body.truncated).toBe(true)
+    expect(body.nodeCount).toBe(1)
+    expect(body.sceneNodes).toBe(9)
+    expect(body.nodes).toHaveLength(1)
+  })
+
+  it('answers one node\'s properties for the panel detail pane', async () => {
+    const { ctx, routes } = capturingContext()
+    const registry = await registryWith(async () => ({
+      kind: 'ok',
+      id: 1,
+      payload: {
+        class: 'Label',
+        scene: 'res://main.tscn',
+        total: 2,
+        props: [{ name: 'text', value: 'Black' }, { name: 'visible', value: true }, { bad: true }],
+      },
+    }))
+    viewRoute(ctx, registry, { token: 'tok' })
+    const res = fakeResponse()
+    routes.get('/api/godot/node')!(
+      fakeRequest('/api/godot/node?session=s1&path=Main/Sidebar/StatusName&token=tok'),
+      res as unknown as ServerResponse,
+    )
+    await vi.waitFor(() => { expect(res.statusCode).toBe(200) })
+    const body = JSON.parse(String(res.ended)) as {
+      ok: boolean
+      className: string
+      props: { name: string; value: string }[]
+      total: number
+    }
+    expect(body.ok).toBe(true)
+    expect(body.className).toBe('Label')
+    // A malformed row is dropped, and a non-string value is stringified.
+    expect(body.props).toEqual([{ name: 'text', value: 'Black' }, { name: 'visible', value: 'true' }])
+    expect(body.total).toBe(2)
+  })
+
+  it('rejects a node request without a path', async () => {
+    const { ctx, routes } = capturingContext()
+    const registry = await registryWith(async () => ({ kind: 'ok', id: 1, payload: {} }))
+    viewRoute(ctx, registry, { token: 'tok' })
+    const res = fakeResponse()
+    routes.get('/api/godot/node')!(fakeRequest('/api/godot/node?session=s1&token=tok'), res as unknown as ServerResponse)
+    await vi.waitFor(() => { expect(res.statusCode).toBe(400) })
   })
 
   it('forbids a missing or wrong token and reports an unknown session', async () => {

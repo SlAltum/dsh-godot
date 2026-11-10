@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { structuredDebugView, VIEW_MAX_BYTES } from '../src/debug-view.ts'
+import type { SceneTreeViewNode } from '../src/scene-tree.ts'
 import type { StructuredDebugInput } from '../src/debug-view.ts'
 import type { GodotRuntimeError } from '../src/controller.ts'
 import type { ExpandedEntry } from '../src/inspect.ts'
@@ -78,8 +79,8 @@ function input(overrides: InputOverrides = {}): StructuredDebugInput {
     expansion: { stopIndex: 0, expandedObjects: 2, entries: [nestedEntry('player', '7')] },
     edits: { stopIndex: 0, results: [{ target: 'counter', property: 'value', requested: 779, type: 'int', ok: true }] },
     sceneTrees: [
-      { stopIndex: 0, lines: ['root [Window]', '  Main [Node2D] (7)'] },
-      { stopIndex: 1, lines: ['root [Window]'] },
+      { stopIndex: 0, nodes: [viewNode('root', 'Window', '1', [viewNode('Main', 'Node2D', '7', [])])] },
+      { stopIndex: 1, nodes: [viewNode('root', 'Window', '1', [])] },
     ],
     exit: { exitCode: 0 },
     expandedObjects: 2,
@@ -104,6 +105,16 @@ function input(overrides: InputOverrides = {}): StructuredDebugInput {
   return result
 }
 
+/** One JSON-safe scene node, shaped like the tool result's tree. */
+function viewNode(
+  name: string,
+  className: string,
+  id: string,
+  children: SceneTreeViewNode[],
+): SceneTreeViewNode {
+  return { name, className, id, sceneFilePath: '', children }
+}
+
 describe('structuredDebugView', () => {
   it('builds the full view with the first frame-bearing stop carrying the scope lines', () => {
     const view = structuredDebugView(input(), 10)
@@ -114,11 +125,13 @@ describe('structuredDebugView', () => {
     // Full detail on stop 0 (first with frames): scope lines + truncation flags.
     expect(view.stops[0]!.varsLines).toEqual(['  locals:', '    counter = 779'])
     expect(view.stops[0]!.scopeTruncated).toEqual({ locals: false, members: false, globals: false })
-    expect(view.stops[0]!.sceneTree).toEqual({ lines: ['root [Window]', '  Main [Node2D] (7)'] })
+    // The card keeps the parsed tree (ids stringified so the view stays JSON).
+    expect(view.stops[0]!.sceneTree?.nodes[0]).toMatchObject({ name: 'root', className: 'Window', id: '1' })
+    expect(view.stops[0]!.sceneTree?.nodes[0]?.children[0]).toMatchObject({ name: 'Main', className: 'Node2D', id: '7' })
     // Stop 1: frames only, no scope lines (size parity).
     expect(view.stops[1]!.varsLines).toBeUndefined()
     expect(view.stops[1]!.frames).toEqual([{ file: 'res://player.gd', line: 8, func: '_physics_process' }])
-    expect(view.stops[1]!.sceneTree).toEqual({ lines: ['root [Window]'] })
+    expect(view.stops[1]!.sceneTree?.nodes[0]?.children).toEqual([])
     // Structured carriers keep their stop linkage.
     expect(view.expansion).toEqual({
       stopIndex: 0, expandedObjects: 2, truncated: false,
@@ -210,22 +223,7 @@ describe('structuredDebugView', () => {
     expect(view.stops[0]!.scopeTruncated).toBeUndefined()
     // Frames survive the first cut.
     expect(view.stops[0]!.frames).toEqual([{ file: 'res://main.gd', line: 12, func: '_ready' }])
-  })
-
-  it('cuts the scene-tree lines as the second stage when still over budget', () => {
-    const locals = Array.from({ length: 2000 }, (_, i) => ({ name: `v${i}`, value: 'x'.repeat(160) }))
-    // ~12000 lines × ~25 chars ≈ 300KB — still over the budget after the
-    // varsLines cut, so the scene-tree lines become the second cut.
-    const bigTree = Array.from({ length: 12000 }, (_, i) => `  node${i} [Node2D] (${i})`)
-    const view = structuredDebugView(input({
-      stops: [stop(0, [FRAME_MAIN], scopesWith(locals))],
-      sceneTrees: [{ stopIndex: 0, lines: bigTree }],
-      sceneTreeCount: 1,
-    }), 10)
-    expect(view.viewTruncated).toBe(true)
-    expect(view.stops[0]!.varsLines).toBeUndefined()
-    expect(view.stops[0]!.sceneTree).toBeUndefined()
-    expect(view.sceneTreeCount).toBe(1)
+    expect(view.viewCut).toBe('vars')
   })
 
   it('keeps the detail when the view fits under the budget (no false truncation)', () => {
@@ -233,5 +231,53 @@ describe('structuredDebugView', () => {
     expect(view.viewTruncated).toBe(false)
     expect(view.stops[0]!.varsLines).toEqual(['  locals:', '    counter = 779'])
     expect(JSON.stringify(view).length).toBeLessThan(VIEW_MAX_BYTES)
+  })
+  it('cuts the sample nesting first, and says so', () => {
+    // A deep sample is the usual overflow: 100 nested objects with 30 rows each.
+    const children = Array.from({ length: 100 }, (_, c) => ({
+      name: `arr[${c}]`,
+      id: String(100 + c),
+      className: 'Node',
+      rows: Array.from({ length: 30 }, (_, r) => ({ name: `p${r}`, value: 'x'.repeat(120) })),
+    }))
+    const view = structuredDebugView(input({
+      stops: [stop(0, [FRAME_MAIN], scopesWith([]))],
+      expansion: { stopIndex: 0, expandedObjects: 101, entries: [{ name: 'self', id: '1', className: 'Control', rows: [], children }] },
+    }), 10)
+    expect(view.viewTruncated).toBe(true)
+    expect(view.viewCut).toBe('expansionChildren')
+    // The run's slice survives; the sampled object keeps its own rows.
+    expect(view.stops[0]!.sceneTree?.nodes).toHaveLength(1)
+    expect(view.expansion?.entries[0]?.name).toBe('self')
+    expect(view.expansion?.entries[0]?.children).toBeUndefined()
+  })
+
+  it('drops the whole sample before it touches the tree', () => {
+    // Roots alone overflow the budget: the sample goes, the tree stays.
+    const entries = Array.from({ length: 40 }, (_, i) => ({
+      name: `obj${i}`,
+      id: String(i),
+      className: 'Node',
+      rows: Array.from({ length: 100 }, (_, r) => ({ name: `p${r}`, value: 'x'.repeat(120) })),
+    }))
+    const view = structuredDebugView(input({
+      stops: [stop(0, [FRAME_MAIN], scopesWith([]))],
+      expansion: { stopIndex: 0, expandedObjects: 40, entries },
+    }), 10)
+    expect(view.viewCut).toBe('expansion')
+    expect(view.expansion).toBeUndefined()
+    expect(view.stops[0]!.sceneTree?.nodes).toHaveLength(1)
+    expect(view.stops[0]!.frames).toHaveLength(1)
+  })
+
+  it('carries the per-stop tree bound into the stop', () => {
+    const view = structuredDebugView(input({
+      sceneTrees: [
+        { stopIndex: 0, nodes: [viewNode('root', 'Window', '1', [])], truncated: true },
+        { stopIndex: 1, nodes: [viewNode('root', 'Window', '1', [])] },
+      ],
+    }), 10)
+    expect(view.stops[0]!.sceneTree?.truncated).toBe(true)
+    expect(view.stops[1]!.sceneTree?.truncated).toBeUndefined()
   })
 })

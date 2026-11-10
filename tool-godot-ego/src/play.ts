@@ -30,6 +30,7 @@ import { EgoGodotError } from './errors.ts'
 import { GameSession } from './session.ts'
 import type { GameSessionRegistry } from './session-service.ts'
 import type { EgoPlayOptions, EgoSessionFactory, EgoSessionHandle } from './session-service.ts'
+import { clearSessionRecord, sessionRecordDir, sessionSweepDeps, sweepSessions, writeSessionRecord } from './session-registry.ts'
 
 /** Default window size requested from the engine. */
 const DEFAULT_RESOLUTION = '1280x720'
@@ -71,7 +72,7 @@ export function buildSpawnSpec(input: SpawnSpecInput): SubprocessSpawnSpec {
   if (input.offscreen) argv.push('--position', '-32000,-32000')
   if (input.fixedFps > 0) argv.push('--fixed-fps', String(input.fixedFps))
   else if (input.maxFps > 0) argv.push('--max-fps', String(input.maxFps))
-  return {
+  const spec = {
     argv,
     cwd: input.projectRoot,
     // The user operates the running scene in its native window; the generic
@@ -89,8 +90,14 @@ export function buildSpawnSpec(input: SpawnSpecInput): SubprocessSpawnSpec {
       DSH_EGO_BRIDGE: input.bridgePath,
       DSH_EGO_SCENE: input.scene ?? '',
       DSH_EGO_ALLOW_EVAL: input.allowEval ? '1' : '0',
+      DSH_EGO_OFFSCREEN: input.offscreen ? '1' : '0',
     },
   }
+  // ponytail: `windowsHide` is not in `SubprocessSpawnSpec` as published on npm
+  // (0.2.2-rc.1); the local runtime honours it, so the field stays and the cast
+  // only bridges the type gap. A runtime that ignores it still plays the game —
+  // the window just opens hidden. Drop the cast once the field ships.
+  return spec as SubprocessSpawnSpec
 }
 
 /**
@@ -180,13 +187,15 @@ export function resolveEgoExecutable(config: ResolvedEgoConfig, toolchain?: Godo
  * @param config - resolved plugin config.
  * @param workspace - the workspace key.
  * @param options - start options (`restart` is handled by the registry).
- * @returns the session handle, whose `dispose` also removes the temp scripts.
+ * @param recordDir - where the cross-restart record is written; defaults to the configured directory.
+ * @returns the session handle, whose `dispose` also removes the temp scripts and the record.
  */
 export async function startSession(
   ctx: Context,
   config: ResolvedEgoConfig,
   workspace: string,
   options: EgoPlayOptions,
+  recordDir: string = sessionRecordDir(config.stateDir),
 ): Promise<EgoSessionHandle> {
   const projectRoot = await resolveProjectRoot(options.path, workspace)
   if (!existsSync(join(projectRoot, 'project.godot'))) {
@@ -207,7 +216,7 @@ export async function startSession(
   const bootPath = join(directory, 'boot.gd')
   let gameHandle!: SubprocessHandle
   try {
-    await writeFile(bridgePath, bridgeSource({ allowEval: config.allowEval }), 'utf8')
+    await writeFile(bridgePath, bridgeSource({ allowEval: config.allowEval, trace: config.trace }), 'utf8')
     await writeFile(bootPath, bootstrapSource({ bridgePath }), 'utf8')
     const session = new GameSession({
       sessionId: randomUUID(),
@@ -235,6 +244,17 @@ export async function startSession(
       },
     })
     await session.start()
+    const started = session.snapshot()
+    await writeSessionRecord(recordDir, {
+      sessionId: session.sessionId,
+      ownerPid: process.pid,
+      workspace,
+      pid: started.pid,
+      port: started.port,
+      projectRoot,
+      tempDir: directory,
+      startedAt: new Date().toISOString(),
+    })
     return {
       sessionId: session.sessionId,
       workspace,
@@ -245,6 +265,7 @@ export async function startSession(
         try {
           await session.dispose()
         } finally {
+          await clearSessionRecord(recordDir, session.sessionId)
           await removeTempDir(directory)
         }
       },
@@ -252,6 +273,7 @@ export async function startSession(
         try {
           return await session.stop()
         } finally {
+          await clearSessionRecord(recordDir, session.sessionId)
           await removeTempDir(directory)
         }
       },
@@ -291,12 +313,25 @@ async function removeTempDir(directory: string): Promise<void> {
 
 /**
  * Build the registry factory bound to one plugin context and config.
+ *
+ * The first `godot_play` of a process sweeps the session records a dead host
+ * left behind, before spawning anything: a stale record is the one thing that
+ * survives a hard kill, and starting a second game beside it would leave the
+ * first one running forever with no way back to it.
  * @param ctx - plugin context (uses the `subprocess` seam).
  * @param config - resolved plugin config.
  * @returns the factory the session registry calls for each workspace.
  */
 export function createPlayFactory(ctx: Context, config: ResolvedEgoConfig): EgoSessionFactory {
-  return (workspace, options) => startSession(ctx, config, workspace, options)
+  const recordDir = sessionRecordDir(config.stateDir)
+  let sweeping: Promise<void> | undefined
+  return async (workspace, options) => {
+    // Failures here never block a play: a leftover record is worth less than the
+    // session the caller asked for.
+    sweeping ??= sweepSessions(sessionSweepDeps(recordDir)).then(() => {}, () => {})
+    await sweeping
+    return startSession(ctx, config, workspace, options, recordDir)
+  }
 }
 
 /** What `godot_play` returns to the model. */

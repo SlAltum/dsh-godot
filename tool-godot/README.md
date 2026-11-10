@@ -65,6 +65,7 @@ Every key has a default; a deployment only overrides what its environment needs.
 | `stderrMaxBytes` | `262144` | Max bytes retained for one run's stderr; a lossy read marks the result `stderrTruncated`. |
 | `validateMaxErrors` | `200` | Max issues one `godot_validate` result retains inline; more issues set `issuesTruncated`. |
 | `graceMs` | `5000` | Positive terminate-escalation grace the subprocess seam grants before an aborted run settles; cannot exceed [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md). |
+| `maxConcurrentRuns` | `4` | How many one-shot godot processes may be in flight at once. A fan-out beyond it queues, and the queued time is charged to that call's own budget — six parallel project validations run two at a time instead of booting six editors. |
 | `timeoutMs` | `60000` | Cooperative tool-call budget on all five tools, enforced by `@deepseek-ai/dsh-tool-call-timeout-policy` through `exec.signal`. First-run project validation boots the headless editor and imports assets; large projects may need a larger budget. |
 
 <a id="tools"></a>

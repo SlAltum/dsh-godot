@@ -32,6 +32,7 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { ProcessGate } from './process-gate.ts'
 import { resolveExecutable } from './godot-core.ts'
 import type { GodotExecutable, ResolvedCaps } from './godot-core.ts'
 import { applyValidateTool } from './validate.ts'
@@ -114,6 +115,11 @@ export interface Config {
    * Default 300000.
    */
   runSceneTimeoutMs: number
+  /**
+   * How many one-shot godot processes may run at once (default 4). A fan-out
+   * beyond this queues; the queued time counts against the call's own budget.
+   */
+  maxConcurrentRuns: number
 }
 
 export const Config = z.object({
@@ -130,6 +136,7 @@ export const Config = z.object({
   validateMaxErrors: z.number().min(1).step(1).default(200),
   graceMs: z.number().min(1).step(1).max(MAX_TIMER_DELAY_MS).default(5_000),
   timeoutMs: z.number().min(1).step(1).default(60_000).volatile(),
+  maxConcurrentRuns: z.number().min(1).step(1).default(4),
   runSceneTimeoutMs: z.number().min(1).step(1).max(MAX_TIMER_DELAY_MS).default(300_000),
 })
 
@@ -160,6 +167,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     resolve: () => resolveExecutable(config.executable.get(), config.executableArgs, 'godot'),
   } satisfies GodotToolchain)
 
+  // One budget for the whole plugin: every one-shot tool routes through this
+  // gate, so a fan-out queues instead of booting one Godot per call.
+  const gate = new ProcessGate(config.maxConcurrentRuns)
+
   const caps = (): ResolvedCaps => {
     const endComment = config.builtinSpacesBeforeEndOfLineComment
     return {
@@ -175,6 +186,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       graceMs: config.graceMs,
       timeoutMs: config.timeoutMs.get(),
       runSceneTimeoutMs: config.runSceneTimeoutMs,
+      gate,
     }
   }
 

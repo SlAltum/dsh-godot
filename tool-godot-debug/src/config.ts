@@ -12,7 +12,7 @@ import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 
 /** Plugin configuration as a deployment provides it (every key optional). */
 export interface GodotDebugConfig {
-  /** Godot executable path or PATH-resolved command name (default `godot`). */
+  /** Godot executable path or PATH-resolved command name; empty inherits the live `tool-godot` value. */
   executable?: string
   /** Fixed argv elements inserted after the godot executable (deployment wrappers). */
   executableArgs?: string[]
@@ -55,7 +55,7 @@ export interface GodotDebugConfig {
 export type ResolvedGodotDebugConfig = Required<GodotDebugConfig>
 
 export const Config: z<GodotDebugConfig> = z.object({
-  executable: z.string().default('godot'),
+  executable: z.string().default(''),
   executableArgs: z.array(z.string()).default([]),
   debugPort: z.number().default(0),
   maxMessageBytes: z.number().default(16_000_000),

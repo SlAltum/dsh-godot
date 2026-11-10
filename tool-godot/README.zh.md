@@ -65,6 +65,7 @@ await ctx.plugin(ToolGodot, { executable: 'C:\\Godot\\godot.exe' })
 | `stderrMaxBytes` | `262144` | 单次运行 stderr 保留的最大字节数；有损读取会把结果标记为 `stderrTruncated`。 |
 | `validateMaxErrors` | `200` | 单次 `godot_validate` 结果内联保留的最大 issue 数；更多 issue 会置 `issuesTruncated`。 |
 | `graceMs` | `5000` | 中止运行落定前，子进程 seam 给予的正向终止升级宽限；不得超过 [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.zh.md)。 |
+| `maxConcurrentRuns` | `4` | 同时在跑的一次性 godot 进程上限。超过就排队，排队时间算进那次调用自己的预算——六个并行的 project 校验只会两个两个地跑，而不是同时起六个编辑器。 |
 | `timeoutMs` | `60000` | 五个工具的协作调用预算，由 `@deepseek-ai/dsh-tool-call-timeout-policy` 经 `exec.signal` 实施。首次项目校验会启动无头编辑器并导入资源；大型项目可能需要更大预算。 |
 
 <a id="tools"></a>

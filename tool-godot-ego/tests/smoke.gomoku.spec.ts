@@ -59,7 +59,7 @@ describe.skipIf(GODOT === undefined)('REAL smoke: Gomoku fixture', () => {
       expect(textOf(find)).toContain('Cell_07_07')
 
       const cell = (row: number, col: number) =>
-        `Main/BoardHits/Cell_${String(row).padStart(2, '0')}_${String(col).padStart(2, '0')}`
+        `Main/Board/BoardHits/Cell_${String(row).padStart(2, '0')}_${String(col).padStart(2, '0')}`
       for (const [row, col] of [[7, 7], [5, 5], [7, 8], [5, 6], [7, 9], [5, 7], [7, 10], [5, 8], [7, 11]] as const) {
         const click = await call('godot_click', { target: cell(row, col) })
         expect(click.isError).toBe(false)
@@ -70,12 +70,12 @@ describe.skipIf(GODOT === undefined)('REAL smoke: Gomoku fixture', () => {
       expect(textOf(board)).toContain('_moves = 9')
       expect(textOf(board)).toContain('_finished = true')
 
-      const name = await call('godot_node', { path: '/root/Main/StatusName', props: ['text'] })
+      const name = await call('godot_node', { path: '/root/Main/Sidebar/StatusName', props: ['text'] })
       expect(textOf(name)).toContain('Black')
-      const accent = await call('godot_node', { path: '/root/Main/StatusAccent', props: ['text'] })
+      const accent = await call('godot_node', { path: '/root/Main/Sidebar/StatusAccent', props: ['text'] })
       expect(textOf(accent)).toContain('wins')
 
-      const reset = await call('godot_click', { target: 'Main/NewGame' })
+      const reset = await call('godot_click', { target: 'Main/Sidebar/NewGame' })
       expect(reset.isError).toBe(false)
       const cleared = await call('godot_node', { path: '/root/Main', props: ['_moves', '_finished'] })
       expect(textOf(cleared)).toContain('_moves = 0')
