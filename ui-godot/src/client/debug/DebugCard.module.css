@@ -1,5 +1,17 @@
 /* The row belongs to the shell's DisclosureRow; this file styles what the card
    puts inside it. */
+/* The separator the shell rows draw between a title and its summary: a 2 px dot.
+   `collapsedContent` renders inside a text span, so the dot is inline-block. */
+.sep {
+  display: inline-block;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  margin: 0 8px;
+  vertical-align: middle;
+  background: var(--dsw-alias-label-caption);
+}
+
 
 /* A failed run reads as a failure in the row's own title. */
 .failed {

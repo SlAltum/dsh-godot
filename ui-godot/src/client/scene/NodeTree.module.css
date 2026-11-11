@@ -34,13 +34,14 @@
   box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary);
 }
 
-/* A row whose properties the caller captured: the same green a diff addition uses,
-   at 8% so it reads as a state rather than a highlight. */
-.rowCaptured {
+/* A marked row: the same green a diff addition uses, at 8% so it reads as a state
+   rather than a highlight. The debug card marks the rows whose properties it
+   sampled; the state card marks the rows this read changed. */
+.rowMarked {
   background: var(--dsw-static-green-500-a08);
 }
 
-.rowCaptured.rowSelected {
+.rowMarked.rowSelected {
   background: var(--dsw-static-green-500-a12);
 }
 

@@ -37,16 +37,17 @@ var godot_logo_svg_default = "data:image/svg+xml,%3C%3Fxml%20version%3D%221.0%22
 
 //#endregion
 //#region \0godot-css:D:/projects/dsh-godot/ui-godot/src/client/debug/DebugCard.module.css.mjs
-const css$4 = "/* The row belongs to the shell's DisclosureRow; this file styles what the card\r\n   puts inside it. */\r\n\r\n/* A failed run reads as a failure in the row's own title. */\r\n.godot_DebugCard_module_css_failed {\r\n  color: var(--dsw-alias-label-danger);\r\n}\r\n\r\n/* The run's facts sit at the row's secondary size, the way every shell row's summary\r\n   does: the content variable, not a fixed token, so a reader's font scale still\r\n   applies. Without this the span inherits the primary content size and reads one step\r\n   larger than the title beside it. */\r\n.godot_DebugCard_module_css_facts {\r\n  font-size: var(--dsh-content-font-size-secondary, 13px);\r\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\r\n  color: var(--dsw-alias-label-tertiary);\r\n  min-width: 0;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n/* The mark is masked, so it takes the shape of the row's own leading icon slot:\r\n   14 px, `currentColor`, replaced by the chevron on hover. */\r\n.godot_DebugCard_module_css_icon {\r\n  display: block;\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  background-color: currentColor;\r\n  mask-repeat: no-repeat;\r\n  mask-position: center;\r\n  mask-size: contain;\r\n}\r\n\r\n/* The failure branch has no host row to style it. */\r\n.godot_DebugCard_module_css_name {\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n/* The body rides the secondary tier the row title and the summary use (ToolDetails\r\n   sets `font: xs-13` on its own body): with no size here the content inherits the\r\n   message's primary size and reads one step over the row it sits under. The card\r\n   sits on the row's own indent; the sections inside it need none. */\r\n.godot_DebugCard_module_css_bodyWrap {\r\n  font-size: var(--dsh-content-font-size-secondary, 13px);\r\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\r\n  margin: 8px 0 0 20px;\r\n  padding: 10px 14px;\r\n  border-radius: var(--dsw-radius-lg);\r\n  background: var(--dsw-alias-markdown-code-block);\r\n}\r\n\r\n.godot_DebugCard_module_css_stops {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n/* Sections divide by a hairline on the card's own surface — no nested boxes. */\r\n.godot_DebugCard_module_css_stop {\r\n  border-top: 1px solid var(--dsw-alias-border-l2);\r\n  padding-top: 6px;\r\n  margin-top: 6px;\r\n}\r\n\r\n/* The first stop has no rule above it: the card's own edge is there. */\r\n.godot_DebugCard_module_css_stops > .godot_DebugCard_module_css_stop:first-child,\r\n.godot_DebugCard_module_css_bodyWrap > .godot_DebugCard_module_css_stops > .godot_DebugCard_module_css_stop:first-child {\r\n  border-top: 0;\r\n  margin-top: 0;\r\n  padding-top: 0;\r\n}\r\n\r\n.godot_DebugCard_module_css_stopHead {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: baseline;\r\n  cursor: pointer;\r\n  flex-wrap: wrap;\r\n}\r\n\r\n.godot_DebugCard_module_css_stopIndex {\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopWhere {\r\n  font-family: var(--dsw-font-family-mono);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopReason {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopThread {\r\n  margin-left: auto;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_section {\r\n  margin-top: 6px;\r\n}\r\n\r\n.godot_DebugCard_module_css_sectionTitle {\r\n  margin: 0 0 4px;\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_frames {\r\n  margin: 0;\r\n  padding-left: 18px;\r\n  font-family: var(--dsw-font-family-mono);\r\n}\r\n\r\n/* Text sits on the card's own surface — the shell's code blocks draw no inner box. */\r\n.godot_DebugCard_module_css_block {\r\n  margin: 4px 0 0;\r\n  font-family: var(--dsw-font-family-mono);\r\n  white-space: pre-wrap;\r\n  overflow-x: auto;\r\n  max-height: 320px;\r\n}\r\n\r\n.godot_DebugCard_module_css_entries {\r\n  margin: 4px 0 0;\r\n  padding: 0;\r\n  list-style: none;\r\n}\r\n\r\n.godot_DebugCard_module_css_entry {\r\n  margin: 2px 0;\r\n}\r\n\r\n.godot_DebugCard_module_css_entryHead {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: baseline;\r\n}\r\n\r\n.godot_DebugCard_module_css_rows {\r\n  margin: 2px 0 0;\r\n  padding-left: 16px;\r\n  list-style: none;\r\n}\r\n\r\n.godot_DebugCard_module_css_rowName {\r\n  color: var(--dsw-alias-label-tertiary);\r\n  margin-right: 8px;\r\n}\r\n\r\n.godot_DebugCard_module_css_rowValue {\r\n  font-family: var(--dsw-font-family-mono);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_dim {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* The picked node of a stop: identity first, then whatever the run expanded. */\r\n.godot_DebugCard_module_css_nodeInfo {\r\n  margin-top: 6px;\r\n  padding: 6px 8px;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n}\r\n\r\n.godot_DebugCard_module_css_nodeHead {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: baseline;\r\n  flex-wrap: wrap;\r\n  color: var(--dsw-alias-label-primary);\r\n  font: var(--dsw-font-xs-13);\r\n}\r\n\r\n.godot_DebugCard_module_css_ok {\r\n  color: var(--dsw-alias-label-positive);\r\n}\r\n\r\n.godot_DebugCard_module_css_bad {\r\n  color: var(--dsw-alias-label-danger);\r\n}\r\n\r\n.godot_DebugCard_module_css_exit {\r\n  margin-top: 6px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* The shell's own inspect action, in the place the built-in rows put theirs. */\r\n.godot_DebugCard_module_css_inspect {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  margin-top: 8px;\r\n  padding: 2px 8px;\r\n  border: 1px solid var(--dsw-alias-border-l2);\r\n  border-radius: var(--dsw-radius-sm);\r\n  background: none;\r\n  color: var(--dsw-alias-label-secondary);\r\n  font: var(--dsw-font-xs-13);\r\n  cursor: pointer;\r\n}\r\n\r\n@media (hover: hover) {\r\n  .godot_DebugCard_module_css_inspect:hover {\r\n    background: var(--dsw-alias-interactive-bg-hover);\r\n    color: var(--dsw-alias-label-primary);\r\n  }\r\n}\r\n";
-const tag$4 = "ui-godot:DebugCard.module.css";
-if (typeof document !== "undefined" && document.getElementById(tag$4) === null) {
+const css$5 = "/* The row belongs to the shell's DisclosureRow; this file styles what the card\r\n   puts inside it. */\r\n/* The separator the shell rows draw between a title and its summary: a 2 px dot.\r\n   `collapsedContent` renders inside a text span, so the dot is inline-block. */\r\n.godot_DebugCard_module_css_sep {\r\n  display: inline-block;\r\n  width: 2px;\r\n  height: 2px;\r\n  border-radius: 1px;\r\n  margin: 0 8px;\r\n  vertical-align: middle;\r\n  background: var(--dsw-alias-label-caption);\r\n}\r\n\r\n\r\n/* A failed run reads as a failure in the row's own title. */\r\n.godot_DebugCard_module_css_failed {\r\n  color: var(--dsw-alias-label-danger);\r\n}\r\n\r\n/* The run's facts sit at the row's secondary size, the way every shell row's summary\r\n   does: the content variable, not a fixed token, so a reader's font scale still\r\n   applies. Without this the span inherits the primary content size and reads one step\r\n   larger than the title beside it. */\r\n.godot_DebugCard_module_css_facts {\r\n  font-size: var(--dsh-content-font-size-secondary, 13px);\r\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\r\n  color: var(--dsw-alias-label-tertiary);\r\n  min-width: 0;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n/* The mark is masked, so it takes the shape of the row's own leading icon slot:\r\n   14 px, `currentColor`, replaced by the chevron on hover. */\r\n.godot_DebugCard_module_css_icon {\r\n  display: block;\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  background-color: currentColor;\r\n  mask-repeat: no-repeat;\r\n  mask-position: center;\r\n  mask-size: contain;\r\n}\r\n\r\n/* The failure branch has no host row to style it. */\r\n.godot_DebugCard_module_css_name {\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n/* The body rides the secondary tier the row title and the summary use (ToolDetails\r\n   sets `font: xs-13` on its own body): with no size here the content inherits the\r\n   message's primary size and reads one step over the row it sits under. The card\r\n   sits on the row's own indent; the sections inside it need none. */\r\n.godot_DebugCard_module_css_bodyWrap {\r\n  font-size: var(--dsh-content-font-size-secondary, 13px);\r\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\r\n  margin: 8px 0 0 20px;\r\n  padding: 10px 14px;\r\n  border-radius: var(--dsw-radius-lg);\r\n  background: var(--dsw-alias-markdown-code-block);\r\n}\r\n\r\n.godot_DebugCard_module_css_stops {\r\n  display: grid;\r\n  gap: 6px;\r\n}\r\n\r\n/* Sections divide by a hairline on the card's own surface — no nested boxes. */\r\n.godot_DebugCard_module_css_stop {\r\n  border-top: 1px solid var(--dsw-alias-border-l2);\r\n  padding-top: 6px;\r\n  margin-top: 6px;\r\n}\r\n\r\n/* The first stop has no rule above it: the card's own edge is there. */\r\n.godot_DebugCard_module_css_stops > .godot_DebugCard_module_css_stop:first-child,\r\n.godot_DebugCard_module_css_bodyWrap > .godot_DebugCard_module_css_stops > .godot_DebugCard_module_css_stop:first-child {\r\n  border-top: 0;\r\n  margin-top: 0;\r\n  padding-top: 0;\r\n}\r\n\r\n.godot_DebugCard_module_css_stopHead {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: baseline;\r\n  cursor: pointer;\r\n  flex-wrap: wrap;\r\n}\r\n\r\n.godot_DebugCard_module_css_stopIndex {\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopWhere {\r\n  font-family: var(--dsw-font-family-mono);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopReason {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_stopThread {\r\n  margin-left: auto;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_section {\r\n  margin-top: 6px;\r\n}\r\n\r\n.godot_DebugCard_module_css_sectionTitle {\r\n  margin: 0 0 4px;\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_DebugCard_module_css_frames {\r\n  margin: 0;\r\n  padding-left: 18px;\r\n  font-family: var(--dsw-font-family-mono);\r\n}\r\n\r\n/* Text sits on the card's own surface — the shell's code blocks draw no inner box. */\r\n.godot_DebugCard_module_css_block {\r\n  margin: 4px 0 0;\r\n  font-family: var(--dsw-font-family-mono);\r\n  white-space: pre-wrap;\r\n  overflow-x: auto;\r\n  max-height: 320px;\r\n}\r\n\r\n.godot_DebugCard_module_css_entries {\r\n  margin: 4px 0 0;\r\n  padding: 0;\r\n  list-style: none;\r\n}\r\n\r\n.godot_DebugCard_module_css_entry {\r\n  margin: 2px 0;\r\n}\r\n\r\n.godot_DebugCard_module_css_entryHead {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: baseline;\r\n}\r\n\r\n.godot_DebugCard_module_css_rows {\r\n  margin: 2px 0 0;\r\n  padding-left: 16px;\r\n  list-style: none;\r\n}\r\n\r\n.godot_DebugCard_module_css_rowName {\r\n  color: var(--dsw-alias-label-tertiary);\r\n  margin-right: 8px;\r\n}\r\n\r\n.godot_DebugCard_module_css_rowValue {\r\n  font-family: var(--dsw-font-family-mono);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_DebugCard_module_css_dim {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* The picked node of a stop: identity first, then whatever the run expanded. */\r\n.godot_DebugCard_module_css_nodeInfo {\r\n  margin-top: 6px;\r\n  padding: 6px 8px;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n}\r\n\r\n.godot_DebugCard_module_css_nodeHead {\r\n  display: flex;\r\n  gap: 8px;\r\n  align-items: baseline;\r\n  flex-wrap: wrap;\r\n  color: var(--dsw-alias-label-primary);\r\n  font: var(--dsw-font-xs-13);\r\n}\r\n\r\n.godot_DebugCard_module_css_ok {\r\n  color: var(--dsw-alias-label-positive);\r\n}\r\n\r\n.godot_DebugCard_module_css_bad {\r\n  color: var(--dsw-alias-label-danger);\r\n}\r\n\r\n.godot_DebugCard_module_css_exit {\r\n  margin-top: 6px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* The shell's own inspect action, in the place the built-in rows put theirs. */\r\n.godot_DebugCard_module_css_inspect {\r\n  display: inline-flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  margin-top: 8px;\r\n  padding: 2px 8px;\r\n  border: 1px solid var(--dsw-alias-border-l2);\r\n  border-radius: var(--dsw-radius-sm);\r\n  background: none;\r\n  color: var(--dsw-alias-label-secondary);\r\n  font: var(--dsw-font-xs-13);\r\n  cursor: pointer;\r\n}\r\n\r\n@media (hover: hover) {\r\n  .godot_DebugCard_module_css_inspect:hover {\r\n    background: var(--dsw-alias-interactive-bg-hover);\r\n    color: var(--dsw-alias-label-primary);\r\n  }\r\n}\r\n";
+const tag$5 = "ui-godot:DebugCard.module.css";
+if (typeof document !== "undefined" && document.getElementById(tag$5) === null) {
 	const style = document.createElement("style");
-	style.id = tag$4;
+	style.id = tag$5;
 	style.dataset.plugin = "ui-godot";
-	style.textContent = css$4;
+	style.textContent = css$5;
 	document.head.appendChild(style);
 }
 var DebugCard_module_css_default = {
+	"sep": "godot_DebugCard_module_css_sep",
 	"failed": "godot_DebugCard_module_css_failed",
 	"facts": "godot_DebugCard_module_css_facts",
 	"icon": "godot_DebugCard_module_css_icon",
@@ -605,13 +606,13 @@ const NODE_ICON_CLASSES = new Set([
 
 //#endregion
 //#region \0godot-css:D:/projects/dsh-godot/ui-godot/src/client/scene/NodeTree.module.css.mjs
-const css$3 = "/* One scene tree: rows, icons and the editor's marks. */\r\n\r\n.godot_NodeTree_module_css_tree {\r\n  margin: 0;\r\n  padding: 8px 4px 8px 8px;\r\n  list-style: none;\r\n  /* A row ellipsises its own text; the tree must not scroll sideways for it. */\r\n  overflow-x: hidden;\r\n  overflow-y: auto;\r\n}\r\n\r\n.godot_NodeTree_module_css_children {\r\n  margin: 0;\r\n  padding-left: 11px;\r\n  list-style: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_node {\r\n  margin: 1px 0;\r\n}\r\n\r\n.godot_NodeTree_module_css_row {\r\n  display: flex;\r\n  align-items: baseline;\r\n  gap: 6px;\r\n  border-radius: 4px;\r\n  padding: 1px 4px;\r\n  min-width: 0;\r\n}\r\n\r\n/* Selection draws a ring, not a fill: the fill channel reports captured state\r\n   (the row's own properties are in this run's sample), so the two never compete. */\r\n.godot_NodeTree_module_css_rowSelected {\r\n  box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* A row whose properties the caller captured: the same green a diff addition uses,\r\n   at 8% so it reads as a state rather than a highlight. */\r\n.godot_NodeTree_module_css_rowCaptured {\r\n  background: var(--dsw-static-green-500-a08);\r\n}\r\n\r\n.godot_NodeTree_module_css_rowCaptured.godot_NodeTree_module_css_rowSelected {\r\n  background: var(--dsw-static-green-500-a12);\r\n}\r\n\r\n.godot_NodeTree_module_css_twisty,\r\n.godot_NodeTree_module_css_twistySpacer {\r\n  width: 14px;\r\n  flex: none;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  background: none;\r\n  border: 0;\r\n  padding: 0;\r\n  cursor: pointer;\r\n  font: inherit;\r\n}\r\n\r\n/* The name keeps its width; the class text is what gives way when the pane is\r\n   narrow, so a row never reads as `Cell_00…`. */\r\n.godot_NodeTree_module_css_name {\r\n  flex: 0 1 auto;\r\n  min-width: 8ch;\r\n  background: none;\r\n  border: 0;\r\n  padding: 0;\r\n  cursor: pointer;\r\n  color: var(--dsw-alias-label-primary);\r\n  font: inherit;\r\n  text-align: left;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.godot_NodeTree_module_css_icon {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  align-self: center;\r\n}\r\n\r\n/* A class outside the icon set keeps the row aligned without inventing a mark. */\r\n.godot_NodeTree_module_css_iconSpacer {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n}\r\n\r\n/* Icons are masks: the file supplies the shape, the row supplies the colour,\r\n   so one packaged set reads correctly in either theme. */\r\n.godot_NodeTree_module_css_icon,\r\n.godot_NodeTree_module_css_badgeIcon {\r\n  mask-repeat: no-repeat;\r\n  mask-position: center;\r\n  mask-size: contain;\r\n}\r\n\r\n/* The script and inherited-scene glyphs ride beside the class icon at a\r\n   smaller size, reading as attributes of the node rather than of the class. */\r\n.godot_NodeTree_module_css_badgeIcon {\r\n  width: 12px;\r\n  height: 12px;\r\n  flex: none;\r\n  align-self: center;\r\n  background-color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_NodeTree_module_css_icon {\r\n  background-color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.godot_NodeTree_module_css_type {\r\n  flex: 1 1 auto;\r\n  min-width: 0;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n/* Marks sit in a right-aligned block, the way the Godot editor's Scene dock\r\n   places them before its visibility toggle: `%` for a unique name, then the\r\n   script glyph for a script. VSCode had to spell the script mark as the letter\r\n   `S` because a file-decoration badge holds one character; a tree can draw the\r\n   icon instead. */\r\n.godot_NodeTree_module_css_marks {\r\n  margin-left: auto;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  flex: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_uniqueMark {\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_NodeTree_module_css_badge {\r\n  border: 1px solid var(--dsw-alias-border-l2);\r\n  border-radius: 999px;\r\n  padding: 0 6px;\r\n  font-size: 10px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  flex: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_line {\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-size: 10px;\r\n  flex: none;\r\n  min-width: 18px;\r\n  text-align: right;\r\n}\r\n";
-const tag$3 = "ui-godot:NodeTree.module.css";
-if (typeof document !== "undefined" && document.getElementById(tag$3) === null) {
+const css$4 = "/* One scene tree: rows, icons and the editor's marks. */\r\n\r\n.godot_NodeTree_module_css_tree {\r\n  margin: 0;\r\n  padding: 8px 4px 8px 8px;\r\n  list-style: none;\r\n  /* A row ellipsises its own text; the tree must not scroll sideways for it. */\r\n  overflow-x: hidden;\r\n  overflow-y: auto;\r\n}\r\n\r\n.godot_NodeTree_module_css_children {\r\n  margin: 0;\r\n  padding-left: 11px;\r\n  list-style: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_node {\r\n  margin: 1px 0;\r\n}\r\n\r\n.godot_NodeTree_module_css_row {\r\n  display: flex;\r\n  align-items: baseline;\r\n  gap: 6px;\r\n  border-radius: 4px;\r\n  padding: 1px 4px;\r\n  min-width: 0;\r\n}\r\n\r\n/* Selection draws a ring, not a fill: the fill channel reports captured state\r\n   (the row's own properties are in this run's sample), so the two never compete. */\r\n.godot_NodeTree_module_css_rowSelected {\r\n  box-shadow: inset 0 0 0 1px var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* A marked row: the same green a diff addition uses, at 8% so it reads as a state\r\n   rather than a highlight. The debug card marks the rows whose properties it\r\n   sampled; the state card marks the rows this read changed. */\r\n.godot_NodeTree_module_css_rowMarked {\r\n  background: var(--dsw-static-green-500-a08);\r\n}\r\n\r\n.godot_NodeTree_module_css_rowMarked.godot_NodeTree_module_css_rowSelected {\r\n  background: var(--dsw-static-green-500-a12);\r\n}\r\n\r\n.godot_NodeTree_module_css_twisty,\r\n.godot_NodeTree_module_css_twistySpacer {\r\n  width: 14px;\r\n  flex: none;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  background: none;\r\n  border: 0;\r\n  padding: 0;\r\n  cursor: pointer;\r\n  font: inherit;\r\n}\r\n\r\n/* The name keeps its width; the class text is what gives way when the pane is\r\n   narrow, so a row never reads as `Cell_00…`. */\r\n.godot_NodeTree_module_css_name {\r\n  flex: 0 1 auto;\r\n  min-width: 8ch;\r\n  background: none;\r\n  border: 0;\r\n  padding: 0;\r\n  cursor: pointer;\r\n  color: var(--dsw-alias-label-primary);\r\n  font: inherit;\r\n  text-align: left;\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n.godot_NodeTree_module_css_icon {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  align-self: center;\r\n}\r\n\r\n/* A class outside the icon set keeps the row aligned without inventing a mark. */\r\n.godot_NodeTree_module_css_iconSpacer {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n}\r\n\r\n/* Icons are masks: the file supplies the shape, the row supplies the colour,\r\n   so one packaged set reads correctly in either theme. */\r\n.godot_NodeTree_module_css_icon,\r\n.godot_NodeTree_module_css_badgeIcon {\r\n  mask-repeat: no-repeat;\r\n  mask-position: center;\r\n  mask-size: contain;\r\n}\r\n\r\n/* The script and inherited-scene glyphs ride beside the class icon at a\r\n   smaller size, reading as attributes of the node rather than of the class. */\r\n.godot_NodeTree_module_css_badgeIcon {\r\n  width: 12px;\r\n  height: 12px;\r\n  flex: none;\r\n  align-self: center;\r\n  background-color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_NodeTree_module_css_icon {\r\n  background-color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.godot_NodeTree_module_css_type {\r\n  flex: 1 1 auto;\r\n  min-width: 0;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n/* Marks sit in a right-aligned block, the way the Godot editor's Scene dock\r\n   places them before its visibility toggle: `%` for a unique name, then the\r\n   script glyph for a script. VSCode had to spell the script mark as the letter\r\n   `S` because a file-decoration badge holds one character; a tree can draw the\r\n   icon instead. */\r\n.godot_NodeTree_module_css_marks {\r\n  margin-left: auto;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 4px;\r\n  flex: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_uniqueMark {\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_NodeTree_module_css_badge {\r\n  border: 1px solid var(--dsw-alias-border-l2);\r\n  border-radius: 999px;\r\n  padding: 0 6px;\r\n  font-size: 10px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  flex: none;\r\n}\r\n\r\n.godot_NodeTree_module_css_line {\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-size: 10px;\r\n  flex: none;\r\n  min-width: 18px;\r\n  text-align: right;\r\n}\r\n";
+const tag$4 = "ui-godot:NodeTree.module.css";
+if (typeof document !== "undefined" && document.getElementById(tag$4) === null) {
 	const style = document.createElement("style");
-	style.id = tag$3;
+	style.id = tag$4;
 	style.dataset.plugin = "ui-godot";
-	style.textContent = css$3;
+	style.textContent = css$4;
 	document.head.appendChild(style);
 }
 var NodeTree_module_css_default = {
@@ -620,7 +621,7 @@ var NodeTree_module_css_default = {
 	"node": "godot_NodeTree_module_css_node",
 	"row": "godot_NodeTree_module_css_row",
 	"rowSelected": "godot_NodeTree_module_css_rowSelected",
-	"rowCaptured": "godot_NodeTree_module_css_rowCaptured",
+	"rowMarked": "godot_NodeTree_module_css_rowMarked",
 	"twisty": "godot_NodeTree_module_css_twisty",
 	"twistySpacer": "godot_NodeTree_module_css_twistySpacer",
 	"name": "godot_NodeTree_module_css_name",
@@ -657,7 +658,7 @@ function Row(props) {
 	const instanceGlyph = node.instance === void 0 ? void 0 : iconUrl("PackedScene");
 	const rowClass = [
 		NodeTree_module_css_default.row,
-		node.captured === true ? NodeTree_module_css_default.rowCaptured : "",
+		node.marked === true ? NodeTree_module_css_default.rowMarked : "",
 		selected === node.key ? NodeTree_module_css_default.rowSelected : ""
 	].filter((part) => part !== "").join(" ");
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
@@ -752,6 +753,25 @@ function NodeTree(props) {
 }
 
 //#endregion
+//#region src/client/cards/fold.ts
+const OPEN_CALLS = /* @__PURE__ */ new Set();
+/** One card's fold state, stored per call rather than per component instance. */
+function useCardFold(callId) {
+	const [, bump] = (0, react.useState)(0);
+	const write = (open) => {
+		if (open) OPEN_CALLS.add(callId);
+		else OPEN_CALLS.delete(callId);
+		bump((count) => count + 1);
+	};
+	return {
+		expanded: OPEN_CALLS.has(callId),
+		toggle: () => {
+			write(!OPEN_CALLS.has(callId));
+		}
+	};
+}
+
+//#endregion
 //#region src/client/debug/debug-view.ts
 /**
 * Whether a value can be treated as a card view.
@@ -822,7 +842,7 @@ function callText(block) {
 /** Rows shown per object before the card says how many it held back. */
 const ROW_LIMIT = 12;
 /** The tree's labels, from the card's own namespace. */
-function treeLocale(t) {
+function treeLocale$1(t) {
 	return {
 		sceneScript: t("sceneScript"),
 		sceneInstance: t("sceneInstance"),
@@ -832,7 +852,7 @@ function treeLocale(t) {
 	};
 }
 /** The Godot mark as a mask, so it takes the row's icon colour. */
-const GODOT_MASK = {
+const GODOT_MASK$1 = {
 	maskImage: `url("${godot_logo_svg_default}")`,
 	WebkitMaskImage: `url("${godot_logo_svg_default}")`
 };
@@ -872,7 +892,7 @@ var ReportGuard = class extends react.Component {
 * The protocol reports a scripted node's class as the script path (`res://…`),
 * so such a node draws the script glyph and shows the path as its class text.
 */
-function toModel$2(node, parent = "", captured = /* @__PURE__ */ new Set()) {
+function toModel$3(node, parent = "", captured = /* @__PURE__ */ new Set()) {
 	const scripted = node.className.startsWith("res://");
 	const path = parent === "" ? node.name : `${parent}/${node.name}`;
 	const title = [
@@ -889,8 +909,8 @@ function toModel$2(node, parent = "", captured = /* @__PURE__ */ new Set()) {
 		...scripted ? { script: node.className } : {},
 		title,
 		path,
-		...captured.has(node.id) ? { captured: true } : {},
-		children: node.children.map((child) => toModel$2(child, path, captured))
+		...captured.has(node.id) ? { marked: true } : {},
+		children: node.children.map((child) => toModel$3(child, path, captured))
 	};
 }
 /**
@@ -1066,12 +1086,12 @@ function StopSection(props) {
 						children: t("debugNoExpansionHere")
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(NodeTree, {
-						roots: nodes.map((root) => toModel$2(root, "", capturedIds)),
+						roots: nodes.map((root) => toModel$3(root, "", capturedIds)),
 						selected,
 						onSelect: (node) => {
 							setSelected(node.key);
 						},
-						t: treeLocale(t),
+						t: treeLocale$1(t),
 						openKeys: pathKeys(nodes, selected)
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
@@ -1191,30 +1211,6 @@ function DebugCard(props) {
 		});
 	}
 }
-/**
-* Which calls have their report open, kept outside React.
-*
-* The transcript re-creates a toolview on every streaming render, so a row's own
-* `useState` is thrown away as fast as the reader opens it — which is what made a
-* click look like it did nothing. Keyed by call id, so a row that re-mounts comes
-* back the way the reader left it.
-*/
-const OPEN_CALLS = /* @__PURE__ */ new Set();
-/** The card's fold state, stored per call rather than per component instance. */
-function useCardFold(callId) {
-	const [, bump] = (0, react.useState)(0);
-	const write = (open) => {
-		if (open) OPEN_CALLS.add(callId);
-		else OPEN_CALLS.delete(callId);
-		bump((count) => count + 1);
-	};
-	return {
-		expanded: OPEN_CALLS.has(callId),
-		toggle: () => {
-			write(!OPEN_CALLS.has(callId));
-		}
-	};
-}
 /** The card itself; {@link DebugCard} guards it. */
 function DebugCardBody(props) {
 	const { t, disclosure } = props;
@@ -1247,7 +1243,7 @@ function DebugCardBody(props) {
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.DisclosureRow, {
 		icon: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 			className: DebugCard_module_css_default.icon,
-			style: GODOT_MASK,
+			style: GODOT_MASK$1,
 			"aria-hidden": "true"
 		}),
 		title: props.toolName ?? "godot_debug",
@@ -1259,12 +1255,18 @@ function DebugCardBody(props) {
 		previewChevron: true,
 		running: !hasBody,
 		keepContentWhenOpen: true,
-		collapsedContent: hasBody ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.TextShimmer, {
+		collapsedContent: hasBody ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(__deepseek_ai_dsh_client_ui_primitives.TextShimmer, {
 			className: DebugCard_module_css_default.facts,
-			children: facts
-		}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: DebugCard_module_css_default.sep,
+				"aria-hidden": "true"
+			}), facts]
+		}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 			className: DebugCard_module_css_default.facts,
-			children: facts
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: DebugCard_module_css_default.sep,
+				"aria-hidden": "true"
+			}), facts]
 		}),
 		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ReportGuard, {
 			fallback: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("pre", {
@@ -1384,13 +1386,13 @@ function DebugCardBody(props) {
 
 //#endregion
 //#region \0godot-css:D:/projects/dsh-godot/ui-godot/src/client/scene/SceneBody.module.css.mjs
-const css$2 = "/* The .godot_SceneBody_module_css_tscn body: a node tree on the left, the selected node's source on the right. */\r\n\r\n.godot_SceneBody_module_css_body {\r\n  display: flex;\r\n  flex-direction: column;\r\n  height: 100%;\r\n  min-height: 0;\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.godot_SceneBody_module_css_header {\r\n  display: flex;\r\n  align-items: baseline;\r\n  gap: 10px;\r\n  padding: 8px 12px;\r\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\r\n  flex: none;\r\n}\r\n\r\n.godot_SceneBody_module_css_root {\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_SceneBody_module_css_meta {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_SceneBody_module_css_panes {\r\n  display: grid;\r\n  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr);\r\n  min-height: 0;\r\n  flex: 1;\r\n}\r\n\r\n.godot_SceneBody_module_css_detail {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n  min-height: 0;\r\n  padding: 8px 12px;\r\n  overflow: auto;\r\n}\r\n\r\n.godot_SceneBody_module_css_detailHead {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: baseline;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_SceneBody_module_css_detailMeta {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_SceneBody_module_css_source {\r\n  margin: 0;\r\n  padding: 8px;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n  font-family: var(--dsw-font-family-mono);\r\n  white-space: pre-wrap;\r\n  overflow-x: auto;\r\n}\r\n\r\n.godot_SceneBody_module_css_note {\r\n  padding: 12px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n";
-const tag$2 = "ui-godot:SceneBody.module.css";
-if (typeof document !== "undefined" && document.getElementById(tag$2) === null) {
+const css$3 = "/* The .godot_SceneBody_module_css_tscn body: a node tree on the left, the selected node's source on the right. */\r\n\r\n.godot_SceneBody_module_css_body {\r\n  display: flex;\r\n  flex-direction: column;\r\n  height: 100%;\r\n  min-height: 0;\r\n  font: var(--dsw-font-xs-13);\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.godot_SceneBody_module_css_header {\r\n  display: flex;\r\n  align-items: baseline;\r\n  gap: 10px;\r\n  padding: 8px 12px;\r\n  border-bottom: 1px solid var(--dsw-alias-border-l2);\r\n  flex: none;\r\n}\r\n\r\n.godot_SceneBody_module_css_root {\r\n  font: var(--dsw-font-xs-13-strong);\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_SceneBody_module_css_meta {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_SceneBody_module_css_panes {\r\n  display: grid;\r\n  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr);\r\n  min-height: 0;\r\n  flex: 1;\r\n}\r\n\r\n.godot_SceneBody_module_css_detail {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 6px;\r\n  min-height: 0;\r\n  padding: 8px 12px;\r\n  overflow: auto;\r\n}\r\n\r\n.godot_SceneBody_module_css_detailHead {\r\n  display: flex;\r\n  gap: 10px;\r\n  align-items: baseline;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.godot_SceneBody_module_css_detailMeta {\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.godot_SceneBody_module_css_source {\r\n  margin: 0;\r\n  padding: 8px;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n  font-family: var(--dsw-font-family-mono);\r\n  white-space: pre-wrap;\r\n  overflow-x: auto;\r\n}\r\n\r\n.godot_SceneBody_module_css_note {\r\n  padding: 12px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n";
+const tag$3 = "ui-godot:SceneBody.module.css";
+if (typeof document !== "undefined" && document.getElementById(tag$3) === null) {
 	const style = document.createElement("style");
-	style.id = tag$2;
+	style.id = tag$3;
 	style.dataset.plugin = "ui-godot";
-	style.textContent = css$2;
+	style.textContent = css$3;
 	document.head.appendChild(style);
 }
 var SceneBody_module_css_default = {
@@ -1546,7 +1548,7 @@ function parseTscn(text) {
 /**
 * Adapt one parsed scene node to a tree row.
 */
-function toModel$1(node) {
+function toModel$2(node) {
 	const iconClass = node.type !== "" ? node.type : "Script";
 	return {
 		key: node.path,
@@ -1557,7 +1559,7 @@ function toModel$1(node) {
 		...node.instance !== void 0 ? { instance: node.instance } : {},
 		unique: node.unique,
 		line: node.line,
-		children: node.children.map(toModel$1)
+		children: node.children.map(toModel$2)
 	};
 }
 /**
@@ -1608,7 +1610,7 @@ function SceneBody(props) {
 			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				className: SceneBody_module_css_default.treePane,
 				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(NodeTree, {
-					roots: [toModel$1(scene.root)],
+					roots: [toModel$2(scene.root)],
 					selected,
 					onSelect: (node) => {
 						setSelected(node.key);
@@ -1655,6 +1657,184 @@ function SceneBody(props) {
 				] })
 			})]
 		})]
+	});
+}
+
+//#endregion
+//#region \0godot-css:D:/projects/dsh-godot/ui-godot/src/client/state/StateCard.module.css.mjs
+const css$2 = "/* The state card's body: the shell row and the tree draw themselves. */\n\n/* The separator the shell rows draw between a title and its summary: a 2 px dot.\n   `collapsedContent` renders inside a text span, so the dot is inline-block. */\n.godot_StateCard_module_css_sep {\n  display: inline-block;\n  width: 2px;\n  height: 2px;\n  border-radius: 1px;\n  margin: 0 8px;\n  vertical-align: middle;\n  background: var(--dsw-alias-label-caption);\n}\n\n/* A failed read reads as a failure in the row's own title. */\n.godot_StateCard_module_css_failed {\n  color: var(--dsw-alias-label-danger);\n}\n\n/* The read's facts sit at the row's secondary tier, the same one the row title\n   uses: the content variable, not a fixed token, so a reader's font scale still\n   applies. */\n.godot_StateCard_module_css_facts {\n  font-size: var(--dsh-content-font-size-secondary, 13px);\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\n  color: var(--dsw-alias-label-tertiary);\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n/* The mark is masked, so it takes the row's icon colour: 14 px, currentColor,\n   replaced by the chevron on hover. */\n.godot_StateCard_module_css_icon {\n  display: block;\n  width: 14px;\n  height: 14px;\n  flex: none;\n  background-color: currentColor;\n  mask-repeat: no-repeat;\n  mask-position: center;\n  mask-size: contain;\n}\n\n/* The card sits on the row's own indent; the sections inside it need none. The\n   body rides the secondary tier because the tree beside it does. */\n.godot_StateCard_module_css_bodyWrap {\n  font-size: var(--dsh-content-font-size-secondary, 13px);\n  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));\n  margin: 8px 0 0 20px;\n  padding: 10px 14px;\n  border-radius: var(--dsw-radius-lg);\n  background: var(--dsw-alias-markdown-code-block);\n}\n\n.godot_StateCard_module_css_head {\n  margin: 0 0 4px;\n  font: var(--dsw-font-xs-13-strong);\n  color: var(--dsw-alias-label-tertiary);\n}\n\n/* Text sits on the card's own surface: the shell's code blocks draw no inner box. */\n.godot_StateCard_module_css_block {\n  margin: 4px 0 0;\n  font-family: var(--dsw-font-family-mono);\n  white-space: pre-wrap;\n  overflow-x: auto;\n  max-height: 320px;\n}\n\n.godot_StateCard_module_css_dim {\n  color: var(--dsw-alias-label-tertiary);\n}\n";
+const tag$2 = "ui-godot:StateCard.module.css";
+if (typeof document !== "undefined" && document.getElementById(tag$2) === null) {
+	const style = document.createElement("style");
+	style.id = tag$2;
+	style.dataset.plugin = "ui-godot";
+	style.textContent = css$2;
+	document.head.appendChild(style);
+}
+var StateCard_module_css_default = {
+	"sep": "godot_StateCard_module_css_sep",
+	"failed": "godot_StateCard_module_css_failed",
+	"facts": "godot_StateCard_module_css_facts",
+	"icon": "godot_StateCard_module_css_icon",
+	"bodyWrap": "godot_StateCard_module_css_bodyWrap",
+	"head": "godot_StateCard_module_css_head",
+	"block": "godot_StateCard_module_css_block",
+	"dim": "godot_StateCard_module_css_dim"
+};
+
+//#endregion
+//#region src/client/state/state-view.ts
+/** One diff list as paths (malformed entries dropped). */
+function asPaths(value) {
+	if (!Array.isArray(value)) return [];
+	return value.filter((path) => typeof path === "string");
+}
+/** One node, or undefined when the wire shape is not a node. */
+function asNode(value) {
+	if (typeof value !== "object" || value === null) return void 0;
+	const node = value;
+	if (typeof node.name !== "string") return void 0;
+	return {
+		name: node.name,
+		className: typeof node.className === "string" ? node.className : "",
+		id: typeof node.id === "string" ? node.id : "",
+		scene: typeof node.scene === "string" ? node.scene : "",
+		unique: node.unique === true,
+		script: typeof node.script === "string" ? node.script : "",
+		children: (Array.isArray(node.children) ? node.children : []).flatMap((child) => asNode(child) ?? [])
+	};
+}
+/**
+* Whether a value can be treated as a state view.
+*
+* The view crosses the tool-result boundary as plain JSON, so the node list is
+* checked once here: a malformed node is dropped rather than thrown at render.
+* @param value - the persisted meta view.
+* @returns the view, or undefined when it is not one.
+*/
+function asStateView(value) {
+	if (typeof value !== "object" || value === null) return void 0;
+	const view = value;
+	const nodes = Array.isArray(view.nodes) ? view.nodes.flatMap((node) => asNode(node) ?? []) : void 0;
+	return {
+		version: typeof view.version === "number" ? view.version : 0,
+		scene: typeof view.scene === "string" ? view.scene : "",
+		fps: typeof view.fps === "number" ? view.fps : 0,
+		frame: typeof view.frame === "number" ? view.frame : 0,
+		nodeCount: typeof view.nodeCount === "number" ? view.nodeCount : 0,
+		paused: view.paused === true,
+		...nodes === void 0 ? {} : { nodes },
+		...view.treeTruncated === true ? { treeTruncated: true } : {},
+		...view.viewTruncated === true ? { viewTruncated: true } : {},
+		...typeof view.changed === "object" && view.changed !== null ? { changed: {
+			appeared: asPaths(view.changed.appeared),
+			changed: asPaths(view.changed.changed),
+			disappeared: asPaths(view.changed.disappeared)
+		} } : {},
+		...view.viewCut === "nodes" || view.viewCut === "changed" ? { viewCut: view.viewCut } : {}
+	};
+}
+
+//#endregion
+//#region src/client/state/StateCard.tsx
+/** The Godot mark as a mask, so it takes the row's icon colour. */
+const GODOT_MASK = {
+	maskImage: `url("${godot_logo_svg_default}")`,
+	WebkitMaskImage: `url("${godot_logo_svg_default}")`
+};
+/** The tree's labels, from the card's own namespace. */
+function treeLocale(t) {
+	return {
+		sceneScript: t("sceneScript"),
+		sceneInstance: t("sceneInstance"),
+		sceneUnique: t("sceneUnique"),
+		sceneCollapse: t("sceneCollapse"),
+		sceneExpand: t("sceneExpand")
+	};
+}
+/** Count one view subtree (the rows the card holds). */
+function countNodes(nodes) {
+	return nodes.reduce((total, node) => total + 1 + countNodes(node.children), 0);
+}
+/** Adapt one live node to a tree row: the class text, the script glyph, the `%`, the mark. */
+/** Adapt one live node to a tree row: the class text, the script glyph, the `%`. */
+function toModel$1(node, parent, changed) {
+	const path = parent === "" ? node.name : `${parent}/${node.name}`;
+	const scripted = node.className.startsWith("res://");
+	return {
+		key: path,
+		name: node.name,
+		...node.className === "" ? {} : { subtitle: node.className },
+		iconClass: scripted ? "Script" : node.className,
+		...node.script === "" ? {} : { script: node.script },
+		...node.scene === "" ? {} : { instance: node.scene },
+		unique: node.unique,
+		path,
+		...node.id === "" ? {} : { title: `${path} (${node.id})` },
+		...changed.has(path) ? { marked: true } : {},
+		children: node.children.map((child) => toModel$1(child, path, changed))
+	};
+}
+/** Render one `godot_state` call. */
+function StateCard(props) {
+	const { t } = props;
+	const disclosure = useCardFold(props.callId ?? "godot_state");
+	const block = props.block;
+	const view = asStateView((block?.meta)?.view);
+	const fallbackText = callText(block);
+	const facts = view === void 0 ? "" : [
+		view.scene === "" ? t("debugMainScene") : view.scene,
+		`${view.fps} fps`,
+		`${t("stateFrame")} ${view.frame}`,
+		`${view.nodeCount} ${t("sceneNodes")}`,
+		...view.paused ? [t("statePaused")] : []
+	].join(" · ");
+	const hasBody = view !== void 0 || fallbackText !== "";
+	const nodes = view?.nodes ?? [];
+	const changed = new Set([...view?.changed?.appeared ?? [], ...view?.changed?.changed ?? []]);
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(__deepseek_ai_dsh_client_ui_primitives.DisclosureRow, {
+		icon: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+			className: StateCard_module_css_default.icon,
+			style: GODOT_MASK,
+			"aria-hidden": "true"
+		}),
+		title: props.toolName ?? "godot_state",
+		titleClassName: block?.isError === true ? StateCard_module_css_default.failed : void 0,
+		open: disclosure.expanded,
+		expandable: true,
+		onToggle: disclosure.toggle,
+		expandOnRowClick: true,
+		previewChevron: true,
+		running: !hasBody,
+		keepContentWhenOpen: true,
+		collapsedContent: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+			className: StateCard_module_css_default.facts,
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				className: StateCard_module_css_default.sep,
+				"aria-hidden": "true"
+			}), facts]
+		}),
+		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+			className: StateCard_module_css_default.bodyWrap,
+			children: view === void 0 ? fallbackText === "" ? null : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("pre", {
+				className: StateCard_module_css_default.block,
+				children: fallbackText
+			}) : nodes.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+				className: StateCard_module_css_default.dim,
+				children: t("stateNoTree")
+			}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("h4", {
+				className: StateCard_module_css_default.head,
+				children: [
+					`${t("debugSceneTree")} · ${view.treeTruncated === true ? `${String(countNodes(nodes))} / ${String(view.nodeCount)}` : String(view.nodeCount)} ${t("sceneNodes")}`,
+					view.treeTruncated === true ? ` · ${t("debugTreeTruncated")}` : "",
+					changed.size === 0 ? "" : ` · ${t("stateChanged")} ${String(changed.size)}`
+				]
+			}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(NodeTree, {
+				roots: nodes.map((root) => toModel$1(root, "", changed)),
+				selected: void 0,
+				t: treeLocale(t)
+			})] })
+		})
 	});
 }
 
@@ -2958,6 +3138,10 @@ const zh = {
 	debugTreeNodeCount: "个节点",
 	debugTreeTruncated: "节点预算截断",
 	debugNoExpansionHere: "这次运行的对象采样属于另一个暂停。",
+	stateFrame: "帧",
+	statePaused: "已暂停",
+	stateChanged: "变更",
+	stateNoTree: "这次读取没有带场景树（tree: false，或节点预算为 0）。",
 	debugMoreRows: "…还有 {n} 行",
 	debugInspect: "查看",
 	debugRunning: "运行中",
@@ -3039,6 +3223,10 @@ const en = {
 	debugTreeNodeCount: "nodes",
 	debugTreeTruncated: "node budget reached",
 	debugNoExpansionHere: "This run's object sample belongs to another pause.",
+	stateFrame: "frame",
+	statePaused: "paused",
+	stateChanged: "changed",
+	stateNoTree: "This read carried no scene tree (tree: false, or the node budget is 0).",
 	debugMoreRows: "… {n} more rows",
 	debugInspect: "Inspect",
 	debugRunning: "running",
@@ -3064,6 +3252,8 @@ const NS = "settings.godot";
 const DEBUG_NS = "godot.debug";
 /** Dictionary namespace of the scene document body. */
 const SCENE_NS = "godot.scene";
+/** Dictionary namespace of the state card. */
+const STATE_NS = "godot.state";
 /** Implementation id of the `.tscn` document body; also its slot key. */
 const SCENE_BODY_ID = "@deepseek-ai/dsh-ui-godot/scene";
 /** Services required by the Settings registration. */
@@ -3088,6 +3278,10 @@ function apply(ctx) {
 		zh,
 		en
 	}), "ui-godot: debug dictionary");
+	ctx.effect(() => ctx.locale.register(STATE_NS, {
+		zh,
+		en
+	}), "ui-godot: state dictionary");
 	ctx.effect(() => ctx.locale.register(SCENE_NS, {
 		zh,
 		en
@@ -3121,6 +3315,11 @@ function apply(ctx) {
 		key: "godot_debug",
 		locale: DEBUG_NS
 	}, DebugCard)), "ui-godot: debug card");
+	ctx.effect(() => ctx.slots.inject("tool.call.toolview", () => ctx.slots.register({
+		name: "tool.call.toolview",
+		key: "godot_state",
+		locale: STATE_NS
+	}, StateCard)), "ui-godot: state card");
 	const watch = new GodotWatchController();
 	ctx.effect(() => ctx.slots.inject("shell.overlay", () => {
 		let dispose;
@@ -3151,6 +3350,7 @@ exports.DEBUG_NS = DEBUG_NS;
 exports.GODOT_BUNDLE = GODOT_BUNDLE;
 exports.SCENE_BODY_ID = SCENE_BODY_ID;
 exports.SCENE_NS = SCENE_NS;
+exports.STATE_NS = STATE_NS;
 exports.apply = apply;
 exports.inject = inject;
 return module.exports; } });

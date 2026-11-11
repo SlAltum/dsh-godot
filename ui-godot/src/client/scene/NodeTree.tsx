@@ -30,8 +30,8 @@ export interface TreeItemModel {
   readonly title?: string
   /** Node address for a caller that acts on a row (the live tree asks the game). */
   readonly path?: string
-  /** The caller captured this node's properties, so its row is marked. */
-  readonly captured?: boolean
+  /** The caller has state for this node (sampled properties, or a change in this read). */
+  readonly marked?: boolean
   readonly children: readonly TreeItemModel[]
 }
 
@@ -76,7 +76,7 @@ function Row(props: {
   const instanceGlyph = node.instance === undefined ? undefined : iconUrl('PackedScene')
   const rowClass = [
     css.row,
-    node.captured === true ? css.rowCaptured : '',
+    node.marked === true ? css.rowMarked : '',
     selected === node.key ? css.rowSelected : '',
   ].filter(part => part !== '').join(' ')
   return (

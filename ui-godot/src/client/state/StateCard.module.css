@@ -1,0 +1,74 @@
+/* The state card's body: the shell row and the tree draw themselves. */
+
+/* The separator the shell rows draw between a title and its summary: a 2 px dot.
+   `collapsedContent` renders inside a text span, so the dot is inline-block. */
+.sep {
+  display: inline-block;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  margin: 0 8px;
+  vertical-align: middle;
+  background: var(--dsw-alias-label-caption);
+}
+
+/* A failed read reads as a failure in the row's own title. */
+.failed {
+  color: var(--dsw-alias-label-danger);
+}
+
+/* The read's facts sit at the row's secondary tier, the same one the row title
+   uses: the content variable, not a fixed token, so a reader's font scale still
+   applies. */
+.facts {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mark is masked, so it takes the row's icon colour: 14 px, currentColor,
+   replaced by the chevron on hover. */
+.icon {
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+/* The card sits on the row's own indent; the sections inside it need none. The
+   body rides the secondary tier because the tree beside it does. */
+.bodyWrap {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  margin: 8px 0 0 20px;
+  padding: 10px 14px;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-markdown-code-block);
+}
+
+.head {
+  margin: 0 0 4px;
+  font: var(--dsw-font-xs-13-strong);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Text sits on the card's own surface: the shell's code blocks draw no inner box. */
+.block {
+  margin: 4px 0 0;
+  font-family: var(--dsw-font-family-mono);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 320px;
+}
+
+.dim {
+  color: var(--dsw-alias-label-tertiary);
+}

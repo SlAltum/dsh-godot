@@ -170,6 +170,8 @@ describe('DebugCard', () => {
     // The running summary is the row's secondary tier too: it must not fall
     // back to the message body size while the call is still streaming.
     expect(html).toContain('class="facts"')
+    // The shell rows draw a dot between title and summary; the card draws its own.
+    expect(html).toContain('class="sep"')
   })
 
   it('reads the view out of the meta the tool actually persists', () => {
@@ -311,7 +313,7 @@ describe('DebugCard', () => {
     // The sample holds player (42) and its nested sprite (43); the tree's
     // Player row is that same object, so both rows carry the captured mark.
     const html = render({ meta: { view }, call: { argsRaw: args } })
-    expect(html.match(/rowCaptured/g)?.length).toBe(2)
+    expect(html.match(/rowMarked/g)?.length).toBe(2)
   })
 
   it('renders a sample only at the pause that took it', () => {

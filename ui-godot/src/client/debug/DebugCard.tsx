@@ -6,6 +6,7 @@ import { DisclosureRow, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitive
 import godotLogo from '../assets/godot-logo.svg'
 import css from './DebugCard.module.css'
 import { NodeTree, type TreeItemModel, type TreeLocale } from '../scene/NodeTree.tsx'
+import { useCardFold } from '../cards/fold.ts'
 import {
   asDebugView, callArgs, callText, entryChildren, entryRows, type DebugView,
   type DebugCallBlock,
@@ -96,7 +97,7 @@ function toModel(node: DebugSceneNode, parent = '', captured: ReadonlySet<string
     ...(scripted ? { script: node.className } : {}),
     title,
     path,
-    ...(captured.has(node.id) ? { captured: true } : {}),
+    ...(captured.has(node.id) ? { marked: true } : {}),
     children: node.children.map(child => toModel(child, path, captured)),
   }
 }
@@ -366,43 +367,7 @@ export function DebugCard(props: DebugCardProps) {
   }
 }
 
-/**
- * Which calls have their report open, kept outside React.
- *
- * The transcript re-creates a toolview on every streaming render, so a row's own
- * `useState` is thrown away as fast as the reader opens it — which is what made a
- * click look like it did nothing. Keyed by call id, so a row that re-mounts comes
- * back the way the reader left it.
- */
-const OPEN_CALLS = new Set<string>()
-
-/**
- * Set a call's fold state from outside the component.
- *
- * The card's own controls go through {@link useCardFold}; this exists so a test or a
- * preview can render the report without simulating the click.
- */
-export function setCardOpen(callId: string, open: boolean): void {
-  if (open) OPEN_CALLS.add(callId)
-  else OPEN_CALLS.delete(callId)
-}
-
-/** The card's fold state, stored per call rather than per component instance. */
-function useCardFold(callId: string): {
-  readonly expanded: boolean
-  readonly toggle: () => void
-} {
-  const [, bump] = useState(0)
-  const write = (open: boolean): void => {
-    if (open) OPEN_CALLS.add(callId)
-    else OPEN_CALLS.delete(callId)
-    bump(count => count + 1)
-  }
-  return {
-    expanded: OPEN_CALLS.has(callId),
-    toggle: () => { write(!OPEN_CALLS.has(callId)) },
-  }
-}
+export { setCardOpen } from '../cards/fold.ts'
 
 /** The card itself; {@link DebugCard} guards it. */
 function DebugCardBody(props: DebugCardProps & {
@@ -456,8 +421,8 @@ function DebugCardBody(props: DebugCardProps & {
       running={!hasBody}
       keepContentWhenOpen
       collapsedContent={hasBody
-        ? <TextShimmer className={css.facts}>{facts}</TextShimmer>
-        : <span className={css.facts}>{facts}</span>}
+        ? <TextShimmer className={css.facts}><span className={css.sep} aria-hidden="true" />{facts}</TextShimmer>
+        : <span className={css.facts}><span className={css.sep} aria-hidden="true" />{facts}</span>}
     >
       <ReportGuard fallback={<pre className={css.block}>{reportText}</pre>}>
         <div className={css.bodyWrap}>

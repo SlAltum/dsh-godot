@@ -20,14 +20,31 @@ describe('bridgeSource', () => {
     expect(source).toContain('DisplayServer.window_set_position(pos)')
   })
 
-  it('bounds the wait for a drawn frame instead of hanging on a minimized window', () => {
-    // A minimized window stops drawing: `frame_post_draw` never fires, so an
-    // unbounded await leaves the handler suspended with `_busy` set and every
-    // later command queues forever while the host still sees a live socket.
+  it('serves the last drawn frame when the window is minimized', () => {
+    // A minimized window stops drawing: `frame_post_draw` never fires, so the
+    // capture skips the wait and falls back to the frame the viewport still
+    // holds. An unbounded await would leave the handler suspended with `_busy`
+    // set and every later command queued forever.
     expect(bridgeSource()).not.toContain('await RenderingServer.frame_post_draw')
-    expect(source).toContain('if not await _await_draw(DRAW_BUDGET_MS):')
+    expect(source).toContain('func _window_drawing() -> bool:')
+    expect(source).toContain('window.mode != Window.MODE_MINIMIZED')
+    expect(source).toContain('if _window_drawing():')
+    expect(source).toContain('await _await_draw(DRAW_BUDGET_MS)')
+    // Nothing drawn yet (minimized since launch) is still an error, and says so.
     expect(source).toContain('_reply_error(id, "NOT_DRAWING"')
     expect(source).toContain('restore the window and retry')
+  })
+
+  it('diffs every visible Control, while input keeps the clickable list', () => {
+    // A click that rewrites a status Label changes no clickable row: the diff
+    // walks all visible Controls, and only input stays on `_targets()`.
+    expect(source).toContain('func _controls(main: Node, limit: int) -> Array:')
+    expect(source).toContain('_collect_targets(main, str(main.name), out, limit, false)')
+    expect(source).toContain('_collect_targets(main, str(main.name), out, limit, true)')
+    expect(source).toContain('out["changed"] = _diff(_controls(')
+    // A session with no baseline reports no change, not 259 new rows.
+    expect(source).toContain('var first := _last_targets.is_empty()')
+    expect(source).toContain('if first:')
   })
 
   it('traces nothing unless asked, and names a command that never finishes when asked', () => {

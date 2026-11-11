@@ -236,7 +236,7 @@ Append-only.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Sub-windows are not in the captured frame** — the root viewport texture excludes `Window` children, so a popup or a second window is not visible to `godot_see`.
-- **A minimized window does not render** — Godot stops drawing, so no `frame_post_draw` arrives: `godot_see` waits at most 2 s and then fails with `NOT_DRAWING` (restore the window and retry). The wait stays bounded so one capture cannot hold the command loop.
+- **A minimized window does not render**: Godot stops drawing, so no `frame_post_draw` arrives. The capture skips the wait (the window mode says it is minimized) and serves the frame the viewport still holds, so the live panel keeps a picture. A session that has never drawn reports `NOT_DRAWING` instead. The wait for a visible window stays bounded (2 s) so one capture cannot hold the command loop.
 - **Switching scenes does not replay boot logic** — `godot_scene` and `godot_play.scene` call `change_scene_to_file`, which is not equivalent to the project's own start-up path.
 - **DPI and canvas transforms can shift coordinates** — click by Control path when possible; coordinates come from the reported rect and may differ under scaling.
 - **One session per workspace** — a second `godot_play` reuses the running session unless `restart` is set.

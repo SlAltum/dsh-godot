@@ -12,6 +12,7 @@ import type { ResolvedEgoConfig } from './config.ts'
 import { EgoGodotError } from './errors.ts'
 import type { GameSessionRegistry } from './session-service.ts'
 import { renderState } from './targets.ts'
+import { buildStateView, type StateView } from './state-view.ts'
 
 /** `godot_state` arguments. */
 export interface StateArgs {
@@ -29,6 +30,8 @@ export interface StateArgs {
 /** What `godot_state` returns to the model. */
 export interface StateResult {
   readonly snapshot: string
+  /** The card's projection of this read; the model sees `snapshot` only. */
+  readonly view: StateView
 }
 
 /**
@@ -61,9 +64,10 @@ export function stateTool(registry: GameSessionRegistry, config: ResolvedEgoConf
       schema: {
         type: 'object',
         additionalProperties: false,
-        properties: { snapshot: { type: 'string', required: true } },
+        properties: { snapshot: { type: 'string', required: true }, view: { type: 'json' } },
       },
-      render: (_args, value: StateResult) => [{ type: 'text', text: value.snapshot }],
+      render: (_args, value) => [{ type: 'text', text: (value as unknown as StateResult).snapshot }],
+      presentationMeta: (_args, value) => ({ view: (value as unknown as StateResult).view }),
     },
     async execute(args: StateArgs, exec): Promise<StateResult> {
       const workspace = exec.agent?.session.header.cwd ?? process.cwd()
@@ -94,6 +98,7 @@ export function stateTool(registry: GameSessionRegistry, config: ResolvedEgoConf
             ...(args.text !== undefined ? { text: args.text } : {}),
           },
         }),
+        view: buildStateView(reply.payload, maxNodes),
       }
     },
   })

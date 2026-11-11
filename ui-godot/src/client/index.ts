@@ -27,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DebugCard } from './debug/DebugCard.tsx'
 import { SceneBody } from './scene/SceneBody.tsx'
+import { StateCard } from './state/StateCard.tsx'
 import { GodotCard } from './GodotCard.tsx'
 import { GodotWatch } from './GodotWatch.tsx'
 import { GODOT_NS, GodotCardController } from './godot-card-controller.ts'
@@ -47,6 +48,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'godot.debug': GodotLocaleKey
     /** Scene document body copy. */
     'godot.scene': GodotLocaleKey
+    /** State card copy. */
+    'godot.state': GodotLocaleKey
   }
 }
 
@@ -58,6 +61,9 @@ export const DEBUG_NS = 'godot.debug'
 
 /** Dictionary namespace of the scene document body. */
 export const SCENE_NS = 'godot.scene'
+
+/** Dictionary namespace of the state card. */
+export const STATE_NS = 'godot.state'
 
 /** Implementation id of the `.tscn` document body; also its slot key. */
 export const SCENE_BODY_ID = '@deepseek-ai/dsh-ui-godot/scene'
@@ -72,6 +78,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-godot: dictionaries')
   ctx.effect(() => ctx.locale.register(WATCH_NS, { zh, en }), 'ui-godot: watch dictionary')
   ctx.effect(() => ctx.locale.register(DEBUG_NS, { zh, en }), 'ui-godot: debug dictionary')
+  ctx.effect(() => ctx.locale.register(STATE_NS, { zh, en }), 'ui-godot: state dictionary')
   ctx.effect(() => ctx.locale.register(SCENE_NS, { zh, en }), 'ui-godot: scene dictionary')
 
   // A `.tscn` opens as its node tree instead of its source text: the extension
@@ -103,6 +110,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: 'godot_debug', locale: DEBUG_NS,
   }, DebugCard)), 'ui-godot: debug card')
+
+  // Live state card: the same keyed-toolview contract for `godot_state`, whose
+  // view carries the tree the read returned.
+  ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+    name: 'tool.call.toolview', key: 'godot_state', locale: STATE_NS,
+  }, StateCard)), 'ui-godot: state card')
 
   // Watch panel: a frame-wide overlay ball that polls the sandbox's session
   // list and streams the running game. Polling starts only once the shell
